@@ -5,14 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAlerts } from '@/hooks/useAlerts';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bell, User, LogOut, Settings } from 'lucide-react';
+import { Bell, User, LogOut, UserCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const handleLogout = async () => {
     await logout();
@@ -28,7 +28,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Configuration', href: '/configuration' },
     { name: 'Alerts',        href: '/alerts'        },
     { name: 'Reports',       href: '/reports'       },
-    { name: 'Profile',       href: '/profile'       },
   ];
 
   return (
@@ -114,9 +113,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <User className="w-5 h-5 mt-2 ml-2 opacity-50" />
                 </div>
               </div>
-              <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-100 rounded-box w-52 border border-base-200">
-                <li className="menu-title px-4 py-2 text-xs font-bold uppercase tracking-wider text-base-content/60">Administrator</li>
-                <li><Link href="/configuration"><Settings className="w-4 h-4 mr-2" /> Settings</Link></li>
+              <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-100 rounded-box w-56 border border-base-200">
+                {/* User info header */}
+                <li className="pointer-events-none">
+                  <div className="flex flex-col gap-0.5 px-2 py-1">
+                    <span className="font-bold text-sm text-base-content">{user?.displayName || 'Admin'}</span>
+                    <span className="text-xs text-base-content/50 truncate">{user?.email}</span>
+                  </div>
+                </li>
+                <li className="border-t border-base-200 mt-1 pt-1"><Link href="/profile"><UserCircle className="w-4 h-4 mr-2" /> My Profile</Link></li>
                 <li><a className="text-error cursor-pointer" onClick={handleLogout}><LogOut className="w-4 h-4 mr-2" /> Logout</a></li>
               </ul>
             </div>

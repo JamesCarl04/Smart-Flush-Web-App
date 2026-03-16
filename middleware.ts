@@ -8,9 +8,16 @@ export function middleware(request: NextRequest) {
   
   const isAuthPage = pathname.startsWith('/auth/login') || pathname.startsWith('/auth/register');
   
-  // Public routes that don't need redirecting
-  if (pathname === '/' || pathname.startsWith('/_next') || pathname.startsWith('/favicon.ico')) {
+  // Pass through Next.js internals only
+  if (pathname.startsWith('/_next') || pathname.startsWith('/favicon.ico')) {
     return NextResponse.next();
+  }
+
+  // Redirect root to dashboard (auth middleware below handles unauthenticated case)
+  if (pathname === '/') {
+    return NextResponse.redirect(
+      new URL(token ? '/dashboard' : '/auth/login', request.url)
+    );
   }
 
   // Redirect unauthenticated users to /auth/login

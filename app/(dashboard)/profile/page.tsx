@@ -122,46 +122,6 @@ export default function ProfilePage() {
     .toUpperCase()
     .slice(0, 2);
 
-  // ── Password field helper ─────────────────────────────────────────────────
-  const PasswordField = ({
-    id,
-    label,
-    show,
-    onToggle,
-    registration,
-    error,
-  }: {
-    id: string;
-    label: string;
-    show: boolean;
-    onToggle: () => void;
-    registration: ReturnType<typeof regPassword>;
-    error?: string;
-  }) => (
-    <div className="form-control w-full">
-      <label className="label" htmlFor={id}>
-        <span className="label-text font-medium">{label}</span>
-      </label>
-      <div className="relative">
-        <input
-          id={id}
-          type={show ? 'text' : 'password'}
-          className={`input input-bordered w-full pr-12 ${error ? 'input-error' : ''}`}
-          placeholder="••••••••"
-          {...registration}
-        />
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs absolute right-2 top-1/2 -translate-y-1/2"
-          onClick={onToggle}
-          tabIndex={-1}
-        >
-          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </div>
-      {error && <label className="label"><span className="label-text-alt text-error">{error}</span></label>}
-    </div>
-  );
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-8 pb-20">
@@ -268,32 +228,93 @@ export default function ProfilePage() {
           <h2 className="card-title mb-2">Change Password</h2>
 
           <form onSubmit={handlePassword(onChangePassword)} className="space-y-4">
-            <PasswordField
-              id="currentPassword"
-              label="Current Password"
-              show={showCurrent}
-              onToggle={() => setShowCurrent((v) => !v)}
-              registration={regPassword('currentPassword')}
-              error={errPassword.currentPassword?.message}
-            />
+            {/* Current Password */}
+            <div className="form-control w-full">
+              <label className="label" htmlFor="currentPassword">
+                <span className="label-text font-medium">Current Password</span>
+              </label>
+              <div className="input input-bordered flex items-center pr-2 gap-2">
+                <input
+                  id="currentPassword"
+                  type={showCurrent ? 'text' : 'password'}
+                  className={`grow bg-transparent outline-none placeholder:text-base-content/40 ${errPassword.currentPassword ? 'text-error' : ''}`}
+                  placeholder="••••••••"
+                  {...regPassword('currentPassword')}
+                />
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="cursor-pointer text-base-content/50 hover:text-base-content shrink-0"
+                  onClick={() => setShowCurrent((v) => !v)}
+                >
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </span>
+              </div>
+              {errPassword.currentPassword && (
+                <label className="label">
+                  <span className="label-text-alt text-error">{errPassword.currentPassword.message}</span>
+                </label>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <PasswordField
-                id="newPassword"
-                label="New Password"
-                show={showNew}
-                onToggle={() => setShowNew((v) => !v)}
-                registration={regPassword('newPassword')}
-                error={errPassword.newPassword?.message}
-              />
-              <PasswordField
-                id="confirmPassword"
-                label="Confirm New Password"
-                show={showConfirm}
-                onToggle={() => setShowConfirm((v) => !v)}
-                registration={regPassword('confirmPassword')}
-                error={errPassword.confirmPassword?.message}
-              />
+              {/* New Password */}
+              <div className="form-control w-full">
+                <label className="label" htmlFor="newPassword">
+                  <span className="label-text font-medium">New Password</span>
+                </label>
+                <div className="input input-bordered flex items-center pr-2 gap-2">
+                  <input
+                    id="newPassword"
+                    type={showNew ? 'text' : 'password'}
+                    className="grow bg-transparent outline-none placeholder:text-base-content/40"
+                    placeholder="••••••••"
+                    {...regPassword('newPassword')}
+                  />
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    className="cursor-pointer text-base-content/50 hover:text-base-content shrink-0"
+                    onClick={() => setShowNew((v) => !v)}
+                  >
+                    {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </span>
+                </div>
+                {errPassword.newPassword && (
+                  <label className="label">
+                    <span className="label-text-alt text-error">{errPassword.newPassword.message}</span>
+                  </label>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="form-control w-full">
+                <label className="label" htmlFor="confirmPassword">
+                  <span className="label-text font-medium">Confirm New Password</span>
+                </label>
+                <div className="input input-bordered flex items-center pr-2 gap-2">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirm ? 'text' : 'password'}
+                    className="grow bg-transparent outline-none placeholder:text-base-content/40"
+                    placeholder="••••••••"
+                    {...regPassword('confirmPassword')}
+                  />
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    className="cursor-pointer text-base-content/50 hover:text-base-content shrink-0"
+                    onClick={() => setShowConfirm((v) => !v)}
+                  >
+                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </span>
+                </div>
+                {errPassword.confirmPassword && (
+                  <label className="label">
+                    <span className="label-text-alt text-error">{errPassword.confirmPassword.message}</span>
+                  </label>
+                )}
+              </div>
             </div>
 
             <div className="card-actions justify-end pt-2">
