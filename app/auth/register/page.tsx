@@ -4,12 +4,12 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { app } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Sun, Moon } from "lucide-react";
+
 
 const registerSchema = z
   .object({
@@ -43,29 +43,41 @@ export default function RegisterPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const auth = getAuth(app);
-      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      
-      // Update display name
-      const { updateProfile } = await import("firebase/auth");
-      await updateProfile(userCredential.user, {
-        displayName: data.displayName
+      // Step 1: Call API route — creates Firebase Auth user + Firestore document
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          displayName: data.displayName,
+        }),
       });
-      
-      router.push("/dashboard");
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Registration failed');
+      }
+
+      // Step 2: Sign in with Firebase client so the auth cookie gets set
+      const { signInWithEmailAndPassword, getAuth } = await import('firebase/auth');
+      const auth = getAuth(app);
+      await signInWithEmailAndPassword(auth, data.email, data.password);
+
+      router.push('/dashboard');
       router.refresh();
     } catch (err: any) {
-      console.error("Register error:", err);
-      // Firebase specific errors
-      if (err.code === "auth/email-already-in-use") {
-        setError("Email is already registered. Please login instead.");
+      console.error('Register error:', err);
+      if (err.message?.includes('email-already-in-use') || err.message?.includes('already exists')) {
+        setError('Email is already registered. Please login instead.');
       } else {
-        setError(err.message || "Failed to create account. Please try again.");
+        setError(err.message || 'Failed to create account. Please try again.');
       }
     } finally {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen p-4 bg-base-200">
