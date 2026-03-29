@@ -1,11 +1,7 @@
 // instrumentation.ts (Next.js 14 server instrumentation hook)
-// This file runs once when the Next.js server starts.
-// It boots the MQTT singleton so it is alive for the lifetime of the process.
+// MQTT listening has been moved to the standalone Railway service (mqtt-listener/).
+// Vercel is serverless and cannot hold persistent TCP connections.
+// This file is intentionally a no-op.
 export async function register(): Promise<void> {
-  // Only boot MQTT on the Node.js runtime, not in the Edge runtime
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { getMqttClient } = await import('@/lib/mqtt-client');
-    getMqttClient();
-    console.log('[Instrumentation] MQTT client initialised');
-  }
+  // No-op: MQTT is handled by the Railway mqtt-listener service.
 }
