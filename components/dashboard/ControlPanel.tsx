@@ -8,6 +8,8 @@ import { getIdToken } from "firebase/auth";
 
 export function ControlPanel() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [pumpOn, setPumpOn] = useState(false);
+  const [uvOn, setUvOn] = useState(false);
 
   const handleAction = async (actionId: string, endpoint: string, payload: any = {}) => {
     setLoadingAction(actionId);
@@ -31,21 +33,61 @@ export function ControlPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Action failed');
 
-      toast.success(data.message || 'Action successful');
+      return data;
     } catch (err: any) {
       toast.error(err.message || 'Failed to execute action');
+      throw err;
     } finally {
       setLoadingAction(null);
     }
   };
 
+  /* ── Flush / Pump toggle ── */
   const handleFlush = () => {
-    const modal = document.getElementById('flush_modal') as HTMLDialogElement;
-    if (modal) modal.showModal();
+    if (pumpOn) {
+      // Pump is running → turn it OFF immediately
+      handlePumpOff();
+    } else {
+      // Pump is off → show confirmation modal
+      const modal = document.getElementById('flush_modal') as HTMLDialogElement;
+      if (modal) modal.showModal();
+    }
   };
 
-  const executeFlush = () => {
-    handleAction('flush', '/api/actuators/pump', { command: 'ON' });
+  const executeFlush = async () => {
+    try {
+      await handleAction('flush', '/api/actuators/pump', { command: 'ON' });
+      setPumpOn(true);
+      toast.success('Pump activated');
+    } catch { /* error already toasted */ }
+  };
+
+  const handlePumpOff = async () => {
+    try {
+      await handleAction('flush', '/api/actuators/pump', { command: 'OFF' });
+      setPumpOn(false);
+      toast.success('Pump deactivated');
+    } catch { /* error already toasted */ }
+  };
+
+  /* ── UV toggle ── */
+  const handleUVToggle = async () => {
+    const nextState = !uvOn;
+    try {
+      await handleAction('uv', '/api/actuators/uv', { command: nextState ? 'ON' : 'OFF' });
+      setUvOn(nextState);
+      toast.success(nextState ? 'UV light activated' : 'UV light deactivated');
+    } catch { /* error already toasted */ }
+  };
+
+  /* ── System Reset ── */
+  const executeReset = async () => {
+    try {
+      await handleAction('reset', '/api/actuators/reset');
+      setPumpOn(false);
+      setUvOn(false);
+      toast.success('System reset command sent');
+    } catch { /* error already toasted */ }
   };
 
   return (
@@ -66,7 +108,7 @@ export function ControlPanel() {
             
             <button 
               className={`btn btn-lg h-24 ${loadingAction === 'lid_open' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-primary/10 hover:text-primary transition-all'}`}
-              onClick={() => handleAction('lid_open', '/api/actuators/lid/open')}
+              onClick={() => handleAction('lid_open', '/api/actuators/lid/open').then(() => toast.success('Lid opened')).catch(() => {})}
             >
               <div className="flex flex-col items-center gap-2">
                 {loadingAction === 'lid_open' ? <span className="loading loading-spinner"></span> : <ChevronUp className="w-6 h-6" />}
@@ -76,7 +118,7 @@ export function ControlPanel() {
 
             <button 
               className={`btn btn-lg h-24 ${loadingAction === 'lid_close' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-primary/10 hover:text-primary transition-all'}`}
-              onClick={() => handleAction('lid_close', '/api/actuators/lid/close')}
+              onClick={() => handleAction('lid_close', '/api/actuators/lid/close').then(() => toast.success('Lid closed')).catch(() => {})}
             >
               <div className="flex flex-col items-center gap-2">
                 {loadingAction === 'lid_close' ? <span className="loading loading-spinner"></span> : <ChevronDown className="w-6 h-6" />}
@@ -84,23 +126,25 @@ export function ControlPanel() {
               </div>
             </button>
 
+            {/* Pump / Flush toggle button */}
             <button 
-              className={`btn btn-info shadow-sm btn-lg h-24 text-white hover:btn-active ${loadingAction === 'flush' ? 'btn-disabled' : ''}`}
+              className={`btn shadow-sm btn-lg h-24 text-white hover:btn-active ${pumpOn ? 'btn-error' : 'btn-info'} ${loadingAction === 'flush' ? 'btn-disabled' : ''}`}
               onClick={handleFlush}
             >
               <div className="flex flex-col items-center gap-2">
                  {loadingAction === 'flush' ? <span className="loading loading-spinner"></span> : <Droplets className="w-6 h-6" />}
-                 <span>Manual Flush</span>
+                 <span>{pumpOn ? 'Stop Pump' : 'Manual Flush'}</span>
               </div>
             </button>
 
+            {/* UV toggle button */}
             <button 
-              className={`btn btn-accent shadow-sm btn-lg h-24 text-white hover:btn-active ${loadingAction === 'uv' ? 'btn-disabled' : ''}`}
-              onClick={() => handleAction('uv', '/api/actuators/uv', { command: 'ON' })}
+              className={`btn shadow-sm btn-lg h-24 text-white hover:btn-active ${uvOn ? 'btn-warning' : 'btn-accent'} ${loadingAction === 'uv' ? 'btn-disabled' : ''}`}
+              onClick={handleUVToggle}
             >
               <div className="flex flex-col items-center gap-2">
                  {loadingAction === 'uv' ? <span className="loading loading-spinner"></span> : <Sun className="w-6 h-6" />}
-                 <span>Activate UV</span>
+                 <span>{uvOn ? 'Deactivate UV' : 'Activate UV'}</span>
               </div>
             </button>
 
@@ -148,15 +192,11 @@ export function ControlPanel() {
             <Power className="w-5 h-5" />
             System Restart Required
           </h3>
-          <p className="py-4">Warning: This will reboot the main controller and temporarily sever the connection. Are you sure you wish to proceed?</p>
+          <p className="py-4">Warning: This will reboot the ESP32 controller and temporarily sever the connection. All actuators will be turned off. Are you sure you wish to proceed?</p>
           <div className="modal-action">
             <form method="dialog">
               <button className="btn btn-ghost mr-2">Cancel</button>
-              <button className="btn btn-error text-white" onClick={() => {
-                toast.error("Executing emergency reset...");
-                setLoadingAction('reset');
-                setTimeout(() => setLoadingAction(null), 3000);
-              }}>Execute Reset</button>
+              <button className="btn btn-error text-white" onClick={executeReset}>Execute Reset</button>
             </form>
           </div>
         </div>

@@ -1,0 +1,25 @@
+{
+  "name": "smartflush-mqtt-listener",
+  "version": "1.0.0",
+  "description": "Standalone MQTT listener for SmartFlush IoT — deployed on Railway",
+  "private": true,
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start:prod": "node dist/index.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.15.0",
+    "firebase-admin": "^13.7.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.17.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

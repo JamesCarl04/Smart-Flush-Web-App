@@ -42,3 +42,7 @@ export function publishLidCommand(command: LidCommand): Promise<void> {
 export function publishConfigUpdate(config: ConfigUpdate): Promise<void> {
   return publish('toilet/commands/config', JSON.stringify(config));
 }
+
+export function publishResetCommand(): Promise<void> {
+  return publish('toilet/commands/reset', 'RESET');
+}
