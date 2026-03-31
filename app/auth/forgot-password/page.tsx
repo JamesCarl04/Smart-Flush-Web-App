@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { getAuth, sendPasswordResetEmail } from "firebase/auth";
 import { app } from "@/lib/firebase";
+import { getErrorCode } from "@/lib/error-utils";
 import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Sun, Moon } from "lucide-react";
@@ -38,9 +39,9 @@ export default function ForgotPasswordPage() {
       const auth = getAuth(app);
       await sendPasswordResetEmail(auth, data.email);
       setSuccess("Password reset email sent! Check your inbox.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Reset password error:", err);
-      if (err.code === "auth/user-not-found") {
+      if (getErrorCode(err) === "auth/user-not-found") {
         setError("No account found with this email.");
       } else {
         setError("Failed to send reset email. Please try again.");
@@ -63,7 +64,7 @@ export default function ForgotPasswordPage() {
         <form className="card-body" onSubmit={handleSubmit(onSubmit)}>
           <h2 className="card-title text-2xl font-bold mb-2 justify-center">Reset Password</h2>
           <p className="text-sm text-center text-base-content/70 mb-4">
-            Enter your email and we'll send you instructions to reset your password.
+            Enter your email and we&apos;ll send you instructions to reset your password.
           </p>
           
           {error && (

@@ -21,6 +21,7 @@ export function useSensorData(deviceId = "toilet-01") {
     if (!user) return;
     try {
       setLoading(true);
+      setError(null);
       const today = new Date().toISOString().slice(0, 10);
       const res = await apiFetch<{ success: boolean; data: SensorReading[] }>(
         `/api/sensors/${deviceId}/readings?from=${today}`,
@@ -38,9 +39,9 @@ export function useSensorData(deviceId = "toilet-01") {
           waterFlowRate: latestWaterflow?.value ?? 0,
         });
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("[useSensorData] error:", err);
-      // Don't set error for expected failures (e.g. no device yet)
+      setError(err instanceof Error ? err.message : 'Failed to load sensor data');
       setData({ ultrasonicDistance: 0, waterFlowRate: 0 });
     } finally {
       setLoading(false);

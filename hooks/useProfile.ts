@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  getAuth,
+  type User as FirebaseUser,
   updateProfile as firebaseUpdateProfile,
   updateEmail,
   updatePassword,
@@ -10,18 +10,17 @@ import {
   EmailAuthProvider,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { app, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/hooks/useAuth';
 import type { NotificationPrefs } from '@/types';
 
-// ── Default prefs used when Firestore doc doesn't exist yet ─────────────────
 const DEFAULT_PREFS: NotificationPrefs = {
-  criticalAlerts:     true,
+  criticalAlerts: true,
   highPriorityAlerts: true,
-  dailySummaryEmail:  false,
-  weeklyReportEmail:  false,
+  dailySummaryEmail: false,
+  weeklyReportEmail: false,
 };
 
-// ── Types ────────────────────────────────────────────────────────────────────
 interface UpdateProfileArgs {
   displayName: string;
   email: string;
@@ -33,7 +32,7 @@ interface ChangePasswordArgs {
 }
 
 interface UseProfileReturn {
-  user: ReturnType<typeof getAuth>['currentUser'];
+  user: FirebaseUser | null;
   notifPrefs: NotificationPrefs;
   loading: boolean;
   updateProfile: (args: UpdateProfileArgs) => Promise<void>;
@@ -41,63 +40,87 @@ interface UseProfileReturn {
   updateNotifications: (prefs: NotificationPrefs) => Promise<void>;
 }
 
-// ── Hook ─────────────────────────────────────────────────────────────────────
 export function useProfile(): UseProfileReturn {
-  const auth = getAuth(app);
-  const user = auth.currentUser;
-
+  const { user, loading: authLoading } = useAuth();
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
-  const [loading, setLoading] = useState(true);
+  const [prefsLoading, setPrefsLoading] = useState(false);
 
-  // Load Firestore notification prefs on mount
   useEffect(() => {
     if (!user) {
-      setLoading(false);
       return;
     }
-    const docRef = doc(db, 'users', user.uid);
-    getDoc(docRef)
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.notifications) {
-            setNotifPrefs(data.notifications as NotificationPrefs);
-          }
+
+    let isActive = true;
+
+    const loadNotificationPrefs = async () => {
+      setPrefsLoading(true);
+
+      try {
+        const docRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(docRef);
+
+        if (!isActive || !snap.exists()) {
+          return;
         }
-      })
-      .finally(() => setLoading(false));
-  }, [user?.uid]);
 
-  // ── updateProfile ──────────────────────────────────────────────────────────
+        const data = snap.data();
+        if (data.notifications) {
+          setNotifPrefs(data.notifications as NotificationPrefs);
+        }
+      } finally {
+        if (isActive) {
+          setPrefsLoading(false);
+        }
+      }
+    };
+
+    void loadNotificationPrefs();
+
+    return () => {
+      isActive = false;
+    };
+  }, [user]);
+
   const updateProfile = async ({ displayName, email }: UpdateProfileArgs): Promise<void> => {
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
 
-    // Firebase Auth updates
     await firebaseUpdateProfile(user, { displayName });
     if (email !== user.email) {
       await updateEmail(user, email);
     }
 
-    // Firestore merge
     const docRef = doc(db, 'users', user.uid);
     await setDoc(docRef, { displayName, email, updatedAt: Date.now() }, { merge: true });
   };
 
-  // ── changePassword ─────────────────────────────────────────────────────────
   const changePassword = async ({ currentPassword, newPassword }: ChangePasswordArgs): Promise<void> => {
-    if (!user || !user.email) throw new Error('Not authenticated');
+    if (!user || !user.email) {
+      throw new Error('Not authenticated');
+    }
+
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
   };
 
-  // ── updateNotifications ────────────────────────────────────────────────────
   const updateNotifications = async (prefs: NotificationPrefs): Promise<void> => {
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
     const docRef = doc(db, 'users', user.uid);
     await updateDoc(docRef, { notifications: prefs });
     setNotifPrefs(prefs);
   };
 
-  return { user, notifPrefs, loading, updateProfile, changePassword, updateNotifications };
+  return {
+    user,
+    notifPrefs: user ? notifPrefs : DEFAULT_PREFS,
+    loading: authLoading || (user ? prefsLoading : false),
+    updateProfile,
+    changePassword,
+    updateNotifications,
+  };
 }

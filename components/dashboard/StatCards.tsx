@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useSensorData } from "@/hooks/useSensorData";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { useSystemState } from "@/hooks/useSystemState";
@@ -9,8 +10,17 @@ export function StatCards() {
   const { ultrasonicDistance, waterFlowRate, loading: sensorLoading } = useSensorData();
   const { status: deviceStatus, lastSeen, loading: deviceLoading } = useDeviceStatus();
   const { systemState, loading: systemLoading } = useSystemState();
+  const [now, setNow] = useState(() => Date.now());
 
-  const secondsAgo = lastSeen ? Math.floor((Date.now() - lastSeen) / 1000) : 0;
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const secondsAgo = lastSeen ? Math.floor((now - lastSeen) / 1000) : 0;
   
   // Format system state nicely
   const formattedState = systemState === 'lid_open' ? 'Lid Open' 

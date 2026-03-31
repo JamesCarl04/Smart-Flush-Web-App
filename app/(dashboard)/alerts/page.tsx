@@ -106,7 +106,7 @@ export default function AlertsPage() {
             ) : filteredAlerts.length === 0 ? (
               <div className="py-16 flex flex-col items-center justify-center text-center text-base-content/50">
                 <CheckCircle2 className="w-16 h-16 text-success/20 mb-4" />
-                <h3 className="text-xl font-semibold mb-2">You're all caught up!</h3>
+                <h3 className="text-xl font-semibold mb-2">You&apos;re all caught up!</h3>
                 <p>No alerts found matching the current filter.</p>
               </div>
             ) : (

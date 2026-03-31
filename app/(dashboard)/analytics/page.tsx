@@ -9,6 +9,16 @@ import {
 } from "recharts";
 import { Calendar, Droplets, Activity, Percent, Clock } from "lucide-react";
 
+const SKELETON_BAR_HEIGHTS = [
+  "h-[28%]",
+  "h-[61%]",
+  "h-[43%]",
+  "h-[77%]",
+  "h-[52%]",
+  "h-[68%]",
+  "h-[35%]",
+];
+
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(startOfDay(new Date()), 7),
@@ -228,8 +238,8 @@ function SkeletonChart() {
   return (
     <div className="w-full h-full flex flex-col justify-end gap-2 p-4">
       <div className="w-full flex items-end justify-between h-full gap-2 opacity-20">
-        {[1,2,3,4,5,6,7].map(i => (
-           <div key={i} className={`w-full bg-base-content rounded-t-sm h-[${Math.floor(Math.random() * 80 + 20)}%]`}></div>
+        {SKELETON_BAR_HEIGHTS.map((heightClass, index) => (
+          <div key={index} className={`w-full bg-base-content rounded-t-sm ${heightClass}`}></div>
         ))}
       </div>
     </div>

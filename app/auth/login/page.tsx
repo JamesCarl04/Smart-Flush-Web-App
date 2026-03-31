@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { signInWithEmailAndPassword, getAuth } from "firebase/auth";
 import { app } from "@/lib/firebase";
+import { getErrorCode } from "@/lib/error-utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -41,14 +42,15 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       router.push("/dashboard");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Login error:", err);
+      const errorCode = getErrorCode(err);
       // Firebase specific error codes
-      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+      if (errorCode === "auth/user-not-found" || errorCode === "auth/invalid-credential") {
         setError("Invalid email or password. Please try again.");
-      } else if (err.code === "auth/wrong-password") {
+      } else if (errorCode === "auth/wrong-password") {
          setError("Wrong password. Please try again.");
-      } else if (err.code === "auth/too-many-requests") {
+      } else if (errorCode === "auth/too-many-requests") {
         setError("Too many attempts. Please try again later.");
       } else {
         setError("Failed to login. Please try again.");
@@ -141,7 +143,7 @@ export default function LoginPage() {
           <div className="divider text-sm text-base-content/60">Or</div>
           
           <div className="text-center text-sm">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/auth/register" className="link link-primary font-semibold">
               Register here
             </Link>

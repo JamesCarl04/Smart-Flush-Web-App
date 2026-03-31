@@ -81,6 +81,8 @@ export function useAnalytics(range: DateRange) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fromTime = range.from.getTime();
+  const toTime = range.to.getTime();
 
   const fetchAnalytics = useCallback(async () => {
     if (!user) return;
@@ -88,8 +90,8 @@ export function useAnalytics(range: DateRange) {
     setError(null);
 
     try {
-      const fromStr = format(range.from, 'yyyy-MM-dd');
-      const toStr = format(range.to, 'yyyy-MM-dd');
+      const fromStr = format(new Date(fromTime), 'yyyy-MM-dd');
+      const toStr = format(new Date(toTime), 'yyyy-MM-dd');
 
       const [dashboardRes, waterRes, patternsRes, perfRes] = await Promise.all([
         apiFetch<DashboardResponse>('/api/analytics/dashboard', user),
@@ -150,7 +152,7 @@ export function useAnalytics(range: DateRange) {
     } finally {
       setLoading(false);
     }
-  }, [user, range.from.getTime(), range.to.getTime()]);
+  }, [user, fromTime, toTime]);
 
   useEffect(() => {
     fetchAnalytics();

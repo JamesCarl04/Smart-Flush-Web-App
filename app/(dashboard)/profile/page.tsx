@@ -65,7 +65,7 @@ export default function ProfilePage() {
     if (user) {
       resetAccount({ displayName: user.displayName ?? '', email: user.email ?? '' });
     }
-  }, [user?.uid]);
+  }, [user, resetAccount]);
 
   const onSaveAccount = async (data: AccountFormValues) => {
     try {

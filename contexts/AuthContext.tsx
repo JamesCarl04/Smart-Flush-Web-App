@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User, signOut, getAuth } from "firebase/auth";
 import { app } from "@/lib/firebase";
 import Cookies from "js-cookie";

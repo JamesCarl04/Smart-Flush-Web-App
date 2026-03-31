@@ -3,15 +3,19 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Power, Settings, Droplets, Sun, ChevronUp, ChevronDown } from "lucide-react";
+import { getErrorMessage } from "@/lib/error-utils";
 import { auth } from "@/lib/firebase";
 import { getIdToken } from "firebase/auth";
+
+type ActionPayload = Record<string, unknown>;
+type ActionResponse = { error?: string } & Record<string, unknown>;
 
 export function ControlPanel() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [pumpOn, setPumpOn] = useState(false);
   const [uvOn, setUvOn] = useState(false);
 
-  const handleAction = async (actionId: string, endpoint: string, payload: any = {}) => {
+  const handleAction = async (actionId: string, endpoint: string, payload: ActionPayload = {}) => {
     setLoadingAction(actionId);
     try {
       const user = auth.currentUser;
@@ -30,12 +34,12 @@ export function ControlPanel() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data: ActionResponse = await res.json();
       if (!res.ok) throw new Error(data.error || 'Action failed');
 
       return data;
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to execute action');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to execute action');
       throw err;
     } finally {
       setLoadingAction(null);

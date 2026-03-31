@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { app } from "@/lib/firebase";
+import { getErrorMessage } from "@/lib/error-utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -68,12 +69,13 @@ export default function RegisterPage() {
 
       router.push('/dashboard');
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Register error:', err);
-      if (err.message?.includes('email-already-in-use') || err.message?.includes('already exists')) {
+      const errorMessage = getErrorMessage(err);
+      if (errorMessage?.includes('email-already-in-use') || errorMessage?.includes('already exists')) {
         setError('Email is already registered. Please login instead.');
       } else {
-        setError(err.message || 'Failed to create account. Please try again.');
+        setError(errorMessage || 'Failed to create account. Please try again.');
       }
     } finally {
       setIsLoading(false);
