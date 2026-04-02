@@ -31,11 +31,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   ];
 
   return (
-    <div className="drawer lg:drawer-open">
+    <div className="drawer transition-colors duration-300 lg:drawer-open">
       <input id="my-drawer-2" type="checkbox" className="drawer-toggle" />
-      <div className="drawer-content flex flex-col min-h-screen">
+      <div className="drawer-content flex min-h-screen flex-col transition-colors duration-300">
         {/* Mobile Navbar */}
-        <div className="w-full navbar bg-base-300 lg:hidden border-b border-base-200">
+        <div className="navbar w-full border-b border-base-200 bg-base-300 transition-colors duration-300 lg:hidden">
           <div className="flex-none">
             <label htmlFor="my-drawer-2" className="btn btn-square btn-ghost">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="inline-block w-6 h-6 stroke-current"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -44,10 +44,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 px-2 mx-2 text-xl font-bold">Smart Flush</div>
           <div className="flex-none">
             <div className="dropdown dropdown-end">
-              <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
-                <div className="indicator">
-                  <Bell className="w-5 h-5" />
-                  {unreadCount > 0 && <span className="badge badge-error badge-xs indicator-item"></span>}
+              <div className="tooltip tooltip-left" data-tip={`${unreadCount} unread alerts`}>
+                <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
+                  <div className="indicator">
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && <span className="badge badge-error badge-xs indicator-item"></span>}
+                  </div>
                 </div>
               </div>
               <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-64 border border-base-300">
@@ -67,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Desktop Header */}
-        <div className="hidden lg:flex w-full navbar bg-base-100/50 backdrop-blur-md sticky top-0 z-40 border-b border-base-200 px-8">
+        <div className="navbar sticky top-0 z-40 hidden w-full border-b border-base-200 bg-base-100/50 px-8 backdrop-blur-md transition-colors duration-300 lg:flex">
           <div className="flex-1">
             <h1 className="text-xl font-semibold opacity-0">Dashboard</h1>
           </div>
@@ -81,10 +83,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* Notifications Dropdown */}
             <div className="dropdown dropdown-end">
-              <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
-                <div className="indicator">
-                  <Bell className="w-5 h-5" />
-                  {unreadCount > 0 && <span className="badge badge-error badge-xs indicator-item"></span>}
+              <div className="tooltip tooltip-bottom" data-tip={`${unreadCount} unread alerts`}>
+                <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
+                  <div className="indicator">
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && <span className="badge badge-error badge-xs indicator-item"></span>}
+                  </div>
                 </div>
               </div>
               <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-100 rounded-box w-80 border border-base-200">
@@ -128,13 +132,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Page content here */}
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto p-4 transition-colors duration-300 md:p-8">
           {children}
         </main>
       </div>
       <div className="drawer-side">
         <label htmlFor="my-drawer-2" aria-label="close sidebar" className="drawer-overlay"></label>
-        <ul className="menu p-4 w-80 min-h-full bg-base-200 text-base-content">
+        <ul className="menu min-h-full w-80 bg-base-200 p-4 text-base-content transition-colors duration-300">
           <li className="mb-4">
             <div className="flex flex-row justify-between items-center bg-transparent hover:bg-transparent cursor-default">
               <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">Klir</span>
@@ -143,7 +147,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="divider mt-0 mb-2"></div>
           {navLinks.map((link) => (
             <li key={link.name}>
-              <Link href={link.href} className={pathname?.startsWith(link.href) ? 'active' : ''}>
+              <Link
+                href={link.href}
+                className={
+                  pathname?.startsWith(link.href)
+                    ? 'active bg-primary text-primary-content font-semibold shadow-sm'
+                    : 'transition-colors hover:bg-base-300/80'
+                }
+              >
                 {link.name}
               </Link>
             </li>

@@ -1,14 +1,39 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAnalytics, DateRange } from "@/hooks/useAnalytics";
 import { subDays, startOfDay, endOfDay } from "date-fns";
-import { 
-  BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, LineChart, Line, 
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
+import {
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 import { Calendar, Droplets, Activity, Percent, Clock } from "lucide-react";
 
+const BRAND_PURPLE = "#7C3AED";
+const CYAN = "#06B6D4";
+const PINK = "#EC4899";
+const GREEN = "#10B981";
+const RED = "#EF4444";
+const GRID_COLOR = "rgba(148, 163, 184, 0.22)";
+const TOOLTIP_STYLE = {
+  borderRadius: "12px",
+  border: "1px solid rgba(148, 163, 184, 0.14)",
+  boxShadow: "0 16px 40px -24px rgb(15 23 42 / 0.4)",
+  backgroundColor: "rgba(255,255,255,0.96)",
+};
 const SKELETON_BAR_HEIGHTS = [
   "h-[28%]",
   "h-[61%]",
@@ -22,27 +47,31 @@ const SKELETON_BAR_HEIGHTS = [
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(startOfDay(new Date()), 7),
-    to: endOfDay(new Date())
+    to: endOfDay(new Date()),
   });
-
+  const [activePreset, setActivePreset] = useState<0 | 7 | 30>(7);
   const { data, loading, error } = useAnalytics(dateRange);
 
-  // Sync date range to URL search params
   useEffect(() => {
     const url = new URL(window.location.href);
-    url.searchParams.set('from', dateRange.from.toISOString());
-    url.searchParams.set('to', dateRange.to.toISOString());
-    window.history.replaceState({}, '', url.toString());
+    url.searchParams.set("from", dateRange.from.toISOString());
+    url.searchParams.set("to", dateRange.to.toISOString());
+    window.history.replaceState({}, "", url.toString());
   }, [dateRange]);
 
-  const setPresetRange = (days: number) => {
+  const setPresetRange = (days: 0 | 7 | 30) => {
+    setActivePreset(days);
     setDateRange({
       from: subDays(startOfDay(new Date()), days),
-      to: endOfDay(new Date())
+      to: endOfDay(new Date()),
     });
   };
 
-  const COLORS = ['#10b981', '#ef4444', '#f59e0b', '#3b82f6'];
+  const totalFlushes = data?.summary.totalFlushes;
+  const totalWater = data?.summary.totalWater;
+  const uvCompletion = data?.summary.uvCompletion;
+  const avgFlushesPerDay = data?.summary.avgFlushesPerDay;
+  const systemUptime = data?.summary.systemUptime;
 
   if (error) {
     return (
@@ -55,180 +84,262 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8 max-w-7xl animate-fade-in">
-      
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="container mx-auto max-w-7xl animate-fade-in p-4 md:p-8">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">Analytics</h1>
-          <p className="text-base-content/60 mt-1">System performance and usage metrics</p>
+          <h1 className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-3xl font-bold text-transparent">
+            Analytics
+          </h1>
+          <p className="mt-1 text-base-content/60">System performance and usage metrics</p>
         </div>
-        
-        <div className="join bg-base-200 p-1 rounded-lg">
-          <button className="btn btn-sm join-item" onClick={() => setPresetRange(0)}>Today</button>
-          <button className="btn btn-sm join-item" onClick={() => setPresetRange(7)}>7 Days</button>
-          <button className="btn btn-sm join-item" onClick={() => setPresetRange(30)}>30 Days</button>
+
+        <div className="join rounded-lg bg-base-200 p-1">
+          {[0, 7, 30].map((days) => (
+            <button
+              key={days}
+              className={`btn btn-sm join-item ${activePreset === days ? "btn-primary text-primary-content" : "btn-ghost"}`}
+              onClick={() => setPresetRange(days as 0 | 7 | 30)}
+            >
+              {days === 0 ? "Today" : `${days} Days`}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        <StatCard title="Total Flushes" icon={<Activity className="w-5 h-5 text-primary" />} value={data?.summary.totalFlushes} loading={loading} />
-        <StatCard title="Water Used (L)" icon={<Droplets className="w-5 h-5 text-info" />} value={data?.summary.totalWater} loading={loading} />
-        <StatCard title="UV Completion" icon={<Percent className="w-5 h-5 text-accent" />} value={`${data?.summary.uvCompletion}%`} loading={loading} />
-        <StatCard title="Avg Flushes/Day" icon={<Calendar className="w-5 h-5 text-secondary" />} value={data?.summary.avgFlushesPerDay} loading={loading} />
-        <StatCard title="System Uptime" icon={<Clock className="w-5 h-5 text-success" />} value={`${data?.summary.systemUptime}%`} loading={loading} />
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard
+          title="Total Flushes"
+          icon={<Activity className="h-5 w-5 text-primary" />}
+          value={typeof totalFlushes === "number" ? totalFlushes.toLocaleString() : "--"}
+          loading={loading}
+        />
+        <StatCard
+          title="Water Used (L)"
+          icon={<Droplets className="h-5 w-5 text-info" />}
+          value={typeof totalWater === "number" ? totalWater.toFixed(1) : "--"}
+          loading={loading}
+        />
+        <StatCard
+          title="UV Completion"
+          icon={<Percent className="h-5 w-5 text-accent" />}
+          value={typeof uvCompletion === "number" ? `${uvCompletion.toFixed(1)}%` : "--"}
+          loading={loading}
+        />
+        <StatCard
+          title="Avg Flushes/Day"
+          icon={<Calendar className="h-5 w-5 text-secondary" />}
+          value={typeof avgFlushesPerDay === "number" ? avgFlushesPerDay.toFixed(1) : "--"}
+          loading={loading}
+        />
+        <StatCard
+          title="System Uptime"
+          icon={<Clock className="h-5 w-5 text-success" />}
+          value={formatUptime(systemUptime)}
+          loading={loading}
+        />
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Chart 1: Flush Count (Bar) */}
-        <div className="card bg-base-100 shadow-xl border border-base-200">
-          <div className="card-body">
-            <h2 className="card-title text-base font-semibold">Flush Count per Day</h2>
-            <div className="h-72 w-full mt-4">
-              {loading ? <SkeletonChart /> : data?.charts.flushCounts.length === 0 ? <EmptyChart /> : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data?.charts.flushCounts} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <Tooltip cursor={{ fill: 'currentColor', opacity: 0.1 }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="count" fill="var(--fallback-p,oklch(var(--p)/1))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <ChartCard title="Flush Count per Day">
+          {loading ? (
+            <SkeletonChart />
+          ) : !data?.charts.flushCounts.length ? (
+            <EmptyChart />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={data.charts.flushCounts} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  cursor={{ fill: BRAND_PURPLE, opacity: 0.08 }}
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={(label) => `Date: ${label}`}
+                  formatter={(value) => [`${getNumericTooltipValue(value)} flushes`, "Flush Count"]}
+                />
+                <Bar
+                  dataKey="count"
+                  fill={BRAND_PURPLE}
+                  radius={[8, 8, 0, 0]}
+                  barSize={32}
+                  minPointSize={3}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
 
-        {/* Chart 2: Water Volume over Time (Area) */}
-        <div className="card bg-base-100 shadow-xl border border-base-200">
-          <div className="card-body">
-            <h2 className="card-title text-base font-semibold">Water Usage per Day (Liters)</h2>
-            <div className="h-72 w-full mt-4">
-              {loading ? <SkeletonChart /> : data?.charts.waterVolume.length === 0 ? <EmptyChart /> : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data?.charts.waterVolume} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorLiters" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--fallback-in,oklch(var(--in)/1))" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="var(--fallback-in,oklch(var(--in)/1))" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Area type="monotone" dataKey="liters" stroke="var(--fallback-in,oklch(var(--in)/1))" fillOpacity={1} fill="url(#colorLiters)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </div>
+        <ChartCard title="Water Usage per Day (Liters)">
+          {loading ? (
+            <SkeletonChart />
+          ) : !data?.charts.waterVolume.length ? (
+            <EmptyChart />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={data.charts.waterVolume} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="waterGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CYAN} stopOpacity={0.5} />
+                    <stop offset="95%" stopColor={CYAN} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={(label) => `Date: ${label}`}
+                  formatter={(value) => [`${getNumericTooltipValue(value).toFixed(1)} L`, "Water Usage"]}
+                />
+                <Area type="monotone" dataKey="liters" stroke={CYAN} strokeWidth={3} fill="url(#waterGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
 
-        {/* Chart 3: Hourly Usage (Line) */}
-        <div className="card bg-base-100 shadow-xl border border-base-200 lg:col-span-2">
-          <div className="card-body">
-            <h2 className="card-title text-base font-semibold">Usage by Hour of Day</h2>
-            <div className="h-72 w-full mt-4">
-              {loading ? <SkeletonChart /> : data?.charts.hourlyUsage.length === 0 ? <EmptyChart /> : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data?.charts.hourlyUsage} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
-                    <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Line type="monotone" dataKey="count" stroke="var(--fallback-s,oklch(var(--s)/1))" strokeWidth={3} dot={{ r: 4, fill: "var(--fallback-s,oklch(var(--s)/1))" }} activeDot={{ r: 6 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </div>
+        <ChartCard title="Usage by Hour of Day" className="lg:col-span-2">
+          {loading ? (
+            <SkeletonChart />
+          ) : !data?.charts.hourlyUsage.length ? (
+            <EmptyChart />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={data.charts.hourlyUsage} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={(label) => `Hour: ${label}`}
+                  formatter={(value) => [`${getNumericTooltipValue(value)} events`, "Usage"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  stroke={PINK}
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: PINK }}
+                  activeDot={{ r: 6, fill: PINK }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
 
-        {/* Chart 4: UV Completion (Pie) */}
-        <div className="card bg-base-100 shadow-xl border border-base-200">
-          <div className="card-body">
-            <h2 className="card-title text-base font-semibold">UV Cycles Completed vs Failed</h2>
-            <div className="h-72 w-full flex items-center justify-center">
-              {loading ? <div className="skeleton w-48 h-48 rounded-full"></div> : data?.charts.uvStats.length === 0 ? <EmptyChart /> : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={data?.charts.uvStats}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {data?.charts.uvStats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-            {/* Legend */}
-            {!loading && (
-              <div className="flex justify-center gap-4 mt-2">
-                {data?.charts.uvStats.map((entry, index) => (
+        <ChartCard title="UV Cycles Completed vs Failed">
+          {loading ? (
+            <PieSkeleton />
+          ) : !data?.charts.uvStats.length ? (
+            <EmptyChart />
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={data.charts.uvStats}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={72}
+                    outerRadius={106}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {data.charts.uvStats.map((entry, index) => (
+                      <Cell key={entry.name} fill={[GREEN, RED][index % 2]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(value) => [`${getNumericTooltipValue(value).toFixed(1)}%`, "Cycle Share"]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 flex justify-center gap-4">
+                {data.charts.uvStats.map((entry, index) => (
                   <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: [GREEN, RED][index % 2] }}
+                    ></div>
                     <span className="text-sm">{entry.name}</span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
+            </>
+          )}
+        </ChartCard>
 
-        {/* Chart 5: Daily Uptime % (Bar with Reference Line) */}
-        <div className="card bg-base-100 shadow-xl border border-base-200">
-          <div className="card-body">
-            <h2 className="card-title text-base font-semibold">Daily Uptime %</h2>
-            <div className="h-72 w-full mt-4 text-xs">
-              {loading ? <SkeletonChart /> : data?.charts.uptimeStats.length === 0 ? <EmptyChart /> : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data?.charts.uptimeStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                    <YAxis domain={['auto', 100]} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'currentColor', opacity: 0.1 }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <ReferenceLine y={99.5} stroke="var(--fallback-er,oklch(var(--er)/1))" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'SLA (99.5%)', fill: 'var(--fallback-er,oklch(var(--er)/1))', fontSize: 12 }} />
-                    <Bar dataKey="uptime" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </div>
-
+        <ChartCard title="Daily Uptime %">
+          {loading ? (
+            <SkeletonChart />
+          ) : !data?.charts.uptimeStats.length ? (
+            <EmptyChart />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={data.charts.uptimeStats} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  cursor={{ fill: BRAND_PURPLE, opacity: 0.08 }}
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={(label) => `Date: ${label}`}
+                  formatter={(value) => [`${getNumericTooltipValue(value).toFixed(1)}%`, "Uptime"]}
+                />
+                <ReferenceLine
+                  y={99.5}
+                  stroke={RED}
+                  strokeDasharray="3 3"
+                  label={{ position: "insideTopLeft", value: "SLA (99.5%)", fill: RED, fontSize: 12 }}
+                />
+                <Bar dataKey="uptime" fill={BRAND_PURPLE} radius={[8, 8, 0, 0]} barSize={32} minPointSize={3} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
       </div>
     </div>
   );
 }
 
-// Helpers
-function StatCard({ title, icon, value, loading }: { title: string, icon: React.ReactNode, value: number | string | undefined, loading: boolean }) {
+function StatCard({
+  title,
+  icon,
+  value,
+  loading,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  value: string | number;
+  loading: boolean;
+}) {
   return (
-    <div className="card bg-base-100 shadow-sm border border-base-200">
+    <div className="card border border-base-200 bg-base-100 shadow-sm">
       <div className="card-body p-4">
-        <div className="flex justify-between items-start mb-1">
-          <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">{title}</h3>
+        <div className="mb-1 flex items-start justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-base-content/60">{title}</h3>
           {icon}
         </div>
-        {loading ? (
-          <div className="skeleton h-8 w-1/2"></div>
-        ) : (
-          <div className="text-2xl font-bold truncate">{value}</div>
-        )}
+        {loading ? <div className="skeleton h-8 w-1/2"></div> : <div className="truncate text-2xl font-bold">{value}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`card border border-base-200 bg-base-100 shadow-xl ${className}`}>
+      <div className="card-body">
+        <h2 className="card-title text-base font-bold">{title}</h2>
+        <div className="mt-4">{children}</div>
       </div>
     </div>
   );
@@ -236,20 +347,43 @@ function StatCard({ title, icon, value, loading }: { title: string, icon: React.
 
 function SkeletonChart() {
   return (
-    <div className="w-full h-full flex flex-col justify-end gap-2 p-4">
-      <div className="w-full flex items-end justify-between h-full gap-2 opacity-20">
+    <div className="flex h-[300px] w-full flex-col justify-end gap-2 rounded-xl bg-base-200/40 p-4">
+      <div className="flex h-full w-full items-end justify-between gap-2 opacity-30">
         {SKELETON_BAR_HEIGHTS.map((heightClass, index) => (
-          <div key={index} className={`w-full bg-base-content rounded-t-sm ${heightClass}`}></div>
+          <div key={index} className={`w-full rounded-t-md bg-base-content ${heightClass}`}></div>
         ))}
       </div>
     </div>
   );
 }
 
-function EmptyChart() {
+function PieSkeleton() {
   return (
-    <div className="w-full h-full flex items-center justify-center bg-base-200/50 rounded-lg border border-dashed border-base-300">
-      <p className="text-base-content/50 font-medium">No data for selected range</p>
+    <div className="flex h-[300px] items-center justify-center rounded-xl bg-base-200/40">
+      <div className="skeleton h-48 w-48 rounded-full"></div>
     </div>
   );
+}
+
+function EmptyChart() {
+  return (
+    <div className="flex h-[300px] w-full items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40">
+      <p className="font-medium text-base-content/50">No data available for this period</p>
+    </div>
+  );
+}
+
+function formatUptime(value: number | undefined) {
+  if (typeof value !== "number" || value <= 0) {
+    return "--";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+function getNumericTooltipValue(value: number | string | ReadonlyArray<number | string> | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const numericValue = typeof rawValue === "number" ? rawValue : Number(rawValue ?? 0);
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
 }

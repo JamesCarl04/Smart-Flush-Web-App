@@ -313,7 +313,13 @@ export default function ConfigurationPage() {
                   <h3 className="text-sm font-semibold text-base-content/50 uppercase tracking-widest mb-3 ml-1">{group.replace('_', ' ')}</h3>
                   <div className="space-y-3">
                     {rules.filter(r => r.group === group).length === 0 && (
-                      <div className="text-sm text-base-content/40 italic p-4 bg-base-200/50 rounded-lg border border-dashed border-base-300">No rules configured in this group.</div>
+                      <div className="rounded-xl border border-dashed border-base-300 bg-base-200/40 p-6 text-center">
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-100 text-base-content/50 shadow-sm">
+                          <Settings2 className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-medium text-base-content/70">No rules configured in this group.</p>
+                        <p className="mt-1 text-xs text-base-content/45">Add a rule using the + Add Rule button above.</p>
+                      </div>
                     )}
                     {rules.filter(r => r.group === group).map((rule) => (
                       <div key={rule.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-base-100 border border-base-200 rounded-xl shadow-sm hover:border-primary/50 transition-colors gap-4">
@@ -404,7 +410,7 @@ export default function ConfigurationPage() {
         </form>
       </dialog>
 
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }

@@ -31,9 +31,9 @@ export function ActivityFeed() {
         <div className="flex items-center justify-between border-b border-base-200 pb-4 mb-4">
            <h2 className="card-title flex items-center gap-2">
              Activity Feed
-             <span className="relative flex h-3 w-3 items-center justify-center ml-2">
+             <span className="relative ml-2 flex h-3 w-3 items-center justify-center">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                <span className="relative inline-flex h-2 w-2 animate-pulse rounded-full bg-success"></span>
              </span>
              <span className="text-xs font-normal text-success uppercase tracking-wider ml-1">Live</span>
            </h2>

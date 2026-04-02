@@ -14,6 +14,7 @@ export function ControlPanel() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [pumpOn, setPumpOn] = useState(false);
   const [uvOn, setUvOn] = useState(false);
+  const isBusy = loadingAction !== null;
 
   const handleAction = async (actionId: string, endpoint: string, payload: ActionPayload = {}) => {
     setLoadingAction(actionId);
@@ -103,7 +104,7 @@ export function ControlPanel() {
               <Settings className="w-5 h-5" />
               Manual Controls
             </h2>
-            <div className="badge badge-error gap-1 uppercase tracking-wide font-semibold">
+            <div className="badge badge-error gap-1 border-0 bg-rose-500 font-semibold uppercase tracking-wide text-white shadow-sm">
               Overrides Active
             </div>
           </div>
@@ -111,7 +112,8 @@ export function ControlPanel() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             <button 
-              className={`btn btn-lg h-24 ${loadingAction === 'lid_open' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-primary/10 hover:text-primary transition-all'}`}
+              className={`btn btn-lg h-24 transition-all ${loadingAction === 'lid_open' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-base-200 hover:text-primary'}`}
+              disabled={isBusy}
               onClick={() => handleAction('lid_open', '/api/actuators/lid/open').then(() => toast.success('Lid opened')).catch(() => {})}
             >
               <div className="flex flex-col items-center gap-2">
@@ -121,7 +123,8 @@ export function ControlPanel() {
             </button>
 
             <button 
-              className={`btn btn-lg h-24 ${loadingAction === 'lid_close' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-primary/10 hover:text-primary transition-all'}`}
+              className={`btn btn-lg h-24 transition-all ${loadingAction === 'lid_close' ? 'btn-disabled' : 'btn-outline border-base-300 hover:border-primary hover:bg-base-200 hover:text-primary'}`}
+              disabled={isBusy}
               onClick={() => handleAction('lid_close', '/api/actuators/lid/close').then(() => toast.success('Lid closed')).catch(() => {})}
             >
               <div className="flex flex-col items-center gap-2">
@@ -132,7 +135,8 @@ export function ControlPanel() {
 
             {/* Pump / Flush toggle button */}
             <button 
-              className={`btn shadow-sm btn-lg h-24 text-white hover:btn-active ${pumpOn ? 'btn-error' : 'btn-info'} ${loadingAction === 'flush' ? 'btn-disabled' : ''}`}
+              className={`btn btn-lg h-24 shadow-sm text-white transition-all hover:-translate-y-0.5 hover:shadow-md ${pumpOn ? 'btn-error' : 'btn-info'} ${loadingAction === 'flush' ? 'btn-disabled' : ''}`}
+              disabled={isBusy}
               onClick={handleFlush}
             >
               <div className="flex flex-col items-center gap-2">
@@ -143,7 +147,8 @@ export function ControlPanel() {
 
             {/* UV toggle button */}
             <button 
-              className={`btn shadow-sm btn-lg h-24 text-white hover:btn-active ${uvOn ? 'btn-warning' : 'btn-accent'} ${loadingAction === 'uv' ? 'btn-disabled' : ''}`}
+              className={`btn btn-lg h-24 shadow-sm text-white transition-all hover:-translate-y-0.5 hover:shadow-md ${uvOn ? 'btn-warning' : 'btn-accent'} ${loadingAction === 'uv' ? 'btn-disabled' : ''}`}
+              disabled={isBusy}
               onClick={handleUVToggle}
             >
               <div className="flex flex-col items-center gap-2">
@@ -158,6 +163,7 @@ export function ControlPanel() {
           
           <button 
             className={`btn btn-error btn-outline w-full ${loadingAction === 'reset' ? 'btn-disabled' : ''}`}
+            disabled={isBusy}
             onClick={() => {
                const modal = document.getElementById('reset_modal') as HTMLDialogElement;
                if (modal) modal.showModal();

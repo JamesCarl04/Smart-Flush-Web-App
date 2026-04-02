@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="bg-base-100 transition-colors duration-300">
       {/* Inline script runs synchronously before React hydrates, preventing flash-of-wrong-theme */}
       <head>
         <script
@@ -42,7 +42,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} bg-base-100 text-base-content antialiased transition-colors duration-300`}
+        suppressHydrationWarning
+      >
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
