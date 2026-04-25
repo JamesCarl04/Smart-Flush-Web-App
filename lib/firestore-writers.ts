@@ -59,7 +59,7 @@ function sensorTypeFromTopic(topic: string): string {
 export async function writeSensorReading(
   topic: string,
   payload: SensorPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     const dateKey = todayKey();
@@ -90,7 +90,9 @@ export async function writeSensorReading(
       timestamp: Timestamp.now(),
     });
 
-    console.log(`[Firestore] sensorReading written: ${sensorType} = ${value} ${unit}`);
+    console.log(
+      `[Firestore] sensorReading written: ${sensorType} = ${value} ${unit}`,
+    );
 
     // Track ultrasonic consecutive failures
     if (sensorType === 'ultrasonic') {
@@ -98,7 +100,7 @@ export async function writeSensorReading(
       void incrementCounters(
         deviceId,
         isFailure ? 'ultrasonic_fail' : 'ultrasonic_ok',
-        payload as unknown as Record<string, unknown>
+        payload as unknown as Record<string, unknown>,
       );
     }
   } catch (error) {
@@ -112,7 +114,7 @@ export async function writeSensorReading(
  */
 export async function writeFlushEvent(
   payload: FlushPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     const docRef = adminDb.collection('flushEvents').doc();
@@ -123,7 +125,9 @@ export async function writeFlushEvent(
       duration: payload.duration,
       timestamp: Timestamp.now(),
     });
-    console.log(`[Firestore] flushEvent written: ${payload.volume}${payload.unit}`);
+    console.log(
+      `[Firestore] flushEvent written: ${payload.volume}${payload.unit}`,
+    );
     void incrementCounters(deviceId, 'flush', payload);
   } catch (error) {
     console.error('[Firestore] writeFlushEvent error:', error);
@@ -135,7 +139,7 @@ export async function writeFlushEvent(
  */
 export async function writeLidEvent(
   payload: LidPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     const docRef = adminDb.collection('lidEvents').doc();
@@ -148,7 +152,11 @@ export async function writeLidEvent(
     console.log(`[Firestore] lidEvent written: ${payload.status}`);
     // Only count lid OPENs (each open = one full open/close cycle)
     if (payload.status === 'open') {
-      void incrementCounters(deviceId, 'lid_open', payload as unknown as Record<string, unknown>);
+      void incrementCounters(
+        deviceId,
+        'lid_open',
+        payload as unknown as Record<string, unknown>,
+      );
     }
   } catch (error) {
     console.error('[Firestore] writeLidEvent error:', error);
@@ -160,7 +168,7 @@ export async function writeLidEvent(
  */
 export async function writeUVCycle(
   payload: UVPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     const docRef = adminDb.collection('uvCycles').doc();
@@ -171,7 +179,9 @@ export async function writeUVCycle(
       completed: payload.completed,
       timestamp: Timestamp.fromMillis(payload.timestamp * 1000),
     });
-    console.log(`[Firestore] uvCycle written: ${payload.duration}s completed=${payload.completed}`);
+    console.log(
+      `[Firestore] uvCycle written: ${payload.duration}s completed=${payload.completed}`,
+    );
     void incrementCounters(deviceId, 'uv_cycle', payload);
   } catch (error) {
     console.error('[Firestore] writeUVCycle error:', error);
@@ -190,6 +200,9 @@ export async function updateDeviceLastSeen(deviceId: string): Promise<void> {
     console.log(`[Firestore] device ${deviceId} lastSeen updated`);
   } catch (error) {
     // Device doc may not exist yet — log but don't crash the MQTT handler
-    console.error(`[Firestore] updateDeviceLastSeen (${deviceId}) error:`, error);
+    console.error(
+      `[Firestore] updateDeviceLastSeen (${deviceId}) error:`,
+      error,
+    );
   }
 }

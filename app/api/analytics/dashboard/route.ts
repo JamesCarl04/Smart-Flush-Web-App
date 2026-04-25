@@ -39,13 +39,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const distinctDays = dateSet.size || 1;
-    const avgFlushesPerDay = Math.round((totalFlushes / distinctDays) * 100) / 100;
+    const avgFlushesPerDay =
+      Math.round((totalFlushes / distinctDays) * 100) / 100;
 
     // UV completion rate
     const uvDocs = uvSnap.docs.map((d) => d.data() as UVCycleDoc);
     const totalUV = uvDocs.length;
     const completedUV = uvDocs.filter((d) => d.completed).length;
-    const uvCompletionRate = totalUV === 0 ? 100 : Math.round((completedUV / totalUV) * 10000) / 100;
+    const uvCompletionRate =
+      totalUV === 0 ? 100 : Math.round((completedUV / totalUV) * 10000) / 100;
 
     // Uptime: devices with lastSeen within the last 5 minutes
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
@@ -56,7 +58,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     }).length;
 
     const uptimePercent =
-      totalDevices === 0 ? 0 : Math.round((onlineDevices / totalDevices) * 10000) / 100;
+      totalDevices === 0
+        ? 0
+        : Math.round((onlineDevices / totalDevices) * 10000) / 100;
 
     return NextResponse.json({
       success: true,
@@ -71,6 +75,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Analytics] dashboard error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch dashboard analytics' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch dashboard analytics' },
+      { status: 500 },
+    );
   }
 }

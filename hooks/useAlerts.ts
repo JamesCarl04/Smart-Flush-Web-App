@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api-client";
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api-client';
 
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -20,7 +20,7 @@ interface AlertDoc {
   type: string;
   message: string;
   severity: string;
-  timestamp: { _seconds: number };
+  timestamp?: { _seconds?: number; seconds?: number } | null;
   acknowledged: boolean;
 }
 
@@ -35,20 +35,25 @@ export function useAlerts() {
       setLoading(true);
       const res = await apiFetch<{ success: boolean; data: AlertDoc[] }>(
         '/api/alerts',
-        user
+        user,
       );
       if (res.success && res.data) {
-        setAlerts(res.data.map(a => ({
-          id: a.id,
-          title: a.type,
-          description: a.message,
-          severity: (a.severity as AlertSeverity) ?? 'low',
-          timestamp: new Date(a.timestamp._seconds * 1000),
-          acknowledged: a.acknowledged,
-        })));
+        setAlerts(
+          res.data.map((a) => ({
+            id: a.id,
+            title: a.type,
+            description: a.message,
+            severity: (a.severity as AlertSeverity) ?? 'low',
+            timestamp: new Date(
+              (a.timestamp?._seconds ?? a.timestamp?.seconds ?? 0) * 1000,
+            ),
+            acknowledged: a.acknowledged,
+          })),
+        );
       }
     } catch (err) {
-      console.error("[useAlerts] error:", err);
+      console.warn('[useAlerts] alerts request failed:', err);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
@@ -64,7 +69,9 @@ export function useAlerts() {
       if (id === 'ALL') {
         await apiFetch('/api/alerts/acknowledge-all', user, { method: 'POST' });
       } else {
-        await apiFetch(`/api/alerts/${id}/acknowledge`, user, { method: 'POST' });
+        await apiFetch(`/api/alerts/${id}/acknowledge`, user, {
+          method: 'POST',
+        });
       }
       // Refresh from server
       await fetchAlerts();
@@ -74,7 +81,13 @@ export function useAlerts() {
     }
   };
 
-  const unreadCount = alerts.filter(a => !a.acknowledged).length;
+  const unreadCount = alerts.filter((a) => !a.acknowledged).length;
 
-  return { alerts, unreadCount, loading, acknowledgeAlert, refresh: fetchAlerts };
+  return {
+    alerts,
+    unreadCount,
+    loading,
+    acknowledgeAlert,
+    refresh: fetchAlerts,
+  };
 }

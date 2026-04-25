@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
-import toast, { Toaster } from "react-hot-toast";
+import { useCallback, useEffect, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import toast, { Toaster } from 'react-hot-toast';
 import {
   AlertTriangle,
   Clock,
@@ -12,13 +12,13 @@ import {
   Settings2,
   SlidersHorizontal,
   Trash2,
-} from "lucide-react";
-import { useSensorData } from "@/hooks/useSensorData";
-import { useAuth } from "@/hooks/useAuth";
-import { useDeviceStatus } from "@/hooks/useDeviceStatus";
-import { apiFetch } from "@/lib/api-client";
-import { DEFAULT_DEVICE_ID } from "@/lib/device-constants";
-import { getErrorMessage } from "@/lib/error-utils";
+} from 'lucide-react';
+import { useSensorData } from '@/hooks/useSensorData';
+import { useAuth } from '@/hooks/useAuth';
+import { useDeviceStatus } from '@/hooks/useDeviceStatus';
+import { apiFetch } from '@/lib/api-client';
+import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
+import { getErrorMessage } from '@/lib/error-utils';
 
 type TimingConfig = {
   pumpDuration: number;
@@ -26,7 +26,7 @@ type TimingConfig = {
   personGoneConfirm: number;
 };
 
-type RuleGroup = "alerts" | "maintenance";
+type RuleGroup = 'alerts' | 'maintenance';
 
 type Rule = {
   id: string;
@@ -92,47 +92,47 @@ const DEFAULT_TIMING: TimingConfig = {
 };
 
 const RULE_ACTION_OPTIONS = [
-  "Send Warning Email",
-  "Disable Subsystem",
-  "Create Maintenance Ticket",
+  'Send Warning Email',
+  'Disable Subsystem',
+  'Create Maintenance Ticket',
 ] as const;
 
 const RULE_TRIGGER_OPTIONS = [
-  { value: "flush_count_exceeded", label: "Flush Count Exceeded" },
-  { value: "water_overuse", label: "Water Overuse" },
-  { value: "uv_cycle_failed", label: "UV Cycle Failed" },
-  { value: "maintenance_due", label: "Maintenance Due" },
+  { value: 'flush_count_exceeded', label: 'Flush Count Exceeded' },
+  { value: 'water_overuse', label: 'Water Overuse' },
+  { value: 'uv_cycle_failed', label: 'UV Cycle Failed' },
+  { value: 'maintenance_due', label: 'Maintenance Due' },
 ] as const;
 
 const DEFAULT_RULE_FORM: RuleFormState = {
-  name: "",
-  group: "alerts",
-  trigger: "flush_count_exceeded",
-  threshold: "100",
+  name: '',
+  group: 'alerts',
+  trigger: 'flush_count_exceeded',
+  threshold: '100',
   action: RULE_ACTION_OPTIONS[0],
 };
 
 function toUiRuleGroup(group: string): RuleGroup {
-  return group === "maintenance" ? "maintenance" : "alerts";
+  return group === 'maintenance' ? 'maintenance' : 'alerts';
 }
 
 function toBackendRuleGroup(group: RuleGroup): string {
-  return group === "maintenance" ? "maintenance" : "system_alert";
+  return group === 'maintenance' ? 'maintenance' : 'system_alert';
 }
 
 function getRuleTriggerLabel(trigger: string): string {
   return (
     RULE_TRIGGER_OPTIONS.find((option) => option.value === trigger)?.label ??
-    trigger.replaceAll("_", " ")
+    trigger.replaceAll('_', ' ')
   );
 }
 
 function getRuleBasis(trigger: string, threshold: number): string {
-  if (trigger === "uv_cycle_failed") {
-    return "Triggers when a UV cycle fails to complete";
+  if (trigger === 'uv_cycle_failed') {
+    return 'Triggers when a UV cycle fails to complete';
   }
 
-  if (trigger === "maintenance_due") {
+  if (trigger === 'maintenance_due') {
     return `Maintenance threshold: ${threshold}`;
   }
 
@@ -141,7 +141,7 @@ function getRuleBasis(trigger: string, threshold: number): string {
 
 function validateDeviceName(name: string): string | null {
   if (!name.trim()) {
-    return "Device name is required.";
+    return 'Device name is required.';
   }
 
   return null;
@@ -149,19 +149,27 @@ function validateDeviceName(name: string): string | null {
 
 function validateThresholdValue(value: number): string | null {
   if (!Number.isFinite(value) || value < 10 || value > 100) {
-    return "Occupancy threshold must be between 10 and 100 cm.";
+    return 'Occupancy threshold must be between 10 and 100 cm.';
   }
 
   return null;
 }
 
 function validateTimingConfig(timing: TimingConfig): string | null {
-  if (!Number.isFinite(timing.pumpDuration) || timing.pumpDuration < 1 || timing.pumpDuration > 30) {
-    return "Pump duration must be between 1 and 30 seconds.";
+  if (
+    !Number.isFinite(timing.pumpDuration) ||
+    timing.pumpDuration < 1 ||
+    timing.pumpDuration > 30
+  ) {
+    return 'Pump duration must be between 1 and 30 seconds.';
   }
 
-  if (!Number.isFinite(timing.uvDuration) || timing.uvDuration < 10 || timing.uvDuration > 120) {
-    return "UV duration must be between 10 and 120 seconds.";
+  if (
+    !Number.isFinite(timing.uvDuration) ||
+    timing.uvDuration < 10 ||
+    timing.uvDuration > 120
+  ) {
+    return 'UV duration must be between 10 and 120 seconds.';
   }
 
   if (
@@ -169,7 +177,7 @@ function validateTimingConfig(timing: TimingConfig): string | null {
     timing.personGoneConfirm < 1 ||
     timing.personGoneConfirm > 10
   ) {
-    return "Departure confirm duration must be between 1 and 10 seconds.";
+    return 'Departure confirm duration must be between 1 and 10 seconds.';
   }
 
   return null;
@@ -177,19 +185,19 @@ function validateTimingConfig(timing: TimingConfig): string | null {
 
 function validateRuleForm(ruleForm: RuleFormState): string | null {
   if (!ruleForm.name.trim()) {
-    return "Rule name is required.";
+    return 'Rule name is required.';
   }
 
   const threshold = Number(ruleForm.threshold);
   if (!Number.isFinite(threshold) || threshold < 0) {
-    return "Rule threshold must be a valid number greater than or equal to 0.";
+    return 'Rule threshold must be a valid number greater than or equal to 0.';
   }
 
   return null;
 }
 
 function getRuleModal(): HTMLDialogElement | null {
-  return document.getElementById("add_rule_modal") as HTMLDialogElement | null;
+  return document.getElementById('add_rule_modal') as HTMLDialogElement | null;
 }
 
 export default function ConfigurationPage() {
@@ -225,25 +233,37 @@ export default function ConfigurationPage() {
 
     try {
       setLoadingConfiguration(true);
-      const response = await apiFetch<DeviceResponse>(`/api/devices/${DEFAULT_DEVICE_ID}`, user);
+      const response = await apiFetch<DeviceResponse>(
+        `/api/devices/${DEFAULT_DEVICE_ID}`,
+        user,
+      );
       const config = response.data?.config ?? {};
 
       setDeviceName(response.data?.name?.trim() || DEFAULT_DEVICE_NAME);
-      setThreshold(typeof config.threshold === "number" ? config.threshold : DEFAULT_THRESHOLD);
+      setThreshold(
+        typeof config.threshold === 'number'
+          ? config.threshold
+          : DEFAULT_THRESHOLD,
+      );
       setTiming({
         pumpDuration:
-          typeof config.pumpDuration === "number" ? config.pumpDuration : DEFAULT_TIMING.pumpDuration,
-        uvDuration: typeof config.uvDuration === "number" ? config.uvDuration : DEFAULT_TIMING.uvDuration,
+          typeof config.pumpDuration === 'number'
+            ? config.pumpDuration
+            : DEFAULT_TIMING.pumpDuration,
+        uvDuration:
+          typeof config.uvDuration === 'number'
+            ? config.uvDuration
+            : DEFAULT_TIMING.uvDuration,
         personGoneConfirm:
-          typeof config.personGoneConfirm === "number"
+          typeof config.personGoneConfirm === 'number'
             ? config.personGoneConfirm
             : DEFAULT_TIMING.personGoneConfirm,
       });
       setIsDirty(false);
     } catch (error) {
       const message = getErrorMessage(error);
-      if (message !== "Device not found") {
-        toast.error(message ?? "Failed to load device configuration.");
+      if (message !== 'Device not found') {
+        toast.error(message ?? 'Failed to load device configuration.');
       }
 
       setDeviceName(DEFAULT_DEVICE_NAME);
@@ -264,7 +284,10 @@ export default function ConfigurationPage() {
 
     try {
       setLoadingRules(true);
-      const response = await apiFetch<RulesResponse>("/api/automation-rules", user);
+      const response = await apiFetch<RulesResponse>(
+        '/api/automation-rules',
+        user,
+      );
       setRules(
         (response.data ?? []).map((rule) => ({
           id: rule.id,
@@ -275,11 +298,11 @@ export default function ConfigurationPage() {
           basis: getRuleBasis(rule.trigger, rule.threshold),
           action: rule.action,
           enabled: rule.enabled,
-        }))
+        })),
       );
     } catch (error) {
-      console.error("[Configuration] fetch rules error:", error);
-      toast.error(getErrorMessage(error) ?? "Failed to load automation rules.");
+      console.error('[Configuration] fetch rules error:', error);
+      toast.error(getErrorMessage(error) ?? 'Failed to load automation rules.');
     } finally {
       setLoadingRules(false);
     }
@@ -298,7 +321,7 @@ export default function ConfigurationPage() {
 
   const handleDeviceSave = async () => {
     if (!user) {
-      toast.error("You must be logged in to save device settings.");
+      toast.error('You must be logged in to save device settings.');
       return;
     }
 
@@ -308,16 +331,20 @@ export default function ConfigurationPage() {
       return;
     }
 
-    setSavingSection("device");
+    setSavingSection('device');
     try {
-      await apiFetch<DeviceResponse>(`/api/devices/${DEFAULT_DEVICE_ID}`, user, {
-        method: "PUT",
-        body: JSON.stringify({ name: deviceName.trim() }),
-      });
-      toast.success("Device settings saved.");
+      await apiFetch<DeviceResponse>(
+        `/api/devices/${DEFAULT_DEVICE_ID}`,
+        user,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ name: deviceName.trim() }),
+        },
+      );
+      toast.success('Device settings saved.');
       await fetchConfiguration();
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to save device settings.");
+      toast.error(getErrorMessage(error) ?? 'Failed to save device settings.');
     } finally {
       setSavingSection(null);
     }
@@ -325,7 +352,7 @@ export default function ConfigurationPage() {
 
   const handleCalibrationSave = async () => {
     if (!user) {
-      toast.error("You must be logged in to save calibration values.");
+      toast.error('You must be logged in to save calibration values.');
       return;
     }
 
@@ -335,17 +362,21 @@ export default function ConfigurationPage() {
       return;
     }
 
-    setSavingSection("calibration");
+    setSavingSection('calibration');
     try {
-      const response = await apiFetch<ConfigSaveResponse>(`/api/sensors/${DEFAULT_DEVICE_ID}/config`, user, {
-        method: "PUT",
-        body: JSON.stringify({ threshold }),
-      });
-      toast.success("Sensor calibration saved.");
+      const response = await apiFetch<ConfigSaveResponse>(
+        `/api/sensors/${DEFAULT_DEVICE_ID}/config`,
+        user,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ threshold }),
+        },
+      );
+      toast.success('Sensor calibration saved.');
       handleConfigWarning(response.warning);
       await fetchConfiguration();
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to save calibration.");
+      toast.error(getErrorMessage(error) ?? 'Failed to save calibration.');
     } finally {
       setSavingSection(null);
     }
@@ -353,7 +384,7 @@ export default function ConfigurationPage() {
 
   const handleTimingSave = async () => {
     if (!user) {
-      toast.error("You must be logged in to save timing parameters.");
+      toast.error('You must be logged in to save timing parameters.');
       return;
     }
 
@@ -363,27 +394,36 @@ export default function ConfigurationPage() {
       return;
     }
 
-    setSavingSection("timing");
+    setSavingSection('timing');
     try {
-      const response = await apiFetch<ConfigSaveResponse>(`/api/sensors/${DEFAULT_DEVICE_ID}/config`, user, {
-        method: "PUT",
-        body: JSON.stringify(timing),
-      });
-      toast.success("Timing parameters updated.");
+      const response = await apiFetch<ConfigSaveResponse>(
+        `/api/sensors/${DEFAULT_DEVICE_ID}/config`,
+        user,
+        {
+          method: 'PUT',
+          body: JSON.stringify(timing),
+        },
+      );
+      toast.success('Timing parameters updated.');
       handleConfigWarning(response.warning);
       await fetchConfiguration();
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to update timing parameters.");
+      toast.error(
+        getErrorMessage(error) ?? 'Failed to update timing parameters.',
+      );
     } finally {
       setSavingSection(null);
     }
   };
 
-  const openRuleModal = (group: RuleGroup = "alerts") => {
+  const openRuleModal = (group: RuleGroup = 'alerts') => {
     setRuleForm({
       ...DEFAULT_RULE_FORM,
       group,
-      action: group === "maintenance" ? RULE_ACTION_OPTIONS[2] : RULE_ACTION_OPTIONS[0],
+      action:
+        group === 'maintenance'
+          ? RULE_ACTION_OPTIONS[2]
+          : RULE_ACTION_OPTIONS[0],
     });
     getRuleModal()?.showModal();
   };
@@ -394,7 +434,7 @@ export default function ConfigurationPage() {
 
   const handleCreateRule = async () => {
     if (!user) {
-      toast.error("You must be logged in to create automation rules.");
+      toast.error('You must be logged in to create automation rules.');
       return;
     }
 
@@ -406,8 +446,8 @@ export default function ConfigurationPage() {
 
     setCreatingRule(true);
     try {
-      await apiFetch("/api/automation-rules", user, {
-        method: "POST",
+      await apiFetch('/api/automation-rules', user, {
+        method: 'POST',
         body: JSON.stringify({
           name: ruleForm.name.trim(),
           group: toBackendRuleGroup(ruleForm.group),
@@ -418,10 +458,10 @@ export default function ConfigurationPage() {
         }),
       });
       await fetchRules();
-      toast.success("Rule added successfully.");
+      toast.success('Rule added successfully.');
       closeRuleModal();
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to add rule.");
+      toast.error(getErrorMessage(error) ?? 'Failed to add rule.');
     } finally {
       setCreatingRule(false);
     }
@@ -429,24 +469,28 @@ export default function ConfigurationPage() {
 
   const toggleRule = async (rule: Rule) => {
     if (!user) {
-      toast.error("You must be logged in to update automation rules.");
+      toast.error('You must be logged in to update automation rules.');
       return;
     }
 
     setRuleMutationId(rule.id);
     try {
       await apiFetch(`/api/automation-rules/${rule.id}`, user, {
-        method: "PUT",
+        method: 'PUT',
         body: JSON.stringify({ enabled: !rule.enabled }),
       });
       setRules((currentRules) =>
         currentRules.map((currentRule) =>
-          currentRule.id === rule.id ? { ...currentRule, enabled: !currentRule.enabled } : currentRule
-        )
+          currentRule.id === rule.id
+            ? { ...currentRule, enabled: !currentRule.enabled }
+            : currentRule,
+        ),
       );
-      toast.success(`Rule ${rule.enabled ? "disabled" : "enabled"} successfully.`);
+      toast.success(
+        `Rule ${rule.enabled ? 'disabled' : 'enabled'} successfully.`,
+      );
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to update rule.");
+      toast.error(getErrorMessage(error) ?? 'Failed to update rule.');
     } finally {
       setRuleMutationId(null);
     }
@@ -454,11 +498,13 @@ export default function ConfigurationPage() {
 
   const deleteRuleConfirm = async (ruleId: string) => {
     if (!user) {
-      toast.error("You must be logged in to delete automation rules.");
+      toast.error('You must be logged in to delete automation rules.');
       return;
     }
 
-    const shouldDelete = window.confirm("Are you sure you want to delete this rule?");
+    const shouldDelete = window.confirm(
+      'Are you sure you want to delete this rule?',
+    );
     if (!shouldDelete) {
       return;
     }
@@ -466,12 +512,14 @@ export default function ConfigurationPage() {
     setRuleMutationId(ruleId);
     try {
       await apiFetch(`/api/automation-rules/${ruleId}`, user, {
-        method: "DELETE",
+        method: 'DELETE',
       });
-      setRules((currentRules) => currentRules.filter((rule) => rule.id !== ruleId));
-      toast.success("Rule deleted successfully.");
+      setRules((currentRules) =>
+        currentRules.filter((rule) => rule.id !== ruleId),
+      );
+      toast.success('Rule deleted successfully.');
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? "Failed to delete rule.");
+      toast.error(getErrorMessage(error) ?? 'Failed to delete rule.');
     } finally {
       setRuleMutationId(null);
     }
@@ -485,7 +533,8 @@ export default function ConfigurationPage() {
           <div>
             <h3 className="font-bold">Unsaved Changes</h3>
             <div className="text-xs">
-              You have modified configuration parameters. Remember to save your changes.
+              You have modified configuration parameters. Remember to save your
+              changes.
             </div>
           </div>
         </div>
@@ -525,46 +574,54 @@ export default function ConfigurationPage() {
               </div>
               <div className="flex flex-col justify-center gap-2 pt-2">
                 <div className="text-sm">
-                  <span className="inline-block w-24 text-base-content/50">Status:</span>
+                  <span className="inline-block w-24 text-base-content/50">
+                    Status:
+                  </span>
                   {deviceLoading ? (
                     <span className="ml-2 inline-block h-4 w-12 skeleton"></span>
                   ) : (
                     <span
                       className={`badge badge-sm ml-2 gap-1 ${
-                        connected ? "badge-success" : "badge-error"
+                        connected ? 'badge-success' : 'badge-error'
                       }`}
                       title={deviceReason}
                     >
-                      {connected ? "Connected" : "Disconnected"}
+                      {connected ? 'Connected' : 'Disconnected'}
                     </span>
                   )}
                 </div>
                 <div className="text-sm">
-                  <span className="inline-block w-24 text-base-content/50">Last Seen:</span>
+                  <span className="inline-block w-24 text-base-content/50">
+                    Last Seen:
+                  </span>
                   <span className="ml-2">
                     {deviceLoading ? (
                       <span className="inline-block h-4 w-20 skeleton"></span>
                     ) : lastSeen ? (
-                      formatDistanceToNow(new Date(lastSeen), { addSuffix: true })
+                      formatDistanceToNow(new Date(lastSeen), {
+                        addSuffix: true,
+                      })
                     ) : (
-                      "Never"
+                      'Never'
                     )}
                   </span>
                 </div>
                 {!deviceLoading && (
                   <div className="text-xs text-base-content/50">
-                    {deviceStatus === "online" ? "ESP32 heartbeat is active." : deviceReason}
+                    {deviceStatus === 'online'
+                      ? 'ESP32 heartbeat is active.'
+                      : deviceReason}
                   </div>
                 )}
               </div>
             </div>
             <div className="card-actions mt-4 justify-end">
               <button
-                className={`btn btn-primary btn-sm ${savingSection === "device" ? "btn-disabled" : ""}`}
+                className={`btn btn-primary btn-sm ${savingSection === 'device' ? 'btn-disabled' : ''}`}
                 disabled={loadingConfiguration || savingSection !== null}
                 onClick={handleDeviceSave}
               >
-                {savingSection === "device" ? (
+                {savingSection === 'device' ? (
                   <span className="loading loading-spinner loading-xs"></span>
                 ) : (
                   <Save className="h-4 w-4" />
@@ -584,8 +641,12 @@ export default function ConfigurationPage() {
             <div className="flex flex-col items-center gap-8 md:flex-row">
               <div className="form-control w-full flex-1">
                 <label className="label">
-                  <span className="label-text font-medium">Occupancy Detection Threshold</span>
-                  <span className="label-text-alt font-bold text-info">{threshold} cm</span>
+                  <span className="label-text font-medium">
+                    Occupancy Detection Threshold
+                  </span>
+                  <span className="label-text-alt font-bold text-info">
+                    {threshold} cm
+                  </span>
                 </label>
                 <input
                   type="range"
@@ -609,20 +670,22 @@ export default function ConfigurationPage() {
                   Live Reading
                 </div>
                 <div className="font-mono text-3xl font-bold">
-                  {ultrasonicDistance !== undefined ? ultrasonicDistance : "--"}{" "}
-                  <span className="font-sans text-sm text-base-content/50">cm</span>
+                  {ultrasonicDistance !== undefined ? ultrasonicDistance : '--'}{' '}
+                  <span className="font-sans text-sm text-base-content/50">
+                    cm
+                  </span>
                 </div>
               </div>
             </div>
             <div className="card-actions mt-4 justify-end">
               <button
                 className={`btn btn-info btn-sm text-white ${
-                  savingSection === "calibration" ? "btn-disabled" : ""
+                  savingSection === 'calibration' ? 'btn-disabled' : ''
                 }`}
                 disabled={loadingConfiguration || savingSection !== null}
                 onClick={handleCalibrationSave}
               >
-                {savingSection === "calibration" ? (
+                {savingSection === 'calibration' ? (
                   <span className="loading loading-spinner loading-xs"></span>
                 ) : (
                   <Save className="h-4 w-4" />
@@ -642,7 +705,9 @@ export default function ConfigurationPage() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <div className="form-control w-full">
                 <label className="label">
-                  <span className="label-text font-medium">Pump Duration (sec)</span>
+                  <span className="label-text font-medium">
+                    Pump Duration (sec)
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -662,7 +727,9 @@ export default function ConfigurationPage() {
               </div>
               <div className="form-control w-full">
                 <label className="label">
-                  <span className="label-text font-medium">UV Duration (sec)</span>
+                  <span className="label-text font-medium">
+                    UV Duration (sec)
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -682,7 +749,9 @@ export default function ConfigurationPage() {
               </div>
               <div className="form-control w-full">
                 <label className="label">
-                  <span className="label-text font-medium">Departure Confirm (sec)</span>
+                  <span className="label-text font-medium">
+                    Departure Confirm (sec)
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -704,12 +773,12 @@ export default function ConfigurationPage() {
             <div className="card-actions mt-4 justify-end">
               <button
                 className={`btn btn-accent btn-sm text-white ${
-                  savingSection === "timing" ? "btn-disabled" : ""
+                  savingSection === 'timing' ? 'btn-disabled' : ''
                 }`}
                 disabled={loadingConfiguration || savingSection !== null}
                 onClick={handleTimingSave}
               >
-                {savingSection === "timing" ? (
+                {savingSection === 'timing' ? (
                   <span className="loading loading-spinner loading-xs"></span>
                 ) : (
                   <Save className="h-4 w-4" />
@@ -727,129 +796,170 @@ export default function ConfigurationPage() {
                 <Settings2 className="h-5 w-5 text-secondary" />
                 Automation Rules
               </h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => openRuleModal()}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => openRuleModal()}
+              >
                 <Plus className="h-4 w-4" /> Add Rule
               </button>
             </div>
 
             <div className="mt-2 space-y-6">
-              {(["alerts", "maintenance"] as RuleGroup[]).map((group) => {
+              {(['alerts', 'maintenance'] as RuleGroup[]).map((group) => {
                 const groupRules = rules.filter((rule) => rule.group === group);
 
                 return (
-                <div key={group}>
-                  <div className="mb-3 ml-1 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-widest text-base-content/50">
-                      {group === "alerts" ? "Alerts" : "Maintenance"}
-                    </h3>
-                    <button className="btn btn-ghost btn-xs text-secondary" onClick={() => openRuleModal(group)}>
-                      <Plus className="h-3.5 w-3.5" />
-                      Add
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {loadingRules &&
-                      [0, 1].map((index) => (
-                        <div
-                          key={`${group}-skeleton-${index}`}
-                          className="rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm"
-                        >
-                          <div className="mb-3 h-5 w-40 skeleton"></div>
-                          <div className="mb-2 h-4 w-2/3 skeleton"></div>
-                          <div className="h-4 w-1/2 skeleton"></div>
-                        </div>
-                      ))}
-
-                    {!loadingRules && groupRules.length === 0 && (
-                      <div className="rounded-xl border border-dashed border-base-300 bg-base-200/40 p-6 text-center">
-                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-100 text-base-content/50 shadow-sm">
-                          <Settings2 className="h-5 w-5" />
-                        </div>
-                        <p className="text-sm font-medium text-base-content/70">No rules configured in this group.</p>
-                        <p className="mt-1 text-xs text-base-content/45">Add a rule using the + Add Rule button above.</p>
-                      </div>
-                    )}
-
-                    {!loadingRules && groupRules.map((rule) => {
-                      const isMutatingRule = ruleMutationId === rule.id;
-
-                      return (
-                      <div key={rule.id} className="flex flex-col justify-between gap-4 rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm transition-colors hover:border-primary/50 md:flex-row md:items-center">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1">
-                            <h4 className="font-semibold truncate">{rule.name}</h4>
-                            <span className={`badge badge-sm badge-outline ${rule.enabled ? 'badge-success' : 'badge-neutral'}`}>
-                              {rule.enabled ? 'Active' : 'Disabled'}
-                            </span>
-                          </div>
-                          <div className="text-sm">
-                            <span className="font-medium text-base-content/80">Trigger:</span> {getRuleTriggerLabel(rule.trigger)} 
-                            <span className="ml-2 text-xs italic text-base-content/50">({rule.basis})</span>
-                          </div>
-                          <div className="text-sm mt-1">
-                            <span className="font-medium text-base-content/80">Action:</span> <span className="text-primary">{rule.action}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          {group === 'maintenance' && (
-                            <button
-                              className="btn btn-ghost btn-xs text-base-content/60 hover:text-warning"
-                              title="Reset Counter"
-                              disabled={isMutatingRule}
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <input 
-                            type="checkbox" 
-                            className="toggle toggle-sm toggle-success" 
-                            checked={rule.enabled} 
-                            disabled={isMutatingRule}
-                            onChange={() => void toggleRule(rule)}
-                          />
-                          <button
-                            className="btn btn-ghost btn-xs text-error ml-2"
-                            disabled={isMutatingRule}
-                            onClick={() => void deleteRuleConfirm(rule.id)}
-                            title="Delete Rule"
+                  <div key={group}>
+                    <div className="mb-3 ml-1 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold uppercase tracking-widest text-base-content/50">
+                        {group === 'alerts' ? 'Alerts' : 'Maintenance'}
+                      </h3>
+                      <button
+                        className="btn btn-ghost btn-xs text-secondary"
+                        onClick={() => openRuleModal(group)}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {loadingRules &&
+                        [0, 1].map((index) => (
+                          <div
+                            key={`${group}-skeleton-${index}`}
+                            className="rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm"
                           >
-                            {isMutatingRule ? (
-                              <span className="loading loading-spinner loading-xs"></span>
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
+                            <div className="mb-3 h-5 w-40 skeleton"></div>
+                            <div className="mb-2 h-4 w-2/3 skeleton"></div>
+                            <div className="h-4 w-1/2 skeleton"></div>
+                          </div>
+                        ))}
+
+                      {!loadingRules && groupRules.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-base-300 bg-base-200/40 p-6 text-center">
+                          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-100 text-base-content/50 shadow-sm">
+                            <Settings2 className="h-5 w-5" />
+                          </div>
+                          <p className="text-sm font-medium text-base-content/70">
+                            No rules configured in this group.
+                          </p>
+                          <p className="mt-1 text-xs text-base-content/45">
+                            Add a rule using the + Add Rule button above.
+                          </p>
                         </div>
-                      </div>
-                    )})}
+                      )}
+
+                      {!loadingRules &&
+                        groupRules.map((rule) => {
+                          const isMutatingRule = ruleMutationId === rule.id;
+
+                          return (
+                            <div
+                              key={rule.id}
+                              className="flex flex-col justify-between gap-4 rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm transition-colors hover:border-primary/50 md:flex-row md:items-center"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-1">
+                                  <h4 className="font-semibold truncate">
+                                    {rule.name}
+                                  </h4>
+                                  <span
+                                    className={`badge badge-sm badge-outline ${rule.enabled ? 'badge-success' : 'badge-neutral'}`}
+                                  >
+                                    {rule.enabled ? 'Active' : 'Disabled'}
+                                  </span>
+                                </div>
+                                <div className="text-sm">
+                                  <span className="font-medium text-base-content/80">
+                                    Trigger:
+                                  </span>{' '}
+                                  {getRuleTriggerLabel(rule.trigger)}
+                                  <span className="ml-2 text-xs italic text-base-content/50">
+                                    ({rule.basis})
+                                  </span>
+                                </div>
+                                <div className="text-sm mt-1">
+                                  <span className="font-medium text-base-content/80">
+                                    Action:
+                                  </span>{' '}
+                                  <span className="text-primary">
+                                    {rule.action}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                {group === 'maintenance' && (
+                                  <button
+                                    className="btn btn-ghost btn-xs text-base-content/60 hover:text-warning"
+                                    title="Reset Counter"
+                                    disabled={isMutatingRule}
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                <input
+                                  type="checkbox"
+                                  className="toggle toggle-sm toggle-success"
+                                  checked={rule.enabled}
+                                  disabled={isMutatingRule}
+                                  onChange={() => void toggleRule(rule)}
+                                />
+                                <button
+                                  className="btn btn-ghost btn-xs text-error ml-2"
+                                  disabled={isMutatingRule}
+                                  onClick={() =>
+                                    void deleteRuleConfirm(rule.id)
+                                  }
+                                  title="Delete Rule"
+                                >
+                                  {isMutatingRule ? (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
-                </div>
-              )})}
+                );
+              })}
             </div>
           </div>
         </div>
-
       </div>
 
       {/* Add Rule Modal */}
-      <dialog id="add_rule_modal" className="modal modal-bottom sm:modal-middle">
+      <dialog
+        id="add_rule_modal"
+        className="modal modal-bottom sm:modal-middle"
+      >
         <div className="modal-box">
           <h3 className="font-bold text-lg mb-4">Create Automation Rule</h3>
           <div className="space-y-4">
             <div className="form-control w-full">
-              <label className="label"><span className="label-text">Rule Name</span></label>
+              <label className="label">
+                <span className="label-text">Rule Name</span>
+              </label>
               <input
                 type="text"
                 placeholder="e.g. Max Daily Limit"
                 className="input input-bordered w-full"
                 value={ruleForm.name}
                 onChange={(event) =>
-                  setRuleForm((currentForm) => ({ ...currentForm, name: event.target.value }))
+                  setRuleForm((currentForm) => ({
+                    ...currentForm,
+                    name: event.target.value,
+                  }))
                 }
               />
             </div>
             <div className="form-control w-full">
-              <label className="label"><span className="label-text">Group</span></label>
+              <label className="label">
+                <span className="label-text">Group</span>
+              </label>
               <select
                 className="select select-bordered w-full"
                 value={ruleForm.group}
@@ -858,7 +968,7 @@ export default function ConfigurationPage() {
                     ...currentForm,
                     group: event.target.value as RuleGroup,
                     action:
-                      event.target.value === "maintenance"
+                      event.target.value === 'maintenance'
                         ? RULE_ACTION_OPTIONS[2]
                         : currentForm.action === RULE_ACTION_OPTIONS[2]
                           ? RULE_ACTION_OPTIONS[0]
@@ -871,12 +981,17 @@ export default function ConfigurationPage() {
               </select>
             </div>
             <div className="form-control w-full">
-              <label className="label"><span className="label-text">Trigger Condition</span></label>
+              <label className="label">
+                <span className="label-text">Trigger Condition</span>
+              </label>
               <select
                 className="select select-bordered w-full"
                 value={ruleForm.trigger}
                 onChange={(event) =>
-                  setRuleForm((currentForm) => ({ ...currentForm, trigger: event.target.value }))
+                  setRuleForm((currentForm) => ({
+                    ...currentForm,
+                    trigger: event.target.value,
+                  }))
                 }
               >
                 {RULE_TRIGGER_OPTIONS.map((option) => (
@@ -887,24 +1002,34 @@ export default function ConfigurationPage() {
               </select>
             </div>
             <div className="form-control w-full">
-              <label className="label"><span className="label-text">Threshold / Limit</span></label>
+              <label className="label">
+                <span className="label-text">Threshold / Limit</span>
+              </label>
               <input
                 type="number"
                 min="0"
                 className="input input-bordered w-full"
                 value={ruleForm.threshold}
                 onChange={(event) =>
-                  setRuleForm((currentForm) => ({ ...currentForm, threshold: event.target.value }))
+                  setRuleForm((currentForm) => ({
+                    ...currentForm,
+                    threshold: event.target.value,
+                  }))
                 }
               />
             </div>
             <div className="form-control w-full">
-              <label className="label"><span className="label-text">Action to Perform</span></label>
+              <label className="label">
+                <span className="label-text">Action to Perform</span>
+              </label>
               <select
                 className="select select-bordered w-full"
                 value={ruleForm.action}
                 onChange={(event) =>
-                  setRuleForm((currentForm) => ({ ...currentForm, action: event.target.value }))
+                  setRuleForm((currentForm) => ({
+                    ...currentForm,
+                    action: event.target.value,
+                  }))
                 }
               >
                 {RULE_ACTION_OPTIONS.map((action) => (
@@ -916,9 +1041,15 @@ export default function ConfigurationPage() {
             </div>
           </div>
           <div className="modal-action">
-            <button className="btn btn-ghost" type="button" onClick={closeRuleModal}>Cancel</button>
             <button
-              className={`btn btn-primary ${creatingRule ? "btn-disabled" : ""}`}
+              className="btn btn-ghost"
+              type="button"
+              onClick={closeRuleModal}
+            >
+              Cancel
+            </button>
+            <button
+              className={`btn btn-primary ${creatingRule ? 'btn-disabled' : ''}`}
               type="button"
               disabled={creatingRule}
               onClick={() => void handleCreateRule()}

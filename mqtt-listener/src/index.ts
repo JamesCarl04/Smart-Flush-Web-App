@@ -21,7 +21,9 @@ console.log('');
 console.log(`[${new Date().toISOString()}] Starting up …`);
 console.log(`  Device ID:  ${process.env.MQTT_DEVICE_ID ?? 'toilet-01'}`);
 console.log(`  Broker:     ${process.env.MQTT_BROKER_URL ?? '(not set)'}`);
-console.log(`  Project:    ${process.env.FIREBASE_ADMIN_PROJECT_ID ?? '(not set)'}`);
+console.log(
+  `  Project:    ${process.env.FIREBASE_ADMIN_PROJECT_ID ?? '(not set)'}`,
+);
 console.log('');
 
 // ─── Boot MQTT ────────────────────────────────────────────────────────────────
@@ -31,7 +33,9 @@ const client = getMqttClient();
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 
 function shutdown(signal: string): void {
-  console.log(`\n[${new Date().toISOString()}] Received ${signal} — shutting down …`);
+  console.log(
+    `\n[${new Date().toISOString()}] Received ${signal} — shutting down …`,
+  );
   client.end(false, {}, () => {
     console.log(`[${new Date().toISOString()}] MQTT client closed. Bye!`);
     process.exit(0);
@@ -54,6 +58,6 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 setInterval(() => {
   const connected = client.connected;
   console.log(
-    `[${new Date().toISOString()}] [Heartbeat] MQTT ${connected ? '✓ connected' : '✗ disconnected'}`
+    `[${new Date().toISOString()}] [Heartbeat] MQTT ${connected ? '✓ connected' : '✗ disconnected'}`,
   );
 }, 60_000); // Every 60 seconds

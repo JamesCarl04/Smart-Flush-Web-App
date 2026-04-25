@@ -9,7 +9,10 @@ interface RouteParams {
 }
 
 // POST /api/alerts/:id/acknowledge
-export async function POST(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function POST(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -18,7 +21,10 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
     const doc = await docRef.get();
 
     if (!doc.exists) {
-      return NextResponse.json({ success: false, error: 'Alert not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Alert not found' },
+        { status: 404 },
+      );
     }
 
     await docRef.update({
@@ -26,10 +32,16 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
       acknowledgedAt: FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ success: true, data: { id, acknowledged: true } });
+    return NextResponse.json({
+      success: true,
+      data: { id, acknowledged: true },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Alerts] acknowledge error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to acknowledge alert' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to acknowledge alert' },
+      { status: 500 },
+    );
   }
 }

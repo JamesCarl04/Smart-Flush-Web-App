@@ -37,10 +37,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       totalAcknowledged += chunk.length;
     }
 
-    return NextResponse.json({ success: true, data: { acknowledged: totalAcknowledged } });
+    return NextResponse.json({
+      success: true,
+      data: { acknowledged: totalAcknowledged },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Alerts] acknowledge-all error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to acknowledge all alerts' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to acknowledge all alerts' },
+      { status: 500 },
+    );
   }
 }

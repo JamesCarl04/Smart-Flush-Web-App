@@ -15,7 +15,10 @@ interface UpdateRuleBody {
 }
 
 // PUT /api/automation-rules/:id — update (enable/disable, threshold, etc.)
-export async function PUT(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function PUT(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -28,7 +31,7 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
       if (!trimmedName) {
         return NextResponse.json(
           { success: false, error: 'Rule name is required' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       updates.name = trimmedName;
@@ -37,8 +40,12 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
     if (body.threshold !== undefined) {
       if (!Number.isFinite(body.threshold) || body.threshold < 0) {
         return NextResponse.json(
-          { success: false, error: 'threshold must be a valid number greater than or equal to 0' },
-          { status: 400 }
+          {
+            success: false,
+            error:
+              'threshold must be a valid number greater than or equal to 0',
+          },
+          { status: 400 },
         );
       }
       updates.threshold = body.threshold;
@@ -49,14 +56,17 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { success: false, error: 'No valid fields to update' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const docRef = adminDb.collection('automationRules').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) {
-      return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Rule not found' },
+        { status: 404 },
+      );
     }
 
     await docRef.update(updates as Record<string, unknown>);
@@ -66,12 +76,18 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update rule' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update rule' },
+      { status: 500 },
+    );
   }
 }
 
 // DELETE /api/automation-rules/:id
-export async function DELETE(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function DELETE(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -79,7 +95,10 @@ export async function DELETE(request: Request, { params }: RouteParams): Promise
     const docRef = adminDb.collection('automationRules').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) {
-      return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Rule not found' },
+        { status: 404 },
+      );
     }
 
     await docRef.delete();
@@ -87,6 +106,9 @@ export async function DELETE(request: Request, { params }: RouteParams): Promise
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete rule' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete rule' },
+      { status: 500 },
+    );
   }
 }

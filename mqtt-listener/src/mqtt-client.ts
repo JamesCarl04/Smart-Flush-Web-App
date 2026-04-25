@@ -44,7 +44,10 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
   try {
     payload = JSON.parse(raw.toString());
   } catch {
-    console.error(`[${ts()}] [MQTT] Invalid JSON on topic ${topic}:`, raw.toString());
+    console.error(
+      `[${ts()}] [MQTT] Invalid JSON on topic ${topic}:`,
+      raw.toString(),
+    );
     return;
   }
 
@@ -118,13 +121,19 @@ export function getMqttClient(): MqttClient {
 
   client.on('connect', () => {
     console.log(`[${ts()}] [MQTT] ✓ Connected to ${brokerUrl}`);
-    client!.subscribe(['toilet/sensors/#', 'toilet/events/#'], { qos: 1 }, (err) => {
-      if (err) {
-        console.error(`[${ts()}] [MQTT] Subscribe error:`, err);
-      } else {
-        console.log(`[${ts()}] [MQTT] ✓ Subscribed to toilet/sensors/# and toilet/events/#`);
-      }
-    });
+    client!.subscribe(
+      ['toilet/sensors/#', 'toilet/events/#'],
+      { qos: 1 },
+      (err) => {
+        if (err) {
+          console.error(`[${ts()}] [MQTT] Subscribe error:`, err);
+        } else {
+          console.log(
+            `[${ts()}] [MQTT] ✓ Subscribed to toilet/sensors/# and toilet/events/#`,
+          );
+        }
+      },
+    );
   });
 
   client.on('message', (topic, message) => {

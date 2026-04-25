@@ -16,15 +16,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!email || !password) {
       return NextResponse.json(
         { success: false, error: 'email and password are required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: 'Server misconfiguration: Firebase API key missing' },
-        { status: 500 }
+        {
+          success: false,
+          error: 'Server misconfiguration: Firebase API key missing',
+        },
+        { status: 500 },
       );
     }
 
@@ -35,10 +38,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, returnSecureToken: true }),
-      }
+      },
     );
 
-    const data = await firebaseResp.json() as {
+    const data = (await firebaseResp.json()) as {
       idToken?: string;
       email?: string;
       displayName?: string;
@@ -62,6 +65,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
   } catch (error) {
     console.error('[Auth] login error:', error);
-    return NextResponse.json({ success: false, error: 'Login failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Login failed' },
+      { status: 500 },
+    );
   }
 }

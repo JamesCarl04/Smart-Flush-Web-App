@@ -65,7 +65,9 @@ async function createAlert(params: {
     deviceId: params.deviceId,
     timestamp: FieldValue.serverTimestamp(),
   });
-  console.log(`[AlertEngine] Created alert: ${params.type} — ${params.message}`);
+  console.log(
+    `[AlertEngine] Created alert: ${params.type} — ${params.message}`,
+  );
 }
 
 /** Count today's flushEvents for a given deviceId */
@@ -89,7 +91,7 @@ async function todayFlushCount(deviceId: string): Promise<number> {
 export async function evaluateAlerts(
   topic: string,
   payload: MqttPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     // Load enabled system_alert rules
@@ -117,7 +119,7 @@ async function evaluateRule(
   rule: AutomationRule,
   topic: string,
   payload: MqttPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   let triggered = false;
   let alertType = rule.trigger;

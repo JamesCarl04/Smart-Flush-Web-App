@@ -17,12 +17,21 @@ interface CreateRuleBody {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
-    const snap = await adminDb.collection('automationRules').orderBy('createdAt', 'desc').get();
-    return NextResponse.json({ success: true, data: snap.docs.map((d) => d.data()) });
+    const snap = await adminDb
+      .collection('automationRules')
+      .orderBy('createdAt', 'desc')
+      .get();
+    return NextResponse.json({
+      success: true,
+      data: snap.docs.map((d) => d.data()),
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch rules' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch rules' },
+      { status: 500 },
+    );
   }
 }
 
@@ -35,17 +44,29 @@ export async function POST(request: Request): Promise<NextResponse> {
     const { name, group, trigger, threshold, action, enabled } = body;
     const trimmedName = name?.trim();
 
-    if (!trimmedName || !group || !trigger || threshold === undefined || !action) {
+    if (
+      !trimmedName ||
+      !group ||
+      !trigger ||
+      threshold === undefined ||
+      !action
+    ) {
       return NextResponse.json(
-        { success: false, error: 'name, group, trigger, threshold, and action are required' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'name, group, trigger, threshold, and action are required',
+        },
+        { status: 400 },
       );
     }
 
     if (!Number.isFinite(threshold) || threshold < 0) {
       return NextResponse.json(
-        { success: false, error: 'threshold must be a valid number greater than or equal to 0' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'threshold must be a valid number greater than or equal to 0',
+        },
+        { status: 400 },
       );
     }
 
@@ -61,10 +82,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ success: true, data: { id: docRef.id } }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { id: docRef.id } },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create rule' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create rule' },
+      { status: 500 },
+    );
   }
 }

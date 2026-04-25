@@ -27,7 +27,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const onlineCount = onlineDevices.length;
     const uptimePercent =
-      totalCount === 0 ? 0 : Math.round((onlineCount / totalCount) * 10000) / 100;
+      totalCount === 0
+        ? 0
+        : Math.round((onlineCount / totalCount) * 10000) / 100;
 
     return NextResponse.json({
       success: true,
@@ -38,9 +40,10 @@ export async function GET(request: Request): Promise<NextResponse> {
         devices: devices.map((d) => ({
           id: d.id,
           name: d.name,
-          status: d.lastSeen && d.lastSeen.toMillis() >= FIVE_MIN_AGO.toMillis()
-            ? 'online'
-            : 'offline',
+          status:
+            d.lastSeen && d.lastSeen.toMillis() >= FIVE_MIN_AGO.toMillis()
+              ? 'online'
+              : 'offline',
           lastSeen: d.lastSeen ? d.lastSeen.toDate().toISOString() : null,
         })),
       },
@@ -48,6 +51,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Analytics] system-performance error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch system performance' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch system performance' },
+      { status: 500 },
+    );
   }
 }

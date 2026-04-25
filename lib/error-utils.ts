@@ -1,4 +1,7 @@
-function getStringProperty(error: unknown, key: 'code' | 'message'): string | undefined {
+function getStringProperty(
+  error: unknown,
+  key: 'code' | 'message',
+): string | undefined {
   if (typeof error !== 'object' || error === null || !(key in error)) {
     return undefined;
   }

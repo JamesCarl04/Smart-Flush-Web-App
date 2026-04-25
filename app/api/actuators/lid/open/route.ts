@@ -15,6 +15,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Actuators] lid/open error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to publish lid OPEN command' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to publish lid OPEN command' },
+      { status: 500 },
+    );
   }
 }

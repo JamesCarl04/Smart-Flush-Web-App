@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api-client";
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api-client';
 
 type SystemState = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
 
@@ -15,7 +15,7 @@ interface SensorReading {
 /**
  * Derives the current system state from the most recent sensor/event reading.
  */
-export function useSystemState(deviceId = "toilet-01") {
+export function useSystemState(deviceId = 'toilet-01') {
   const { user } = useAuth();
   const [systemState, setSystemState] = useState<SystemState>('standby');
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export function useSystemState(deviceId = "toilet-01") {
       const today = new Date().toISOString().slice(0, 10);
       const res = await apiFetch<{ success: boolean; data: SensorReading[] }>(
         `/api/sensors/${deviceId}/readings?from=${today}`,
-        user
+        user,
       );
 
       if (res.success && res.data && res.data.length > 0) {

@@ -15,26 +15,38 @@ interface UpdateDeviceBody {
 }
 
 // GET /api/devices/:id
-export async function GET(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
 
     const doc = await adminDb.collection('devices').doc(id).get();
     if (!doc.exists) {
-      return NextResponse.json({ success: false, error: 'Device not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Device not found' },
+        { status: 404 },
+      );
     }
 
     return NextResponse.json({ success: true, data: doc.data() });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] GET/:id error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch device' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch device' },
+      { status: 500 },
+    );
   }
 }
 
 // PUT /api/devices/:id — update name, description, or config
-export async function PUT(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function PUT(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -47,7 +59,7 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
       if (!trimmedName) {
         return NextResponse.json(
           { success: false, error: 'Device name is required' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       updates.name = trimmedName;
@@ -58,10 +70,14 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
     }
 
     if (body.config !== undefined) {
-      if (typeof body.config !== 'object' || body.config === null || Array.isArray(body.config)) {
+      if (
+        typeof body.config !== 'object' ||
+        body.config === null ||
+        Array.isArray(body.config)
+      ) {
         return NextResponse.json(
           { success: false, error: 'config must be an object' },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -71,7 +87,7 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { success: false, error: 'No valid fields to update' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -84,7 +100,7 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
         updatedAt: FieldValue.serverTimestamp(),
         ...(doc.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
       },
-      { merge: true }
+      { merge: true },
     );
     const updated = await docRef.get();
 
@@ -92,12 +108,18 @@ export async function PUT(request: Request, { params }: RouteParams): Promise<Ne
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] PUT/:id error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update device' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update device' },
+      { status: 500 },
+    );
   }
 }
 
 // DELETE /api/devices/:id
-export async function DELETE(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function DELETE(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -105,7 +127,10 @@ export async function DELETE(request: Request, { params }: RouteParams): Promise
     const docRef = adminDb.collection('devices').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) {
-      return NextResponse.json({ success: false, error: 'Device not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Device not found' },
+        { status: 404 },
+      );
     }
 
     await docRef.delete();
@@ -114,6 +139,9 @@ export async function DELETE(request: Request, { params }: RouteParams): Promise
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] DELETE/:id error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete device' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete device' },
+      { status: 500 },
+    );
   }
 }

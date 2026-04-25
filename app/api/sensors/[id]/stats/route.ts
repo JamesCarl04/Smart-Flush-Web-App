@@ -27,7 +27,10 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export async function GET(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -61,7 +64,13 @@ export async function GET(request: Request, { params }: RouteParams): Promise<Ne
       const min = Math.min(...values);
       const max = Math.max(...values);
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      stats.push({ sensorType, min, max, avg: Math.round(avg * 100) / 100, count: values.length });
+      stats.push({
+        sensorType,
+        min,
+        max,
+        avg: Math.round(avg * 100) / 100,
+        count: values.length,
+      });
     }
 
     return NextResponse.json({
@@ -71,6 +80,9 @@ export async function GET(request: Request, { params }: RouteParams): Promise<Ne
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Sensors] stats error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to compute stats' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to compute stats' },
+      { status: 500 },
+    );
   }
 }

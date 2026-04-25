@@ -5,9 +5,10 @@ export function proxy(request: NextRequest) {
   // Using a cookie to check auth state because middleware runs on edge
   const token = request.cookies.get('auth-token')?.value;
   const { pathname } = request.nextUrl;
-  
-  const isAuthPage = pathname.startsWith('/auth/login') || pathname.startsWith('/auth/register');
-  
+
+  const isAuthPage =
+    pathname.startsWith('/auth/login') || pathname.startsWith('/auth/register');
+
   // Pass through Next.js internals only
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon.ico')) {
     return NextResponse.next();
@@ -16,7 +17,7 @@ export function proxy(request: NextRequest) {
   // Redirect root to dashboard (auth middleware below handles unauthenticated case)
   if (pathname === '/') {
     return NextResponse.redirect(
-      new URL(token ? '/dashboard' : '/auth/login', request.url)
+      new URL(token ? '/dashboard' : '/auth/login', request.url),
     );
   }
 

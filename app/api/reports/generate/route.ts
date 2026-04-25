@@ -31,9 +31,12 @@ interface UVCycleDoc {
   timestamp: Timestamp;
 }
 
-function parseDateBoundary(date: string, boundary: 'start' | 'end'): Date | null {
+function parseDateBoundary(
+  date: string,
+  boundary: 'start' | 'end',
+): Date | null {
   const candidate = new Date(
-    `${date}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`
+    `${date}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`,
   );
 
   return Number.isNaN(candidate.getTime()) ? null : candidate;
@@ -65,14 +68,17 @@ async function fetchReportData(fromTs: Timestamp, toTs: Timestamp) {
 
 // ─── Format builders ──────────────────────────────────────────────────────────
 
-function buildCSV(flushEvents: FlushEventDoc[], uvCycles: UVCycleDoc[]): string {
+function buildCSV(
+  flushEvents: FlushEventDoc[],
+  uvCycles: UVCycleDoc[],
+): string {
   const lines: string[] = [];
 
   lines.push('--- FLUSH EVENTS ---');
   lines.push('id,deviceId,waterVolume,duration,timestamp');
   for (const e of flushEvents) {
     lines.push(
-      `${e.id},${e.deviceId},${e.waterVolume},${e.duration},${e.timestamp.toDate().toISOString()}`
+      `${e.id},${e.deviceId},${e.waterVolume},${e.duration},${e.timestamp.toDate().toISOString()}`,
     );
   }
 
@@ -81,7 +87,7 @@ function buildCSV(flushEvents: FlushEventDoc[], uvCycles: UVCycleDoc[]): string 
   lines.push('id,deviceId,duration,completed,timestamp');
   for (const c of uvCycles) {
     lines.push(
-      `${c.id},${c.deviceId},${c.duration},${c.completed},${c.timestamp.toDate().toISOString()}`
+      `${c.id},${c.deviceId},${c.duration},${c.completed},${c.timestamp.toDate().toISOString()}`,
     );
   }
 
@@ -124,7 +130,7 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     if (!type || !from || !to || !format) {
       return NextResponse.json(
         { success: false, error: 'type, from, to, and format are required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -132,7 +138,7 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     if (!validFormats.includes(format)) {
       return NextResponse.json(
         { success: false, error: 'format must be csv, json, or pdf' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -140,15 +146,21 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     const toDate = parseDateBoundary(to, 'end');
     if (!fromDate || !toDate) {
       return NextResponse.json(
-        { success: false, error: 'from and to must be valid dates in YYYY-MM-DD format' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'from and to must be valid dates in YYYY-MM-DD format',
+        },
+        { status: 400 },
       );
     }
 
     if (fromDate.getTime() > toDate.getTime()) {
       return NextResponse.json(
-        { success: false, error: 'The end date must be on or after the start date' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'The end date must be on or after the start date',
+        },
+        { status: 400 },
       );
     }
 
@@ -223,9 +235,10 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate report',
+        error:
+          error instanceof Error ? error.message : 'Failed to generate report',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

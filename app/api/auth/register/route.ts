@@ -18,24 +18,28 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!email || typeof email !== 'string') {
       return NextResponse.json(
         { success: false, error: 'email is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (!password || typeof password !== 'string' || password.length < 8) {
       return NextResponse.json(
         { success: false, error: 'password must be at least 8 characters' },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (!displayName || typeof displayName !== 'string') {
       return NextResponse.json(
         { success: false, error: 'displayName is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Create Firebase Auth user
-    const userRecord = await adminAuth.createUser({ email, password, displayName });
+    const userRecord = await adminAuth.createUser({
+      email,
+      password,
+      displayName,
+    });
 
     // Create Firestore users doc (no role field per README fix)
     await adminDb.collection('users').doc(userRecord.uid).set({
@@ -45,10 +49,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ success: true, uid: userRecord.uid }, { status: 201 });
+    return NextResponse.json(
+      { success: true, uid: userRecord.uid },
+      { status: 201 },
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Registration failed';
+    const message =
+      error instanceof Error ? error.message : 'Registration failed';
     console.error('[Auth] register error:', error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 },
+    );
   }
 }

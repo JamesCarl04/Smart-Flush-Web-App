@@ -28,7 +28,10 @@ interface UVPayload {
   timestamp: number;
 }
 
-export type MqttPayload = WaterflowPayload | UVPayload | Record<string, unknown>;
+export type MqttPayload =
+  | WaterflowPayload
+  | UVPayload
+  | Record<string, unknown>;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -81,7 +84,9 @@ async function createAlert(params: {
   // Update in-memory debounce cache
   debounceCache.set(params.type, Date.now());
 
-  console.log(`[AlertEngine] Created alert: ${params.type} — ${params.message}`);
+  console.log(
+    `[AlertEngine] Created alert: ${params.type} — ${params.message}`,
+  );
 }
 
 /** Count today's flushEvents for a given deviceId */
@@ -122,10 +127,10 @@ export function resetOfflineWatchdog(deviceId: string): void {
             });
 
             // Also set the device status to offline in Firestore
-            await adminDb.collection('devices').doc(deviceId).set(
-              { status: 'offline' },
-              { merge: true }
-            );
+            await adminDb
+              .collection('devices')
+              .doc(deviceId)
+              .set({ status: 'offline' }, { merge: true });
           }
         } catch (error) {
           console.error('[AlertEngine] device_offline check error:', error);
@@ -144,7 +149,7 @@ export function resetOfflineWatchdog(deviceId: string): void {
 export async function evaluateAlerts(
   topic: string,
   payload: MqttPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   try {
     // Load enabled system_alert rules
@@ -168,7 +173,7 @@ async function evaluateRule(
   rule: AutomationRule,
   topic: string,
   payload: MqttPayload,
-  deviceId: string
+  deviceId: string,
 ): Promise<void> {
   let triggered = false;
   let alertType = rule.trigger;

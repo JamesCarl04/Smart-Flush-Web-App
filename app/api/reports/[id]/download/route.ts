@@ -39,7 +39,7 @@ interface UVCycleDoc {
 
 export async function GET(
   request: Request,
-  { params }: RouteParams
+  { params }: RouteParams,
 ): Promise<NextResponse | Response> {
   try {
     const user = await verifyAuthToken(request);
@@ -47,14 +47,20 @@ export async function GET(
 
     const reportDoc = await adminDb.collection('reports').doc(id).get();
     if (!reportDoc.exists) {
-      return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Report not found' },
+        { status: 404 },
+      );
     }
 
     const meta = reportDoc.data() as ReportMetadata;
 
     // Users can only download their own reports
     if (meta.userId !== user.uid) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 },
+      );
     }
 
     const fromTs = Timestamp.fromDate(new Date(`${meta.from}T00:00:00.000Z`));
@@ -86,14 +92,14 @@ export async function GET(
         'id,deviceId,waterVolume,duration,timestamp',
         ...flushEvents.map(
           (e) =>
-            `${e.id},${e.deviceId},${e.waterVolume},${e.duration},${e.timestamp.toDate().toISOString()}`
+            `${e.id},${e.deviceId},${e.waterVolume},${e.duration},${e.timestamp.toDate().toISOString()}`,
         ),
         '',
         '--- UV CYCLES ---',
         'id,deviceId,duration,completed,timestamp',
         ...uvCycles.map(
           (c) =>
-            `${c.id},${c.deviceId},${c.duration},${c.completed},${c.timestamp.toDate().toISOString()}`
+            `${c.id},${c.deviceId},${c.duration},${c.completed},${c.timestamp.toDate().toISOString()}`,
         ),
       ];
       return new Response(lines.join('\n'), {
@@ -106,7 +112,10 @@ export async function GET(
 
     // ── JSON ───────────────────────────────────────────────────────────────────
     if (meta.format === 'json') {
-      const totalWater = flushEvents.reduce((s, e) => s + (e.waterVolume ?? 0), 0);
+      const totalWater = flushEvents.reduce(
+        (s, e) => s + (e.waterVolume ?? 0),
+        0,
+      );
       const uvCompleted = uvCycles.filter((c) => c.completed).length;
       const json = {
         summary: {
@@ -154,7 +163,12 @@ export async function GET(
       timestamp: c.timestamp.toDate().toISOString(),
     }));
 
-    const pdfBuffer = await generatePDFBuffer(meta.from, meta.to, flushRows, uvRows);
+    const pdfBuffer = await generatePDFBuffer(
+      meta.from,
+      meta.to,
+      flushRows,
+      uvRows,
+    );
     const pdfBody = Uint8Array.from(pdfBuffer).buffer as ArrayBuffer;
 
     return new Response(pdfBody, {
@@ -168,7 +182,7 @@ export async function GET(
     console.error('[Reports] download error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to download report' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

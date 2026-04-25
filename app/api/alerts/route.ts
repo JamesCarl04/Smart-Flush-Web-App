@@ -11,6 +11,47 @@ interface CreateAlertBody {
   deviceId: string;
 }
 
+interface AlertDoc {
+  timestamp?:
+    | FirebaseFirestore.Timestamp
+    | { _seconds?: number; seconds?: number }
+    | Date
+    | null;
+  acknowledged?: boolean;
+}
+
+function timestampToMillis(value: AlertDoc['timestamp']): number {
+  if (!value) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (
+    typeof value === 'object' &&
+    'toMillis' in value &&
+    typeof value.toMillis === 'function'
+  ) {
+    return value.toMillis();
+  }
+
+  if (typeof value === 'object') {
+    const seconds =
+      ('seconds' in value &&
+        typeof value.seconds === 'number' &&
+        value.seconds) ||
+      ('_seconds' in value &&
+        typeof value._seconds === 'number' &&
+        value._seconds) ||
+      0;
+    return seconds * 1000;
+  }
+
+  return 0;
+}
+
 // GET /api/alerts?acknowledged=false
 export async function GET(request: Request): Promise<NextResponse> {
   try {
@@ -19,22 +60,37 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const acknowledgedParam = searchParams.get('acknowledged');
 
-    let query = adminDb.collection('alerts').orderBy('timestamp', 'desc') as FirebaseFirestore.Query;
+    const snap = await adminDb.collection('alerts').get();
+    const alerts = snap.docs
+      .map((doc) => doc.data() as AlertDoc & Record<string, unknown>)
+      .filter((alert) => {
+        if (acknowledgedParam === 'false') {
+          return alert.acknowledged === false;
+        }
 
-    if (acknowledgedParam === 'false') {
-      query = query.where('acknowledged', '==', false);
-    } else if (acknowledgedParam === 'true') {
-      query = query.where('acknowledged', '==', true);
-    }
+        if (acknowledgedParam === 'true') {
+          return alert.acknowledged === true;
+        }
 
-    const snap = await query.get();
-    const alerts = snap.docs.map((d) => d.data());
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          timestampToMillis(b.timestamp) - timestampToMillis(a.timestamp),
+      );
 
     return NextResponse.json({ success: true, data: alerts });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Alerts] GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch alerts' }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to fetch alerts',
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -48,8 +104,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     if (!type || !message || !severity || !deviceId) {
       return NextResponse.json(
-        { success: false, error: 'type, message, severity, and deviceId are required' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'type, message, severity, and deviceId are required',
+        },
+        { status: 400 },
       );
     }
 
@@ -57,7 +116,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!validSeverities.includes(severity)) {
       return NextResponse.json(
         { success: false, error: 'severity must be low, medium, or high' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -72,10 +131,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       timestamp: FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ success: true, data: { id: docRef.id } }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { id: docRef.id } },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Alerts] POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create alert' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create alert' },
+      { status: 500 },
+    );
   }
 }

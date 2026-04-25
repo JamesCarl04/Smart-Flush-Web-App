@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api-client";
-import { format } from "date-fns";
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api-client';
+import { format } from 'date-fns';
 
 export type DateRange = {
   from: Date;
@@ -95,27 +95,35 @@ export function useAnalytics(range: DateRange) {
 
       const [dashboardRes, waterRes, patternsRes, perfRes] = await Promise.all([
         apiFetch<DashboardResponse>('/api/analytics/dashboard', user),
-        apiFetch<WaterUsageResponse>(`/api/analytics/water-usage?from=${fromStr}&to=${toStr}`, user),
+        apiFetch<WaterUsageResponse>(
+          `/api/analytics/water-usage?from=${fromStr}&to=${toStr}`,
+          user,
+        ),
         apiFetch<FlushPatternsResponse>('/api/analytics/flush-patterns', user),
-        apiFetch<SystemPerformanceResponse>('/api/analytics/system-performance', user),
+        apiFetch<SystemPerformanceResponse>(
+          '/api/analytics/system-performance',
+          user,
+        ),
       ]);
 
       // Map water-usage response to chart data
-      const flushCounts: FlushCountData[] = (waterRes.data ?? []).map(d => ({
+      const flushCounts: FlushCountData[] = (waterRes.data ?? []).map((d) => ({
         date: format(new Date(d.date), 'MMM dd'),
         count: d.flushCount,
       }));
 
-      const waterVolume: VolumeData[] = (waterRes.data ?? []).map(d => ({
+      const waterVolume: VolumeData[] = (waterRes.data ?? []).map((d) => ({
         date: format(new Date(d.date), 'MMM dd'),
         liters: d.totalVolume,
       }));
 
       // Map flush-patterns → hourly usage
-      const hourlyUsage: HourlyData[] = (patternsRes.data?.byHour ?? []).map(b => ({
-        hour: b.label,
-        count: b.count,
-      }));
+      const hourlyUsage: HourlyData[] = (patternsRes.data?.byHour ?? []).map(
+        (b) => ({
+          hour: b.label,
+          count: b.count,
+        }),
+      );
 
       // UV stats from dashboard
       const completedUV = dashboardRes.data.uvCompletionRate;
@@ -125,7 +133,7 @@ export function useAnalytics(range: DateRange) {
       ];
 
       // Uptime stats: single-entry from system-performance
-      const uptimeStats: UptimeData[] = flushCounts.map(f => ({
+      const uptimeStats: UptimeData[] = flushCounts.map((f) => ({
         date: f.date,
         uptime: perfRes.data.uptimePercent,
       }));
@@ -147,7 +155,8 @@ export function useAnalytics(range: DateRange) {
         },
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load analytics';
+      const message =
+        err instanceof Error ? err.message : 'Failed to load analytics';
       setError(message);
     } finally {
       setLoading(false);

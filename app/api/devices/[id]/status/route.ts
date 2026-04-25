@@ -8,7 +8,10 @@ interface RouteParams {
 }
 
 // GET /api/devices/:id/status
-export async function GET(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -21,6 +24,13 @@ export async function GET(request: Request, { params }: RouteParams): Promise<Ne
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] GET/:id/status error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch status' }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to fetch status',
+      },
+      { status: 500 },
+    );
   }
 }

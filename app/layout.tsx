@@ -1,23 +1,23 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
-import "./globals.css";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+  src: './fonts/GeistVF.woff',
+  variable: '--font-geist-sans',
+  weight: '100 900',
 });
 const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+  src: './fonts/GeistMonoVF.woff',
+  variable: '--font-geist-mono',
+  weight: '100 900',
 });
 
 export const metadata: Metadata = {
-  title: "Smart Flush",
-  description: "IoT Smart Flush Management Dashboard",
+  title: 'Smart Flush',
+  description: 'IoT Smart Flush Management Dashboard',
 };
 
 export default function RootLayout({
@@ -26,7 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="bg-base-100 transition-colors duration-300">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className="bg-base-100 transition-colors duration-300"
+    >
       {/* Inline script runs synchronously before React hydrates, preventing flash-of-wrong-theme */}
       <head>
         <script

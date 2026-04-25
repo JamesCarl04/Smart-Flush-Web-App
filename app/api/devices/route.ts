@@ -22,7 +22,10 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch devices' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch devices' },
+      { status: 500 },
+    );
   }
 }
 
@@ -36,7 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!body.name || typeof body.name !== 'string') {
       return NextResponse.json(
         { success: false, error: 'name is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -53,10 +56,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     await docRef.set(device);
 
-    return NextResponse.json({ success: true, data: { ...device, id: docRef.id } }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { ...device, id: docRef.id } },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create device' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create device' },
+      { status: 500 },
+    );
   }
 }

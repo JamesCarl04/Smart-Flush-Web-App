@@ -10,7 +10,7 @@ import type { User } from 'firebase/auth';
 export async function apiFetch<T = unknown>(
   path: string,
   user: User,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const token = await user.getIdToken();
   const res = await fetch(path, {
@@ -24,7 +24,9 @@ export async function apiFetch<T = unknown>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed: ${res.status}`);
+    throw new Error(
+      (body as { error?: string }).error ?? `Request failed: ${res.status}`,
+    );
   }
 
   return res.json() as Promise<T>;

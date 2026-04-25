@@ -42,7 +42,8 @@ interface UseProfileReturn {
 
 export function useProfile(): UseProfileReturn {
   const { user, loading: authLoading } = useAuth();
-  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+  const [notifPrefs, setNotifPrefs] =
+    useState<NotificationPrefs>(DEFAULT_PREFS);
   const [prefsLoading, setPrefsLoading] = useState(false);
 
   useEffect(() => {
@@ -81,7 +82,10 @@ export function useProfile(): UseProfileReturn {
     };
   }, [user]);
 
-  const updateProfile = async ({ displayName, email }: UpdateProfileArgs): Promise<void> => {
+  const updateProfile = async ({
+    displayName,
+    email,
+  }: UpdateProfileArgs): Promise<void> => {
     if (!user) {
       throw new Error('Not authenticated');
     }
@@ -92,20 +96,32 @@ export function useProfile(): UseProfileReturn {
     }
 
     const docRef = doc(db, 'users', user.uid);
-    await setDoc(docRef, { displayName, email, updatedAt: Date.now() }, { merge: true });
+    await setDoc(
+      docRef,
+      { displayName, email, updatedAt: Date.now() },
+      { merge: true },
+    );
   };
 
-  const changePassword = async ({ currentPassword, newPassword }: ChangePasswordArgs): Promise<void> => {
+  const changePassword = async ({
+    currentPassword,
+    newPassword,
+  }: ChangePasswordArgs): Promise<void> => {
     if (!user || !user.email) {
       throw new Error('Not authenticated');
     }
 
-    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    const credential = EmailAuthProvider.credential(
+      user.email,
+      currentPassword,
+    );
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
   };
 
-  const updateNotifications = async (prefs: NotificationPrefs): Promise<void> => {
+  const updateNotifications = async (
+    prefs: NotificationPrefs,
+  ): Promise<void> => {
     if (!user) {
       throw new Error('Not authenticated');
     }

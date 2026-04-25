@@ -26,8 +26,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     if (!from) {
       return NextResponse.json(
-        { success: false, error: 'from query parameter is required (YYYY-MM-DD)' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'from query parameter is required (YYYY-MM-DD)',
+        },
+        { status: 400 },
       );
     }
 
@@ -67,6 +70,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Analytics] water-usage error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch water usage' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch water usage' },
+      { status: 500 },
+    );
   }
 }

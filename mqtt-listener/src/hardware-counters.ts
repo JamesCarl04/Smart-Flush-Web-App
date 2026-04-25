@@ -36,7 +36,10 @@ interface MaintenanceCounters {
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 
-const THRESHOLDS: Record<keyof MaintenanceCounters, { limit: number; message: string }> = {
+const THRESHOLDS: Record<
+  keyof MaintenanceCounters,
+  { limit: number; message: string }
+> = {
   uvOnTimeSeconds: {
     limit: 1_080_000, // 300 hours
     message: 'UV-C strip 300+ hrs. Inspect or replace.',
@@ -82,7 +85,7 @@ function countersRef(deviceId: string) {
 export async function incrementCounters(
   deviceId: string,
   eventType: EventType,
-  payload: FlushPayload | UVPayload | Record<string, unknown>
+  payload: FlushPayload | UVPayload | Record<string, unknown>,
 ): Promise<void> {
   try {
     const ref = countersRef(deviceId);
@@ -92,7 +95,7 @@ export async function incrementCounters(
         const p = payload as UVPayload;
         await ref.set(
           { uvOnTimeSeconds: FieldValue.increment(p.duration) },
-          { merge: true }
+          { merge: true },
         );
         break;
       }
@@ -103,7 +106,7 @@ export async function incrementCounters(
             lidCycleCount: FieldValue.increment(1),
             relayTotalTriggers: FieldValue.increment(1),
           },
-          { merge: true }
+          { merge: true },
         );
         break;
       }
@@ -116,7 +119,7 @@ export async function incrementCounters(
             pumpTotalLiters: FieldValue.increment(p.volume),
             relayTotalTriggers: FieldValue.increment(1),
           },
-          { merge: true }
+          { merge: true },
         );
         break;
       }
@@ -124,22 +127,21 @@ export async function incrementCounters(
       case 'ultrasonic_fail': {
         await ref.set(
           { ultrasonicConsecutiveFailures: FieldValue.increment(1) },
-          { merge: true }
+          { merge: true },
         );
         break;
       }
 
       case 'ultrasonic_ok': {
         // Reset consecutive failures on a successful reading
-        await ref.set(
-          { ultrasonicConsecutiveFailures: 0 },
-          { merge: true }
-        );
+        await ref.set({ ultrasonicConsecutiveFailures: 0 }, { merge: true });
         break;
       }
     }
 
-    console.log(`[HardwareCounters] Incremented ${eventType} for device ${deviceId}`);
+    console.log(
+      `[HardwareCounters] Incremented ${eventType} for device ${deviceId}`,
+    );
     await evaluateMaintenanceAlerts(deviceId);
   } catch (error) {
     console.error('[HardwareCounters] incrementCounters error:', error);
@@ -150,7 +152,9 @@ export async function incrementCounters(
  * Reads current counters and creates a maintenance alert if any threshold is exceeded.
  * Debounce: skips if an unacknowledged alert of the same type already exists.
  */
-export async function evaluateMaintenanceAlerts(deviceId: string): Promise<void> {
+export async function evaluateMaintenanceAlerts(
+  deviceId: string,
+): Promise<void> {
   try {
     const snap = await countersRef(deviceId).get();
     if (!snap.exists) return;
@@ -173,7 +177,9 @@ export async function evaluateMaintenanceAlerts(deviceId: string): Promise<void>
           .get();
 
         if (!existingSnap.empty) {
-          console.log(`[HardwareCounters] Suppressed duplicate alert: ${alertType}`);
+          console.log(
+            `[HardwareCounters] Suppressed duplicate alert: ${alertType}`,
+          );
           continue;
         }
 
@@ -187,7 +193,9 @@ export async function evaluateMaintenanceAlerts(deviceId: string): Promise<void>
           deviceId,
           timestamp: Timestamp.now(),
         });
-        console.log(`[HardwareCounters] Maintenance alert created: ${alertType}`);
+        console.log(
+          `[HardwareCounters] Maintenance alert created: ${alertType}`,
+        );
       }
     }
   } catch (error) {

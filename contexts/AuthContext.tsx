@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import React, { createContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User, signOut, getAuth } from "firebase/auth";
-import { app } from "@/lib/firebase";
-import Cookies from "js-cookie";
+import React, { createContext, useEffect, useState } from 'react';
+import { onAuthStateChanged, User, signOut, getAuth } from 'firebase/auth';
+import { app } from '@/lib/firebase';
+import Cookies from 'js-cookie';
 
 interface AuthContextType {
   user: User | null;
@@ -21,17 +21,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const auth = getAuth(app);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
-      
+
       if (user) {
         // We'll just set a dummy token for middleware routing since the actual token
         // can expire and needs reliable refreshing strategies.
         // For a simple middleware token check, any value works.
         const token = await user.getIdToken();
-        Cookies.set("auth-token", token, { expires: 1 }); // Expires in 1 day
+        Cookies.set('auth-token', token, { expires: 1 }); // Expires in 1 day
       } else {
-        Cookies.remove("auth-token");
+        Cookies.remove('auth-token');
       }
-      
+
       setLoading(false);
     });
 
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     const auth = getAuth(app);
     await signOut(auth);
-    Cookies.remove("auth-token");
+    Cookies.remove('auth-token');
   };
 
   return (

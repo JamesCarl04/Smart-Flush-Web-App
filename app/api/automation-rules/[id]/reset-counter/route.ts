@@ -20,7 +20,10 @@ const TRIGGER_TO_COUNTER: Record<string, string> = {
   maintenance_relayTotalTriggers: 'relayTotalTriggers',
 };
 
-export async function POST(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function POST(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -28,7 +31,10 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
     // Fetch the rule to find what deviceId and trigger it relates to
     const ruleDoc = await adminDb.collection('automationRules').doc(id).get();
     if (!ruleDoc.exists) {
-      return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Rule not found' },
+        { status: 404 },
+      );
     }
 
     const rule = ruleDoc.data() as { trigger: string; deviceId?: string };
@@ -36,13 +42,18 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
 
     if (!counterField) {
       return NextResponse.json(
-        { success: false, error: `No counter mapped for trigger: ${rule.trigger}` },
-        { status: 400 }
+        {
+          success: false,
+          error: `No counter mapped for trigger: ${rule.trigger}`,
+        },
+        { status: 400 },
       );
     }
 
     // deviceId can be passed in body or fall back to the rule's deviceId
-    const body = await request.json().catch(() => ({})) as { deviceId?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      deviceId?: string;
+    };
     const deviceId = body.deviceId ?? rule.deviceId ?? 'toilet-01';
 
     const countersRef = adminDb
@@ -60,6 +71,9 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] reset-counter error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to reset counter' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to reset counter' },
+      { status: 500 },
+    );
   }
 }

@@ -14,7 +14,15 @@ interface PatternBucket {
   count: number;
 }
 
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
@@ -54,6 +62,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Analytics] flush-patterns error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch flush patterns' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch flush patterns' },
+      { status: 500 },
+    );
   }
 }

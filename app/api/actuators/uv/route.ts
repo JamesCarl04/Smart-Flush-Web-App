@@ -18,16 +18,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (body.command !== 'ON' && body.command !== 'OFF') {
       return NextResponse.json(
         { success: false, error: 'command must be "ON" or "OFF"' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     await ensureDeviceConnected(DEFAULT_DEVICE_ID);
     await publishUVCommand(body.command);
-    return NextResponse.json({ success: true, data: { command: body.command } });
+    return NextResponse.json({
+      success: true,
+      data: { command: body.command },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Actuators] uv error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to publish UV command' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to publish UV command' },
+      { status: 500 },
+    );
   }
 }

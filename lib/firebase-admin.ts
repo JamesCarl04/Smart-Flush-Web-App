@@ -6,7 +6,10 @@ if (!admin.apps.length) {
   try {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
+      /\\n/g,
+      '\n',
+    );
 
     if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
@@ -17,7 +20,9 @@ if (!admin.apps.length) {
         }),
       });
     } else {
-      console.warn('[Firebase Admin] Initialization skipped due to missing environment variables.');
+      console.warn(
+        '[Firebase Admin] Initialization skipped due to missing environment variables.',
+      );
     }
   } catch (error) {
     console.error('[Firebase Admin] Initialization error:', error);
@@ -25,7 +30,9 @@ if (!admin.apps.length) {
 }
 
 const adminApp = admin.apps.length > 0 ? admin.app() : ({} as admin.app.App);
-const adminDb = admin.apps.length > 0 ? admin.firestore() : ({} as admin.firestore.Firestore);
-const adminAuth = admin.apps.length > 0 ? admin.auth() : ({} as admin.auth.Auth);
+const adminDb =
+  admin.apps.length > 0 ? admin.firestore() : ({} as admin.firestore.Firestore);
+const adminAuth =
+  admin.apps.length > 0 ? admin.auth() : ({} as admin.auth.Auth);
 
 export { adminApp, adminDb, adminAuth };

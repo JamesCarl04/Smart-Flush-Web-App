@@ -14,7 +14,43 @@ interface SensorReadingDoc {
   sensorType: string;
   value: number;
   unit: string;
-  timestamp: FirebaseFirestore.Timestamp;
+  timestamp?:
+    | FirebaseFirestore.Timestamp
+    | { _seconds?: number; seconds?: number }
+    | Date
+    | null;
+}
+
+function timestampToMillis(value: SensorReadingDoc['timestamp']): number {
+  if (!value) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (
+    typeof value === 'object' &&
+    'toMillis' in value &&
+    typeof value.toMillis === 'function'
+  ) {
+    return value.toMillis();
+  }
+
+  if (typeof value === 'object') {
+    const seconds =
+      ('seconds' in value &&
+        typeof value.seconds === 'number' &&
+        value.seconds) ||
+      ('_seconds' in value &&
+        typeof value._seconds === 'number' &&
+        value._seconds) ||
+      0;
+    return seconds * 1000;
+  }
+
+  return 0;
 }
 
 /** Returns an array of YYYY-MM-DD strings from start to end (inclusive) */
@@ -31,7 +67,10 @@ function dateRange(from: string, to: string): string[] {
   return dates;
 }
 
-export async function GET(request: Request, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(
+  request: Request,
+  { params }: RouteParams,
+): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
     const { id } = await params;
@@ -42,8 +81,11 @@ export async function GET(request: Request, { params }: RouteParams): Promise<Ne
 
     if (!from) {
       return NextResponse.json(
-        { success: false, error: 'from query parameter is required (YYYY-MM-DD)' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'from query parameter is required (YYYY-MM-DD)',
+        },
+        { status: 400 },
       );
     }
 
@@ -57,18 +99,28 @@ export async function GET(request: Request, { params }: RouteParams): Promise<Ne
           .doc(date)
           .collection('readings')
           .where('deviceId', '==', id)
-          .get()
-      )
+          .get(),
+      ),
     );
 
     const readings: SensorReadingDoc[] = snapshots
       .flatMap((snap) => snap.docs.map((doc) => doc.data() as SensorReadingDoc))
-      .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+      .sort(
+        (a, b) =>
+          timestampToMillis(a.timestamp) - timestampToMillis(b.timestamp),
+      );
 
     return NextResponse.json({ success: true, data: readings });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Sensors] readings error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch readings' }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to fetch readings',
+      },
+      { status: 500 },
+    );
   }
 }

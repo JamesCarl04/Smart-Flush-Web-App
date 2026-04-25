@@ -1,8 +1,8 @@
 export interface NotificationPrefs {
-  criticalAlerts:     boolean; // P0 issues — device down, data loss
+  criticalAlerts: boolean; // P0 issues — device down, data loss
   highPriorityAlerts: boolean; // P1 issues — major feature broken
-  dailySummaryEmail:  boolean; // End-of-day usage report
-  weeklyReportEmail:  boolean; // Sent every Monday 8:00 AM
+  dailySummaryEmail: boolean; // End-of-day usage report
+  weeklyReportEmail: boolean; // Sent every Monday 8:00 AM
 }
 
 export interface User {

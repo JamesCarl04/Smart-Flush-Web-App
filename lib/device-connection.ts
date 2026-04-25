@@ -1,8 +1,11 @@
-import type { DocumentData } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
-import { DEFAULT_DEVICE_ID, DEVICE_HEARTBEAT_TIMEOUT_MS } from "@/lib/device-constants";
+import type { DocumentData } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase-admin';
+import {
+  DEFAULT_DEVICE_ID,
+  DEVICE_HEARTBEAT_TIMEOUT_MS,
+} from '@/lib/device-constants';
 
-export type DeviceStatus = "online" | "offline";
+export type DeviceStatus = 'online' | 'offline';
 
 export interface DeviceConnectionState {
   deviceId: string;
@@ -14,10 +17,13 @@ export interface DeviceConnectionState {
   reason: string;
 }
 
-function extractNumericValue(source: Record<string, unknown>, keys: string[]): number | undefined {
+function extractNumericValue(
+  source: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
     }
   }
@@ -34,15 +40,18 @@ export function timestampToMillis(value: unknown): number | null {
     return value.getTime();
   }
 
-  if (typeof value === "object") {
-    const candidate = value as Record<string, unknown> & { toMillis?: () => number };
-    if (typeof candidate.toMillis === "function") {
+  if (typeof value === 'object') {
+    const candidate = value as Record<string, unknown> & {
+      toMillis?: () => number;
+    };
+    if (typeof candidate.toMillis === 'function') {
       return candidate.toMillis();
     }
 
-    const seconds = extractNumericValue(candidate, ["seconds", "_seconds"]);
+    const seconds = extractNumericValue(candidate, ['seconds', '_seconds']);
     if (seconds !== undefined) {
-      const nanoseconds = extractNumericValue(candidate, ["nanoseconds", "_nanoseconds"]) ?? 0;
+      const nanoseconds =
+        extractNumericValue(candidate, ['nanoseconds', '_nanoseconds']) ?? 0;
       return seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
     }
   }
@@ -53,17 +62,17 @@ export function timestampToMillis(value: unknown): number | null {
 export function getConnectionStateFromDeviceData(
   deviceId: string,
   data: DocumentData | undefined,
-  now = Date.now()
+  now = Date.now(),
 ): DeviceConnectionState {
   const lastSeenMs = timestampToMillis(data?.lastSeen);
   const staleMs = lastSeenMs === null ? null : Math.max(0, now - lastSeenMs);
   const connected = staleMs !== null && staleMs <= DEVICE_HEARTBEAT_TIMEOUT_MS;
-  const status: DeviceStatus = connected ? "online" : "offline";
+  const status: DeviceStatus = connected ? 'online' : 'offline';
   const staleSeconds = staleMs === null ? null : Math.round(staleMs / 1000);
 
-  let reason = "ESP32 connected";
+  let reason = 'ESP32 connected';
   if (lastSeenMs === null) {
-    reason = "No heartbeat received from ESP32 yet";
+    reason = 'No heartbeat received from ESP32 yet';
   } else if (!connected) {
     reason = `Last heartbeat was ${staleSeconds ?? 0}s ago`;
   }
@@ -80,34 +89,27 @@ export function getConnectionStateFromDeviceData(
 }
 
 export async function getDeviceConnectionState(
-  deviceId = DEFAULT_DEVICE_ID
+  deviceId = DEFAULT_DEVICE_ID,
 ): Promise<DeviceConnectionState> {
-  const docRef = adminDb.collection("devices").doc(deviceId);
-  const snapshot = await docRef.get();
+  const snapshot = await adminDb.collection('devices').doc(deviceId).get();
 
   if (!snapshot.exists) {
     return {
       deviceId,
       exists: false,
       connected: false,
-      status: "offline",
+      status: 'offline',
       lastSeenMs: null,
       staleMs: null,
-      reason: "Device record not found",
+      reason: 'Device record not found',
     };
   }
 
-  const state = getConnectionStateFromDeviceData(deviceId, snapshot.data());
-
-  if (!state.connected && snapshot.data()?.status !== "offline") {
-    await docRef.set({ status: "offline" }, { merge: true });
-  }
-
-  return state;
+  return getConnectionStateFromDeviceData(deviceId, snapshot.data());
 }
 
 export async function ensureDeviceConnected(
-  deviceId = DEFAULT_DEVICE_ID
+  deviceId = DEFAULT_DEVICE_ID,
 ): Promise<DeviceConnectionState> {
   const state = await getDeviceConnectionState(deviceId);
 
@@ -115,13 +117,13 @@ export async function ensureDeviceConnected(
     throw new Response(
       JSON.stringify({
         success: false,
-        error: "ESP32 not connected",
+        error: 'ESP32 not connected',
         data: state,
       }),
       {
         status: 503,
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: { 'Content-Type': 'application/json' },
+      },
     );
   }
 

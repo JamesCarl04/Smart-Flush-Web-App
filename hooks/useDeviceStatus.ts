@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api-client";
-import { DEFAULT_DEVICE_ID } from "@/lib/device-constants";
-import { getErrorMessage } from "@/lib/error-utils";
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api-client';
+import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
+import { getErrorMessage } from '@/lib/error-utils';
 
 interface DeviceStatusResponse {
   success: boolean;
@@ -12,7 +12,7 @@ interface DeviceStatusResponse {
     deviceId: string;
     exists: boolean;
     connected: boolean;
-    status: "online" | "offline";
+    status: 'online' | 'offline';
     lastSeenMs: number | null;
     staleMs: number | null;
     reason: string;
@@ -21,7 +21,7 @@ interface DeviceStatusResponse {
 
 interface DeviceStatusState {
   connected: boolean;
-  status: "online" | "offline";
+  status: 'online' | 'offline';
   lastSeen: number | null;
   staleMs: number | null;
   reason: string;
@@ -29,10 +29,10 @@ interface DeviceStatusState {
 
 const DEFAULT_STATUS_STATE: DeviceStatusState = {
   connected: false,
-  status: "offline",
+  status: 'offline',
   lastSeen: null,
   staleMs: null,
-  reason: "ESP32 not connected",
+  reason: 'ESP32 not connected',
 };
 
 export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
@@ -57,7 +57,10 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
           setLoading(true);
         }
 
-        const response = await apiFetch<DeviceStatusResponse>(`/api/devices/${deviceId}/status`, user);
+        const response = await apiFetch<DeviceStatusResponse>(
+          `/api/devices/${deviceId}/status`,
+          user,
+        );
 
         if (!cancelled) {
           setData({
@@ -69,7 +72,7 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
           });
         }
       } catch (error) {
-        console.error("[useDeviceStatus] error:", error);
+        console.warn('[useDeviceStatus] status request failed:', error);
         if (!cancelled) {
           setData({
             ...DEFAULT_STATUS_STATE,

@@ -117,13 +117,19 @@ export function getMqttClient(): MqttClient {
 
   client.on('connect', () => {
     console.log('[MQTT] Connected');
-    client!.subscribe(['toilet/sensors/#', 'toilet/events/#'], { qos: 1 }, (err) => {
-      if (err) {
-        console.error('[MQTT] Subscribe error:', err);
-      } else {
-        console.log('[MQTT] Subscribed to toilet/sensors/# and toilet/events/#');
-      }
-    });
+    client!.subscribe(
+      ['toilet/sensors/#', 'toilet/events/#'],
+      { qos: 1 },
+      (err) => {
+        if (err) {
+          console.error('[MQTT] Subscribe error:', err);
+        } else {
+          console.log(
+            '[MQTT] Subscribed to toilet/sensors/# and toilet/events/#',
+          );
+        }
+      },
+    );
   });
 
   client.on('message', (topic, message) => {
