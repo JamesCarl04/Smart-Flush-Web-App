@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ['nodejs_20']
+
+[phases.install]
+cmds = ['cd mqtt-listener && npm ci']
+
+[phases.build]
+cmds = ['cd mqtt-listener && npm run build']
+
+[start]
+cmd = 'cd mqtt-listener && npm run start:prod'
