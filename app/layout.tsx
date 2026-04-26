@@ -40,7 +40,7 @@ export default function RootLayout({
                 try {
                   var theme = localStorage.getItem('theme') || 'light';
                   document.documentElement.setAttribute('data-theme', theme);
-                } catch(e) {}
+                } catch(error) {}
               })();
             `,
           }}

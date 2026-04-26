@@ -95,7 +95,7 @@ function buildCSV(
 }
 
 function buildJSON(flushEvents: FlushEventDoc[], uvCycles: UVCycleDoc[]) {
-  const totalWater = flushEvents.reduce((s, e) => s + (e.waterVolume ?? 0), 0);
+  const totalWater = flushEvents.reduce((s, event) => s + (event.waterVolume ?? 0), 0);
   const uvCompleted = uvCycles.filter((c) => c.completed).length;
 
   return {
@@ -108,9 +108,9 @@ function buildJSON(flushEvents: FlushEventDoc[], uvCycles: UVCycleDoc[]) {
           ? 100
           : Math.round((uvCompleted / uvCycles.length) * 10000) / 100,
     },
-    flushEvents: flushEvents.map((e) => ({
-      ...e,
-      timestamp: e.timestamp.toDate().toISOString(),
+    flushEvents: flushEvents.map((event) => ({
+      ...event,
+      timestamp: event.timestamp.toDate().toISOString(),
     })),
     uvCycles: uvCycles.map((c) => ({
       ...c,
@@ -205,12 +205,12 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     // PDF — delegate to shared tsx helper (no JSX in .ts files)
     const { generatePDFBuffer } = await import('@/lib/pdf-report');
 
-    const flushRows: FlushEventRow[] = flushEvents.map((e) => ({
-      id: e.id,
-      deviceId: e.deviceId,
-      waterVolume: e.waterVolume,
-      duration: e.duration,
-      timestamp: e.timestamp.toDate().toISOString(),
+    const flushRows: FlushEventRow[] = flushEvents.map((event) => ({
+      id: event.id,
+      deviceId: event.deviceId,
+      waterVolume: event.waterVolume,
+      duration: event.duration,
+      timestamp: event.timestamp.toDate().toISOString(),
     }));
 
     const uvRows: UVCycleRow[] = uvCycles.map((c) => ({

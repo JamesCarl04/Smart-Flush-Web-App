@@ -91,8 +91,8 @@ export async function GET(
         '--- FLUSH EVENTS ---',
         'id,deviceId,waterVolume,duration,timestamp',
         ...flushEvents.map(
-          (e) =>
-            `${e.id},${e.deviceId},${e.waterVolume},${e.duration},${e.timestamp.toDate().toISOString()}`,
+          (event) =>
+            `${event.id},${event.deviceId},${event.waterVolume},${event.duration},${event.timestamp.toDate().toISOString()}`,
         ),
         '',
         '--- UV CYCLES ---',
@@ -113,7 +113,7 @@ export async function GET(
     // ── JSON ───────────────────────────────────────────────────────────────────
     if (meta.format === 'json') {
       const totalWater = flushEvents.reduce(
-        (s, e) => s + (e.waterVolume ?? 0),
+        (s, event) => s + (event.waterVolume ?? 0),
         0,
       );
       const uvCompleted = uvCycles.filter((c) => c.completed).length;
@@ -127,9 +127,9 @@ export async function GET(
               ? 100
               : Math.round((uvCompleted / uvCycles.length) * 10000) / 100,
         },
-        flushEvents: flushEvents.map((e) => ({
-          ...e,
-          timestamp: e.timestamp.toDate().toISOString(),
+        flushEvents: flushEvents.map((event) => ({
+          ...event,
+          timestamp: event.timestamp.toDate().toISOString(),
         })),
         uvCycles: uvCycles.map((c) => ({
           ...c,
@@ -147,12 +147,12 @@ export async function GET(
     // ── PDF ────────────────────────────────────────────────────────────────────
     const { generatePDFBuffer } = await import('@/lib/pdf-report');
 
-    const flushRows: FlushEventRow[] = flushEvents.map((e) => ({
-      id: e.id,
-      deviceId: e.deviceId,
-      waterVolume: e.waterVolume,
-      duration: e.duration,
-      timestamp: e.timestamp.toDate().toISOString(),
+    const flushRows: FlushEventRow[] = flushEvents.map((event) => ({
+      id: event.id,
+      deviceId: event.deviceId,
+      waterVolume: event.waterVolume,
+      duration: event.duration,
+      timestamp: event.timestamp.toDate().toISOString(),
     }));
 
     const uvRows: UVCycleRow[] = uvCycles.map((c) => ({
