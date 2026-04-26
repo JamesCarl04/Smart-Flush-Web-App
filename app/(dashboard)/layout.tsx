@@ -39,7 +39,7 @@ export default function DashboardLayout({
       <input id="my-drawer-2" type="checkbox" className="drawer-toggle" />
       <div className="drawer-content flex min-h-screen flex-col transition-colors duration-300">
         {/* Mobile Navbar */}
-        <div className="navbar w-full border-b border-base-200 bg-base-300 transition-colors duration-300 lg:hidden">
+        <div className="navbar h-16 sticky top-0 z-40 w-full border-b border-base-200 bg-base-300 transition-colors duration-300 lg:hidden">
           <div className="flex-none">
             <label htmlFor="my-drawer-2" className="btn btn-square btn-ghost">
               <svg
@@ -113,7 +113,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Desktop Header */}
-        <div className="navbar sticky top-0 z-40 hidden w-full border-b border-base-200 bg-base-100/50 px-8 backdrop-blur-md transition-colors duration-300 lg:flex">
+        <div className="navbar h-16 sticky top-0 z-40 hidden w-full border-b border-base-200 bg-base-100/50 px-8 backdrop-blur-md transition-colors duration-300 lg:flex">
           <div className="flex-1">
             <h1 className="text-xl font-semibold opacity-0">Dashboard</h1>
           </div>
