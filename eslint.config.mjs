@@ -10,9 +10,25 @@ const eslintConfig = defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
-    'mqtt-listener/node_modules/**',
-    'mqtt-listener/dist/**',
+    'mqtt-listener/**',
   ]),
+  {
+    // Enforce @/ path aliases — prevent bare relative parent imports
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../*'],
+              message:
+                'Use the @/ path alias instead of relative parent imports (e.g. "@/lib/firebase" instead of "../../lib/firebase").',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
