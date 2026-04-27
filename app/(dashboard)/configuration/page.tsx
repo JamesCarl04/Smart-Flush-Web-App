@@ -556,6 +556,7 @@ export default function ConfigurationPage() {
               <Settings2 className="h-5 w-5 text-primary" />
               Device Profile
             </h2>
+            <form onSubmit={(e) => { e.preventDefault(); void handleDeviceSave(); }}>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div className="form-control w-full">
                 <label className="label">
@@ -617,9 +618,9 @@ export default function ConfigurationPage() {
             </div>
             <div className="card-actions mt-4 justify-end">
               <button
+                type="submit"
                 className={`btn btn-primary btn-sm ${savingSection === 'device' ? 'btn-disabled' : ''}`}
                 disabled={loadingConfiguration || savingSection !== null}
-                onClick={handleDeviceSave}
               >
                 {savingSection === 'device' ? (
                   <span className="loading loading-spinner loading-xs"></span>
@@ -629,6 +630,7 @@ export default function ConfigurationPage() {
                 Save Profile
               </button>
             </div>
+            </form>
           </div>
         </div>
 
@@ -638,6 +640,7 @@ export default function ConfigurationPage() {
               <SlidersHorizontal className="h-5 w-5 text-info" />
               Sensor Calibration
             </h2>
+            <form onSubmit={(e) => { e.preventDefault(); void handleCalibrationSave(); }}>
             <div className="flex flex-col items-center gap-8 md:flex-row">
               <div className="form-control w-full flex-1">
                 <label className="label">
@@ -679,11 +682,11 @@ export default function ConfigurationPage() {
             </div>
             <div className="card-actions mt-4 justify-end">
               <button
+                type="submit"
                 className={`btn btn-info btn-sm text-white ${
                   savingSection === 'calibration' ? 'btn-disabled' : ''
                 }`}
                 disabled={loadingConfiguration || savingSection !== null}
-                onClick={handleCalibrationSave}
               >
                 {savingSection === 'calibration' ? (
                   <span className="loading loading-spinner loading-xs"></span>
@@ -693,6 +696,7 @@ export default function ConfigurationPage() {
                 Apply Calibration
               </button>
             </div>
+            </form>
           </div>
         </div>
 
@@ -702,6 +706,7 @@ export default function ConfigurationPage() {
               <Clock className="h-5 w-5 text-accent" />
               Timing Parameters
             </h2>
+            <form onSubmit={(e) => { e.preventDefault(); void handleTimingSave(); }}>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <div className="form-control w-full">
                 <label className="label">
@@ -772,11 +777,11 @@ export default function ConfigurationPage() {
             </div>
             <div className="card-actions mt-4 justify-end">
               <button
+                type="submit"
                 className={`btn btn-accent btn-sm text-white ${
                   savingSection === 'timing' ? 'btn-disabled' : ''
                 }`}
                 disabled={loadingConfiguration || savingSection !== null}
-                onClick={handleTimingSave}
               >
                 {savingSection === 'timing' ? (
                   <span className="loading loading-spinner loading-xs"></span>
@@ -786,6 +791,7 @@ export default function ConfigurationPage() {
                 Save Timings
               </button>
             </div>
+            </form>
           </div>
         </div>
 
@@ -938,6 +944,7 @@ export default function ConfigurationPage() {
       >
         <div className="modal-box">
           <h3 className="font-bold text-lg mb-4">Create Automation Rule</h3>
+          <form onSubmit={(e) => { e.preventDefault(); void handleCreateRule(); }}>
           <div className="space-y-4">
             <div className="form-control w-full">
               <label className="label">
@@ -1049,10 +1056,9 @@ export default function ConfigurationPage() {
               Cancel
             </button>
             <button
+              type="submit"
               className={`btn btn-primary ${creatingRule ? 'btn-disabled' : ''}`}
-              type="button"
               disabled={creatingRule}
-              onClick={() => void handleCreateRule()}
             >
               {creatingRule ? (
                 <span className="loading loading-spinner loading-xs"></span>
@@ -1062,6 +1068,7 @@ export default function ConfigurationPage() {
               Create Rule
             </button>
           </div>
+          </form>
         </div>
         <form method="dialog" className="modal-backdrop">
           <button>close</button>
