@@ -187,6 +187,7 @@ export default function ReportsPage() {
             </h2>
           </div>
 
+          <form onSubmit={(e) => { e.preventDefault(); void handleGenerate(); }}>
           <div className="space-y-6 p-6">
             <div className="form-control w-full">
               <label className="label">
@@ -309,8 +310,8 @@ export default function ReportsPage() {
 
             <div className="pt-2">
               <button
+                type="submit"
                 className="btn btn-primary h-12 w-full shadow-lg"
-                onClick={handleGenerate}
                 disabled={isGenerating || hasInvalidCustomRange}
               >
                 {isGenerating ? (
@@ -331,6 +332,7 @@ export default function ReportsPage() {
               </p>
             </div>
           </div>
+          </form>
         </div>
 
         <div className="lg:col-span-2">
