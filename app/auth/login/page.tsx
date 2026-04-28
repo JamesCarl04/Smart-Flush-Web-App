@@ -13,8 +13,16 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Eye, EyeOff } from 'lucide-react';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  email: z
+    .string()
+    .trim()
+    .email('Invalid email address')
+    .toLowerCase(),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;

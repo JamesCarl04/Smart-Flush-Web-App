@@ -12,7 +12,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon } from 'lucide-react';
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z
+    .string()
+    .trim()
+    .email('Invalid email address')
+    .toLowerCase(),
 });
 
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
