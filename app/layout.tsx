@@ -3,6 +3,7 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import NextTopLoader from 'nextjs-toploader';
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
@@ -50,6 +51,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-base-100 text-base-content antialiased transition-colors duration-300`}
         suppressHydrationWarning
       >
+        <NextTopLoader />
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
