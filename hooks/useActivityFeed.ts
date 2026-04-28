@@ -19,63 +19,84 @@ interface SensorReading {
   timestamp: { _seconds: number };
 }
 
-function mapReadingToActivity(r: SensorReading): ActivityEvent {
-  switch (r.sensorType) {
+function mapReadingToActivity(reading: SensorReading): ActivityEvent {
+  switch (reading.sensorType) {
     case 'waterflow':
       return {
-        id: r.id,
+        id: reading.id,
         type: 'flushEvent',
-        timestamp: new Date(r.timestamp._seconds * 1000),
-        details: `Flush: ${r.value} ${r.unit}`,
+        timestamp: new Date(reading.timestamp._seconds * 1000),
+        details: `Flush: ${reading.value} ${reading.unit}`,
       };
     case 'ultrasonic':
       return {
-        id: r.id,
+        id: reading.id,
         type: 'lidEvent',
-        timestamp: new Date(r.timestamp._seconds * 1000),
-        details: `Distance: ${r.value} ${r.unit}`,
+        timestamp: new Date(reading.timestamp._seconds * 1000),
+        details: `Distance: ${reading.value} ${reading.unit}`,
       };
     default:
       return {
-        id: r.id,
+        id: reading.id,
         type: 'uvCycle',
-        timestamp: new Date(r.timestamp._seconds * 1000),
-        details: `${r.sensorType}: ${r.value} ${r.unit}`,
+        timestamp: new Date(reading.timestamp._seconds * 1000),
+        details: `${reading.sensorType}: ${reading.value} ${reading.unit}`,
       };
   }
 }
 
 export function useActivityFeed(deviceId = 'toilet-01') {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchFeed = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const today = new Date().toISOString().slice(0, 10);
-      const res = await apiFetch<{ success: boolean; data: SensorReading[] }>(
-        `/api/sensors/${deviceId}/readings?from=${today}`,
-        user,
-      );
-
-      if (res.success && res.data) {
-        // Take the most recent 20 readings, newest first
-        const recent = res.data.slice(-20).reverse();
-        setEvents(recent.map(mapReadingToActivity));
+  const fetchFeed = useCallback(
+    async (showLoading = false) => {
+      if (authLoading) {
+        return;
       }
-    } catch {
-      // Silently handle — feed will be empty
-    } finally {
-      setLoading(false);
-    }
-  }, [user, deviceId]);
+
+      if (!user) {
+        setEvents([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        const response = await apiFetch<{
+          success: boolean;
+          data: SensorReading[];
+        }>(`/api/sensors/${deviceId}/readings?from=${today}`, user);
+
+        if (response.success && response.data) {
+          const recent = response.data.slice(-20).reverse();
+          setEvents(recent.map(mapReadingToActivity));
+        } else {
+          setEvents([]);
+        }
+      } catch (error) {
+        console.warn('[useActivityFeed] feed request failed:', error);
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
+      }
+    },
+    [authLoading, deviceId, user],
+  );
 
   useEffect(() => {
-    fetchFeed();
-    const interval = setInterval(fetchFeed, 15_000);
-    return () => clearInterval(interval);
+    void fetchFeed(true);
+    const interval = window.setInterval(() => {
+      void fetchFeed(false);
+    }, 15_000);
+
+    return () => window.clearInterval(interval);
   }, [fetchFeed]);
 
   return { events, loading };
