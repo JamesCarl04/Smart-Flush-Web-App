@@ -1,7 +1,6 @@
 import { StatCards } from '@/components/dashboard/StatCards';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { ControlPanel } from '@/components/dashboard/ControlPanel';
-import { Toaster } from 'react-hot-toast';
 
 export default function DashboardPage() {
   return (
@@ -32,7 +31,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }

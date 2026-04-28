@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Eye, EyeOff } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const registerSchema = z
   .object({
@@ -67,19 +68,26 @@ export default function RegisterPage() {
       const auth = getAuth(app);
       await signInWithEmailAndPassword(auth, data.email, data.password);
 
+      toast.success('Account created successfully.');
       router.push('/dashboard');
       router.refresh();
     } catch (err: unknown) {
       console.error('Register error:', err);
       const errorMessage = getErrorMessage(err);
+      const message =
+        errorMessage?.includes('email-already-in-use') ||
+        errorMessage?.includes('already exists')
+          ? 'Email is already registered. Please login instead.'
+          : errorMessage || 'Failed to create account. Please try again.';
       if (
         errorMessage?.includes('email-already-in-use') ||
         errorMessage?.includes('already exists')
       ) {
-        setError('Email is already registered. Please login instead.');
+        setError(message);
       } else {
-        setError(errorMessage || 'Failed to create account. Please try again.');
+        setError(message);
       }
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

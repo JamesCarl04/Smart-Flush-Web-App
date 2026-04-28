@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bell, User, LogOut, UserCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import toast from 'react-hot-toast';
 
 export default function DashboardLayout({
   children,
@@ -19,8 +20,13 @@ export default function DashboardLayout({
   const { logout, user } = useAuth();
 
   const handleLogout = async () => {
-    await logout();
-    router.push('/auth/login');
+    try {
+      await logout();
+      toast.success('Logged out successfully.');
+      router.push('/auth/login');
+    } catch {
+      toast.error('Failed to log out. Please try again.');
+    }
   };
 
   const { alerts, unreadCount } = useAlerts();

@@ -10,6 +10,7 @@ import { getErrorCode } from '@/lib/error-utils';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -38,14 +39,17 @@ export default function ForgotPasswordPage() {
     try {
       const auth = getAuth(app);
       await sendPasswordResetEmail(auth, data.email);
-      setSuccess('Password reset email sent! Check your inbox.');
+      const message = 'Password reset email sent! Check your inbox.';
+      setSuccess(message);
+      toast.success(message);
     } catch (err: unknown) {
       console.error('Reset password error:', err);
-      if (getErrorCode(err) === 'auth/user-not-found') {
-        setError('No account found with this email.');
-      } else {
-        setError('Failed to send reset email. Please try again.');
-      }
+      const message =
+        getErrorCode(err) === 'auth/user-not-found'
+          ? 'No account found with this email.'
+          : 'Failed to send reset email. Please try again.';
+      setError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
