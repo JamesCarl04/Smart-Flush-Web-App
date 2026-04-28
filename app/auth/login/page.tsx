@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Eye, EyeOff } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -40,24 +41,26 @@ export default function LoginPage() {
     try {
       const auth = getAuth(app);
       await signInWithEmailAndPassword(auth, data.email, data.password);
+      toast.success('Logged in successfully.');
       router.push('/dashboard');
       router.refresh();
     } catch (err: unknown) {
       console.error('Login error:', err);
       const errorCode = getErrorCode(err);
+      let message = 'Failed to login. Please try again.';
       // Firebase specific error codes
       if (
         errorCode === 'auth/user-not-found' ||
         errorCode === 'auth/invalid-credential'
       ) {
-        setError('Invalid email or password. Please try again.');
+        message = 'Invalid email or password. Please try again.';
       } else if (errorCode === 'auth/wrong-password') {
-        setError('Wrong password. Please try again.');
+        message = 'Wrong password. Please try again.';
       } else if (errorCode === 'auth/too-many-requests') {
-        setError('Too many attempts. Please try again later.');
-      } else {
-        setError('Failed to login. Please try again.');
+        message = 'Too many attempts. Please try again later.';
       }
+      setError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

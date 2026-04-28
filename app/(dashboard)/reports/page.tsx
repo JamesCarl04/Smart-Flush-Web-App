@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { format, endOfMonth, startOfMonth, subDays, subMonths } from 'date-fns';
 import {
   FileBarChart,
@@ -423,7 +423,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }

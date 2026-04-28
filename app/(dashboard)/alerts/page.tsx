@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { useAlerts, AlertSeverity } from '@/hooks/useAlerts';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -219,7 +219,6 @@ export default function AlertsPage() {
           </div>
         </div>
       </div>
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }
