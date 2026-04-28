@@ -5,6 +5,17 @@ import { useEffect, useSyncExternalStore } from 'react';
 const STORAGE_KEY = 'smartflush-presentation-mode';
 const COOKIE_NAME = 'presentation-mode';
 
+function readPresentationModeCookie() {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  return document.cookie
+    .split(';')
+    .map((cookie) => cookie.trim())
+    .some((cookie) => cookie === `${COOKIE_NAME}=1`);
+}
+
 function readPresentationModeFromBrowser() {
   if (typeof window === 'undefined') {
     return false;
@@ -20,7 +31,11 @@ function readPresentationModeFromBrowser() {
     return false;
   }
 
-  return sessionStorage.getItem(STORAGE_KEY) === '1';
+  if (sessionStorage.getItem(STORAGE_KEY) === '1') {
+    return true;
+  }
+
+  return readPresentationModeCookie();
 }
 
 function subscribeToPresentationMode(onStoreChange: () => void) {
