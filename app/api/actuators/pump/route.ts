@@ -1,6 +1,6 @@
 // app/api/actuators/pump/route.ts
 import { NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireNotViewer } from '@/lib/auth-helpers';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { ensureDeviceConnected } from '@/lib/device-connection';
 import { publishPumpCommand } from '@/lib/mqtt-publish';
@@ -12,7 +12,8 @@ interface PumpBody {
 // POST /api/actuators/pump
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireNotViewer(user);
 
     const body = (await request.json()) as Partial<PumpBody>;
     if (body.command !== 'ON' && body.command !== 'OFF') {

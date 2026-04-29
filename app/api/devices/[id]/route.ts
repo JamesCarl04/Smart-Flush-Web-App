@@ -1,7 +1,7 @@
 // app/api/devices/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
 interface RouteParams {
@@ -115,13 +115,14 @@ export async function PUT(
   }
 }
 
-// DELETE /api/devices/:id
+// DELETE /api/devices/:id — admin only
 export async function DELETE(
   request: Request,
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
     const { id } = await params;
 
     const docRef = adminDb.collection('devices').doc(id);

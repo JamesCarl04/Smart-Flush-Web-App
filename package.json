@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "scripts\\dev-all.cmd",
+    "dev:web": "next dev",
+    "dev:listener": "npm --prefix mqtt-listener run dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

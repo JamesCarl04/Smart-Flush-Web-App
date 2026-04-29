@@ -1,7 +1,7 @@
 // app/api/devices/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
 interface CreateDeviceBody {
@@ -32,7 +32,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 // POST /api/devices — create a new device
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
 
     const body = (await request.json()) as Partial<CreateDeviceBody>;
 

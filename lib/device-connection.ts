@@ -4,6 +4,11 @@ import {
   DEFAULT_DEVICE_ID,
   DEVICE_HEARTBEAT_TIMEOUT_MS,
 } from '@/lib/device-constants';
+import {
+  getCachedDeviceEntry,
+  isQuotaExceededError,
+  shouldUseLocalRuntimeCache,
+} from '@/lib/local-runtime-cache';
 
 export type DeviceStatus = 'online' | 'offline';
 
@@ -91,7 +96,43 @@ export function getConnectionStateFromDeviceData(
 export async function getDeviceConnectionState(
   deviceId = DEFAULT_DEVICE_ID,
 ): Promise<DeviceConnectionState> {
-  const snapshot = await adminDb.collection('devices').doc(deviceId).get();
+  if (shouldUseLocalRuntimeCache()) {
+    const cachedDevice = await getCachedDeviceEntry(deviceId);
+
+    if (!cachedDevice) {
+      return {
+        deviceId,
+        exists: false,
+        connected: false,
+        status: 'offline',
+        lastSeenMs: null,
+        staleMs: null,
+        reason: 'Waiting for local MQTT heartbeat',
+      };
+    }
+
+    return getConnectionStateFromDeviceData(deviceId, {
+      lastSeen: new Date(cachedDevice.lastSeenMs ?? 0),
+    });
+  }
+
+  let snapshot;
+
+  try {
+    snapshot = await adminDb.collection('devices').doc(deviceId).get();
+  } catch (error) {
+    if (isQuotaExceededError(error)) {
+      const cachedDevice = await getCachedDeviceEntry(deviceId);
+
+      if (cachedDevice) {
+        return getConnectionStateFromDeviceData(deviceId, {
+          lastSeen: new Date(cachedDevice.lastSeenMs ?? 0),
+        });
+      }
+    }
+
+    throw error;
+  }
 
   if (!snapshot.exists) {
     return {

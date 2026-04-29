@@ -5,6 +5,10 @@
 import { adminDb } from './firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { incrementCounters } from './hardware-counters';
+import {
+  recordDeviceHeartbeat,
+  recordSensorReading,
+} from './local-runtime-cache';
 
 // ─── Payload interfaces (match MQTT topic contract) ───────────────────────────
 
@@ -140,6 +144,14 @@ export async function writeSensorReading(
     unit = payload.unit;
   }
 
+  await recordSensorReading({
+    deviceId,
+    sensorType,
+    value,
+    unit,
+    timestampMs: Date.now(),
+  });
+
   if (sensorType === 'ultrasonic') {
     const isFailure = value <= 0 || value > 400;
     void incrementCounters(
@@ -269,6 +281,8 @@ export async function writeUVCycle(
 export async function updateDeviceLastSeen(deviceId: string): Promise<void> {
   const now = Date.now();
   const lastWriteAt = lastSeenWriteCache.get(deviceId);
+
+  await recordDeviceHeartbeat(deviceId, now);
 
   if (
     lastWriteAt !== undefined &&
