@@ -63,6 +63,24 @@ export function useAlerts() {
     fetchAlerts();
   }, [fetchAlerts]);
 
+  const acknowledgeAlerts = async (ids: string[]) => {
+    if (!user || ids.length === 0) return false;
+
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          apiFetch(`/api/alerts/${id}/acknowledge`, user, {
+            method: 'POST',
+          }),
+        ),
+      );
+      await fetchAlerts();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const acknowledgeAlert = async (id: string | 'ALL') => {
     if (!user) return false;
     try {
@@ -87,6 +105,7 @@ export function useAlerts() {
     alerts,
     unreadCount,
     loading,
+    acknowledgeAlerts,
     acknowledgeAlert,
     refresh: fetchAlerts,
   };

@@ -15,6 +15,7 @@ import {
   type UVPayload,
 } from './firestore-writers';
 import { evaluateAlerts, resetOfflineWatchdog } from './alert-engine';
+import { recordDeviceHeartbeat } from './local-runtime-cache';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,9 @@ export function getMqttClient(): MqttClient {
 
   client.on('connect', () => {
     console.log(`[${ts()}] [MQTT] ✓ Connected to ${brokerUrl}`);
+    // Stamp a fresh heartbeat immediately so the dashboard shows online in dev mode
+    // even before the first sensor message arrives from the ESP32
+    void recordDeviceHeartbeat(DEVICE_ID);
     client!.subscribe(
       ['toilet/sensors/#', 'toilet/events/#'],
       { qos: 1 },

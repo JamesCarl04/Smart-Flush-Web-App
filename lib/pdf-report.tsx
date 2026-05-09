@@ -17,6 +17,24 @@ export interface UVCycleRow {
   timestamp: string;
 }
 
+export interface MaintenanceTaskRow {
+  id: string;
+  toiletId: string;
+  timeAssigned: string;
+  timeAcknowledged: string;
+  timeCompleted: string;
+  totalDuration: string;
+  status: 'pending' | 'acknowledged' | 'completed';
+}
+
+export interface MaintenanceTaskSummary {
+  totalTasks: number;
+  completedCount: number;
+  pendingCount: number;
+  averageResponseTime: string;
+  averageCompletionTime: string;
+}
+
 interface PdfLine {
   text: string;
   fontSize: number;
@@ -181,6 +199,73 @@ function buildReportLines(
   return lines;
 }
 
+function buildMaintenanceTaskReportLines(
+  from: string,
+  to: string,
+  tasks: MaintenanceTaskRow[],
+  summary: MaintenanceTaskSummary,
+): PdfLine[] {
+  const lines: PdfLine[] = [
+    { text: 'Maintenance Task Report', fontSize: 20, spacingAfter: 10 },
+    { text: `Period: ${from} to ${to}`, fontSize: 11, spacingAfter: 14 },
+    { text: 'Summary', fontSize: 14, spacingAfter: 6 },
+    { text: `Total Tasks: ${summary.totalTasks}`, fontSize: 11 },
+    { text: `Completed: ${summary.completedCount}`, fontSize: 11 },
+    { text: `Pending: ${summary.pendingCount}`, fontSize: 11 },
+    {
+      text: `Average Response Time: ${summary.averageResponseTime}`,
+      fontSize: 11,
+    },
+    {
+      text: `Average Completion Time: ${summary.averageCompletionTime}`,
+      fontSize: 11,
+      spacingAfter: 14,
+    },
+    {
+      text: `Tasks (${tasks.length})`,
+      fontSize: 14,
+      spacingAfter: 6,
+    },
+  ];
+
+  if (tasks.length === 0) {
+    lines.push({
+      text: 'No maintenance tasks were recorded for this period.',
+      fontSize: 11,
+    });
+    return lines;
+  }
+
+  for (const task of tasks.slice(0, 12)) {
+    lines.push({
+      text: `${task.timeAssigned.slice(0, 16)}  ${task.toiletId}  ${task.status.toUpperCase()}`,
+      fontSize: 10,
+    });
+    lines.push({
+      text: `Acknowledged: ${task.timeAcknowledged}`,
+      fontSize: 10,
+    });
+    lines.push({
+      text: `Completed: ${task.timeCompleted}`,
+      fontSize: 10,
+    });
+    lines.push({
+      text: `Total Duration: ${task.totalDuration}`,
+      fontSize: 10,
+      spacingAfter: 8,
+    });
+  }
+
+  if (tasks.length > 12) {
+    lines.push({
+      text: `... and ${tasks.length - 12} more maintenance tasks`,
+      fontSize: 10,
+    });
+  }
+
+  return lines;
+}
+
 function paginateLines(lines: PdfLine[]): PositionedLine[][] {
   const pages: PositionedLine[][] = [[]];
   let pageIndex = 0;
@@ -297,6 +382,17 @@ export async function generatePDFBuffer(
   uvCycles: UVCycleRow[],
 ): Promise<Uint8Array> {
   const lines = buildReportLines(from, to, flushEvents, uvCycles);
+  const pages = paginateLines(lines);
+  return buildPdfBuffer(pages);
+}
+
+export async function generateMaintenanceTaskPDFBuffer(
+  from: string,
+  to: string,
+  tasks: MaintenanceTaskRow[],
+  summary: MaintenanceTaskSummary,
+): Promise<Uint8Array> {
+  const lines = buildMaintenanceTaskReportLines(from, to, tasks, summary);
   const pages = paginateLines(lines);
   return buildPdfBuffer(pages);
 }

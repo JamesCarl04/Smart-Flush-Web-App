@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useAlerts, AlertSeverity } from '@/hooks/useAlerts';
+import { useTasks } from '@/hooks/useTasks';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Bell,
@@ -14,19 +16,110 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-export default function AlertsPage() {
-  const { alerts, unreadCount, loading, acknowledgeAlert } = useAlerts();
-  const [filter, setFilter] = useState<'all' | 'critical_high' | 'unread'>(
-    'all',
-  );
-  const [dismissingIds, setDismissingIds] = useState<string[]>([]);
+type AlertFilter = 'all' | 'critical_high' | 'unread' | 'tasks';
 
-  const filteredAlerts = alerts.filter((alert) => {
-    if (filter === 'unread') return !alert.acknowledged;
-    if (filter === 'critical_high')
-      return alert.severity === 'critical' || alert.severity === 'high';
-    return true;
-  });
+type DashboardAlert =
+  | {
+      id: string;
+      title: string;
+      description: string;
+      severity: AlertSeverity;
+      timestamp: Date;
+      acknowledged: boolean;
+      source: 'system';
+    }
+  | {
+      id: string;
+      title: string;
+      description: string;
+      severity: 'medium';
+      timestamp: Date;
+      acknowledged: false;
+      source: 'task';
+      taskId: string;
+      toiletId: string;
+    };
+
+const OVERDUE_TASK_THRESHOLD_MS = 30 * 60 * 1000;
+
+export default function AlertsPage() {
+  const {
+    alerts,
+    loading: alertsLoading,
+    acknowledgeAlert,
+    acknowledgeAlerts,
+  } = useAlerts();
+  const { tasks, loading: tasksLoading } = useTasks(50);
+  const [filter, setFilter] = useState<AlertFilter>('all');
+  const [dismissingIds, setDismissingIds] = useState<string[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const dashboardAlerts = useMemo<DashboardAlert[]>(() => {
+    const systemAlerts: DashboardAlert[] = alerts.map((alert) => ({
+      ...alert,
+      source: 'system',
+    }));
+
+    const overdueTaskAlerts: DashboardAlert[] = tasks
+      .filter(
+        (task) =>
+          task.triggeredAt > 0 &&
+          task.status === 'pending' &&
+          now - task.triggeredAt > OVERDUE_TASK_THRESHOLD_MS,
+      )
+      .map((task) => {
+        const pendingMinutes = Math.floor((now - task.triggeredAt) / 60_000);
+
+        return {
+          id: `task-overdue-${task.id}`,
+          title: 'Maintenance Task Overdue',
+          description: `Cleaning task for ${task.toiletId} has been pending for ${pendingMinutes} minutes without acknowledgment.`,
+          severity: 'medium',
+          timestamp: new Date(task.triggeredAt + OVERDUE_TASK_THRESHOLD_MS),
+          acknowledged: false,
+          source: 'task',
+          taskId: task.id,
+          toiletId: task.toiletId,
+        };
+      });
+
+    return [...systemAlerts, ...overdueTaskAlerts].sort(
+      (left, right) => right.timestamp.getTime() - left.timestamp.getTime(),
+    );
+  }, [alerts, now, tasks]);
+
+  const loading = alertsLoading || tasksLoading;
+  const unreadCount = dashboardAlerts.filter(
+    (alert) => !alert.acknowledged,
+  ).length;
+
+  const filteredAlerts = useMemo(
+    () =>
+      dashboardAlerts.filter((alert) => {
+        if (filter === 'tasks') {
+          return alert.source === 'task';
+        }
+
+        if (filter === 'unread') {
+          return !alert.acknowledged;
+        }
+
+        if (filter === 'critical_high') {
+          return alert.severity === 'critical' || alert.severity === 'high';
+        }
+
+        return true;
+      }),
+    [dashboardAlerts, filter],
+  );
 
   const getSeverityMeta = (severity: AlertSeverity) => {
     switch (severity) {
@@ -61,16 +154,23 @@ export default function AlertsPage() {
     const idsToDismiss =
       id === 'ALL'
         ? filteredAlerts
-            .filter((alert) => !alert.acknowledged)
+            .filter((alert) => alert.source === 'system' && !alert.acknowledged)
             .map((alert) => alert.id)
         : [id];
+
+    if (idsToDismiss.length === 0) {
+      return;
+    }
 
     setDismissingIds((current) =>
       Array.from(new Set([...current, ...idsToDismiss])),
     );
     await new Promise((resolve) => window.setTimeout(resolve, 220));
 
-    const success = await acknowledgeAlert(id);
+    const success =
+      id === 'ALL'
+        ? await acknowledgeAlerts(idsToDismiss)
+        : await acknowledgeAlert(id);
     if (success) {
       toast.success(
         id === 'ALL' ? 'All alerts acknowledged' : 'Alert acknowledged',
@@ -105,7 +205,12 @@ export default function AlertsPage() {
           <button
             className="btn btn-neutral btn-sm"
             onClick={() => handleAcknowledge('ALL')}
-            disabled={unreadCount === 0 || loading}
+            disabled={
+              loading ||
+              filteredAlerts.every(
+                (alert) => alert.source !== 'system' || alert.acknowledged,
+              )
+            }
           >
             <CheckSquare className="h-4 w-4" /> Ack All
           </button>
@@ -132,6 +237,12 @@ export default function AlertsPage() {
               onClick={() => setFilter('unread')}
             >
               Unacknowledged
+            </button>
+            <button
+              className={`tab tab-lg ${filter === 'tasks' ? 'tab-active font-bold' : ''}`}
+              onClick={() => setFilter('tasks')}
+            >
+              Tasks
             </button>
           </div>
 
@@ -197,7 +308,14 @@ export default function AlertsPage() {
                           </div>
                         </div>
                         <div className="flex w-full shrink-0 justify-end md:w-auto">
-                          {!alert.acknowledged ? (
+                          {alert.source === 'task' ? (
+                            <Link
+                              href="/dashboard#maintenance-task-panel"
+                              className="btn btn-warning btn-sm w-full md:w-auto"
+                            >
+                              View Task
+                            </Link>
+                          ) : !alert.acknowledged ? (
                             <button
                               className="btn btn-outline btn-primary btn-sm w-full md:w-auto"
                               onClick={() => handleAcknowledge(alert.id)}
