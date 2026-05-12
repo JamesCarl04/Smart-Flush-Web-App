@@ -210,7 +210,7 @@ export default function ReportsPage() {
               <select
                 className="select select-bordered w-full"
                 value={reportType}
-                onChange={(e) => setReportType(e.target.value as ReportType)}
+                onChange={(event) => setReportType(event.target.value as ReportType)}
               >
                 {REPORT_TYPE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -237,10 +237,10 @@ export default function ReportsPage() {
                       type="date"
                       className="input input-bordered w-full"
                       value={customRange.from}
-                      onChange={(e) =>
+                      onChange={(event) =>
                         setCustomRange((current) => ({
                           ...current,
-                          from: e.target.value,
+                          from: event.target.value,
                         }))
                       }
                     />
@@ -255,10 +255,10 @@ export default function ReportsPage() {
                       type="date"
                       className="input input-bordered w-full"
                       value={customRange.to}
-                      onChange={(e) =>
+                      onChange={(event) =>
                         setCustomRange((current) => ({
                           ...current,
-                          to: e.target.value,
+                          to: event.target.value,
                         }))
                       }
                     />
@@ -275,8 +275,8 @@ export default function ReportsPage() {
                 <select
                   className="select select-bordered w-full"
                   value={dateRange}
-                  onChange={(e) =>
-                    setDateRange(e.target.value as DateRangeOption)
+                  onChange={(event) =>
+                    setDateRange(event.target.value as DateRangeOption)
                   }
                 >
                   {RANGE_OPTIONS.map((option) => (
