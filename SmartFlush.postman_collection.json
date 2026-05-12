@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Smart Flush API",
-    "_postman_id": "smart-flush-api-collection",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "description": "Complete API test collection for the Smart Flush IoT System. Import this file into Postman to get all 29 routes ready instantly.\n\nHOW TO USE:\n1. Import this file into Postman\n2. Import the SmartFlush.postman_environment.json file too\n3. Select 'Smart Flush Local' environment from the top-right dropdown\n4. Open 'Auth > Login' and click Send\n5. Token is saved automatically — now test any route!",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

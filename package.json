@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "scripts\\dev-all.cmd",
+    "dev:web": "next dev",
+    "dev:listener": "npm --prefix mqtt-listener run dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "railway:listener:build": "npm --prefix mqtt-listener install && npm --prefix mqtt-listener run build",
+    "railway:listener:start": "npm --prefix mqtt-listener run start:prod"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

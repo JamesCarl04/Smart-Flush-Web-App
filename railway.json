@@ -1,0 +1,17 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "if [ -d mqtt-listener ]; then npm --prefix mqtt-listener ci && npm --prefix mqtt-listener run build; else npm ci && npm run build; fi",
+    "watchPatterns": [
+      "/mqtt-listener/**",
+      "/railway.json",
+      "/nixpacks.toml"
+    ]
+  },
+  "deploy": {
+    "startCommand": "if [ -d mqtt-listener ]; then npm --prefix mqtt-listener run start:prod; else npm run start:prod; fi",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

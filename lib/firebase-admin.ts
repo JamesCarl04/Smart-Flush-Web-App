@@ -2,13 +2,26 @@
 // Server-side only — never import this from client components
 import * as admin from 'firebase-admin';
 
+function normalizePrivateKey(value: string | undefined): string | undefined {
+  let key = value?.trim();
+  if (!key) return undefined;
+
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+
+  return key.replace(/\\n/g, '\n');
+}
+
 if (!admin.apps.length) {
   try {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
-      /\\n/g,
-      '\n',
+    const privateKey = normalizePrivateKey(
+      process.env.FIREBASE_ADMIN_PRIVATE_KEY,
     );
 
     if (projectId && clientEmail && privateKey) {

@@ -5,6 +5,10 @@
 import { adminDb } from './firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { incrementCounters } from './hardware-counters';
+import {
+  recordDeviceHeartbeat,
+  recordSensorReading,
+} from './local-runtime-cache';
 
 // ─── Payload interfaces (match MQTT topic contract) ───────────────────────────
 
@@ -46,6 +50,42 @@ export interface PumpPayload {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readPositiveFloatEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const DEVICE_LAST_SEEN_MIN_UPDATE_INTERVAL_MS = readPositiveIntEnv(
+  'DEVICE_LAST_SEEN_MIN_UPDATE_INTERVAL_MS',
+  30_000,
+);
+const ULTRASONIC_MIN_WRITE_INTERVAL_MS = readPositiveIntEnv(
+  'ULTRASONIC_MIN_WRITE_INTERVAL_MS',
+  15_000,
+);
+const ULTRASONIC_MIN_CHANGE_CM = readPositiveFloatEnv(
+  'ULTRASONIC_MIN_CHANGE_CM',
+  2,
+);
+
+const lastSeenWriteCache = new Map<string, number>();
+const sensorWriteCache = new Map<string, { value: number; writtenAtMs: number }>();
+
 /** Returns today's date as YYYY-MM-DD in UTC */
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -55,6 +95,30 @@ function todayKey(): string {
 function sensorTypeFromTopic(topic: string): string {
   const parts = topic.split('/');
   return parts[parts.length - 1] ?? 'unknown';
+}
+
+function shouldPersistSensorReading(
+  sensorType: string,
+  value: number,
+  deviceId: string,
+): boolean {
+  if (sensorType !== 'ultrasonic') {
+    return true;
+  }
+
+  const cacheKey = `${deviceId}:${sensorType}`;
+  const previous = sensorWriteCache.get(cacheKey);
+
+  if (!previous) {
+    return true;
+  }
+
+  const ageMs = Date.now() - previous.writtenAtMs;
+  const delta = Math.abs(previous.value - value);
+
+  return (
+    ageMs >= ULTRASONIC_MIN_WRITE_INTERVAL_MS || delta >= ULTRASONIC_MIN_CHANGE_CM
+  );
 }
 
 // ─── Writers ─────────────────────────────────────────────────────────────────
@@ -68,24 +132,45 @@ export async function writeSensorReading(
   payload: SensorPayload,
   deviceId: string,
 ): Promise<void> {
+  const sensorType = sensorTypeFromTopic(topic);
+  let value: number;
+  let unit: string;
+
+  if ('distance' in payload) {
+    value = payload.distance;
+    unit = payload.unit;
+  } else {
+    value = payload.volume;
+    unit = payload.unit;
+  }
+
+  await recordSensorReading({
+    deviceId,
+    sensorType,
+    value,
+    unit,
+    timestampMs: Date.now(),
+  });
+
+  if (sensorType === 'ultrasonic') {
+    const isFailure = value <= 0 || value > 400;
+    void incrementCounters(
+      deviceId,
+      isFailure ? 'ultrasonic_fail' : 'ultrasonic_ok',
+      payload as unknown as Record<string, unknown>,
+    );
+  }
+
+  if (!shouldPersistSensorReading(sensorType, value, deviceId)) {
+    return;
+  }
+
   try {
     const dateKey = todayKey();
-    const sensorType = sensorTypeFromTopic(topic);
     const collectionRef = adminDb
       .collection('sensorReadings')
       .doc(dateKey)
       .collection('readings');
-
-    let value: number;
-    let unit: string;
-
-    if ('distance' in payload) {
-      value = payload.distance;
-      unit = payload.unit;
-    } else {
-      value = payload.volume;
-      unit = payload.unit;
-    }
 
     const docRef = collectionRef.doc();
     await docRef.set({
@@ -97,19 +182,14 @@ export async function writeSensorReading(
       timestamp: Timestamp.now(),
     });
 
+    sensorWriteCache.set(`${deviceId}:${sensorType}`, {
+      value,
+      writtenAtMs: Date.now(),
+    });
+
     console.log(
       `[Firestore] sensorReading written: ${sensorType} = ${value} ${unit}`,
     );
-
-    // Track ultrasonic consecutive failures
-    if (sensorType === 'ultrasonic') {
-      const isFailure = value <= 0 || value > 400; // HC-SR04 out-of-range
-      void incrementCounters(
-        deviceId,
-        isFailure ? 'ultrasonic_fail' : 'ultrasonic_ok',
-        payload as unknown as Record<string, unknown>,
-      );
-    }
   } catch (error) {
     console.error('[Firestore] writeSensorReading error:', error);
   }
@@ -199,6 +279,20 @@ export async function writeUVCycle(
  * Sets the device status to 'online' and bumps lastSeen to now.
  */
 export async function updateDeviceLastSeen(deviceId: string): Promise<void> {
+  const now = Date.now();
+  const lastWriteAt = lastSeenWriteCache.get(deviceId);
+
+  await recordDeviceHeartbeat(deviceId, now);
+
+  if (
+    lastWriteAt !== undefined &&
+    now - lastWriteAt < DEVICE_LAST_SEEN_MIN_UPDATE_INTERVAL_MS
+  ) {
+    return;
+  }
+
+  lastSeenWriteCache.set(deviceId, now);
+
   try {
     await adminDb.collection('devices').doc(deviceId).set(
       {

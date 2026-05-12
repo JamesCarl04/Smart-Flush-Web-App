@@ -49,6 +49,11 @@ npm run dev
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | Service account email |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | Service account private key (with `\n` escapes) |
 | `MQTT_DEVICE_ID` | Device identifier (default: `toilet-01`) |
+| `DEVICE_LAST_SEEN_MIN_UPDATE_INTERVAL_MS` | Optional. Minimum gap between `lastSeen` writes (default: `30000`) |
+| `ULTRASONIC_MIN_WRITE_INTERVAL_MS` | Optional. Minimum gap between stored ultrasonic readings (default: `15000`) |
+| `ULTRASONIC_MIN_CHANGE_CM` | Optional. Persist sooner when ultrasonic distance changes by this much (default: `2`) |
+| `MAINTENANCE_ALERT_CHECK_INTERVAL_MS` | Optional. Minimum gap between maintenance-threshold checks (default: `60000`) |
+| `AUTOMATION_RULES_CACHE_MS` | Optional. Cache window for `automationRules` reads (default: `60000`) |
 
 ## MQTT Topics
 

@@ -36,6 +36,24 @@ interface MaintenanceCounters {
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const MAINTENANCE_ALERT_CHECK_INTERVAL_MS = readPositiveIntEnv(
+  'MAINTENANCE_ALERT_CHECK_INTERVAL_MS',
+  60_000,
+);
+
+const lastMaintenanceCheckByDevice = new Map<string, number>();
+const ultrasonicHealthState = new Map<string, 'fail' | 'ok'>();
+
 const THRESHOLDS: Record<
   keyof MaintenanceCounters,
   { limit: number; message: string }
@@ -125,6 +143,7 @@ export async function incrementCounters(
       }
 
       case 'ultrasonic_fail': {
+        ultrasonicHealthState.set(deviceId, 'fail');
         await ref.set(
           { ultrasonicConsecutiveFailures: FieldValue.increment(1) },
           { merge: true },
@@ -133,16 +152,18 @@ export async function incrementCounters(
       }
 
       case 'ultrasonic_ok': {
-        // Reset consecutive failures on a successful reading
+        if (ultrasonicHealthState.get(deviceId) === 'ok') {
+          return;
+        }
+
+        ultrasonicHealthState.set(deviceId, 'ok');
         await ref.set({ ultrasonicConsecutiveFailures: 0 }, { merge: true });
         break;
       }
     }
 
-    console.log(
-      `[HardwareCounters] Incremented ${eventType} for device ${deviceId}`,
-    );
-    await evaluateMaintenanceAlerts(deviceId);
+    console.log(`[HardwareCounters] Updated ${eventType} for device ${deviceId}`);
+    void evaluateMaintenanceAlerts(deviceId);
   } catch (error) {
     console.error('[HardwareCounters] incrementCounters error:', error);
   }
@@ -155,6 +176,18 @@ export async function incrementCounters(
 export async function evaluateMaintenanceAlerts(
   deviceId: string,
 ): Promise<void> {
+  const now = Date.now();
+  const lastCheckAt = lastMaintenanceCheckByDevice.get(deviceId);
+
+  if (
+    lastCheckAt !== undefined &&
+    now - lastCheckAt < MAINTENANCE_ALERT_CHECK_INTERVAL_MS
+  ) {
+    return;
+  }
+
+  lastMaintenanceCheckByDevice.set(deviceId, now);
+
   try {
     const snap = await countersRef(deviceId).get();
     if (!snap.exists) return;

@@ -44,6 +44,19 @@ interface UVPayload {
 
 let client: MqttClient | null = null;
 
+function buildBrokerUrl(hostOrUrl: string | undefined, port: string): string {
+  const value = hostOrUrl?.trim();
+  if (!value) {
+    throw new Error('MQTT_BROKER_URL is required');
+  }
+
+  if (/^mqtts?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `mqtts://${value}:${port.trim() || '8883'}`;
+}
+
 // ─── Message router ───────────────────────────────────────────────────────────
 
 async function handleMessage(topic: string, raw: Buffer): Promise<void> {
@@ -103,13 +116,22 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
 export function getMqttClient(): MqttClient {
   if (client) return client;
 
-  const brokerUrl = `mqtts://${process.env.MQTT_BROKER_URL}:${process.env.MQTT_PORT ?? '8883'}`;
+  const brokerUrl = buildBrokerUrl(
+    process.env.MQTT_BROKER_URL,
+    process.env.MQTT_PORT ?? '8883',
+  );
+  const username = process.env.MQTT_USERNAME;
+  const password = process.env.MQTT_PASSWORD;
+
+  if (!username || !password) {
+    throw new Error('MQTT_USERNAME and MQTT_PASSWORD are required');
+  }
 
   console.log(`[MQTT] Connecting to ${brokerUrl} …`);
 
   client = mqtt.connect(brokerUrl, {
-    username: process.env.MQTT_USERNAME,
-    password: process.env.MQTT_PASSWORD,
+    username,
+    password,
     rejectUnauthorized: true,
     reconnectPeriod: 5000, // 5 s between reconnect attempts
     connectTimeout: 10_000,

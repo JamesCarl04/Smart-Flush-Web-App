@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 
 type SystemState = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
@@ -12,48 +13,71 @@ interface SensorReading {
   timestamp: { _seconds: number };
 }
 
-/**
- * Derives the current system state from the most recent sensor/event reading.
- */
 export function useSystemState(deviceId = 'toilet-01') {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const presentationMode = usePresentationMode();
   const [systemState, setSystemState] = useState<SystemState>('standby');
   const [loading, setLoading] = useState(true);
 
-  const fetchState = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const today = new Date().toISOString().slice(0, 10);
-      const res = await apiFetch<{ success: boolean; data: SensorReading[] }>(
-        `/api/sensors/${deviceId}/readings?from=${today}`,
-        user,
-      );
-
-      if (res.success && res.data && res.data.length > 0) {
-        const latest = res.data[res.data.length - 1];
-        switch (latest.sensorType) {
-          case 'waterflow':
-            setSystemState('flushing');
-            break;
-          default:
-            setSystemState('standby');
-        }
-      } else {
+  const fetchState = useCallback(
+    async (showLoading = false) => {
+      if (presentationMode) {
         setSystemState('standby');
+        setLoading(false);
+        return;
       }
-    } catch {
-      // Silently fall back to standby (device may not exist yet)
-      setSystemState('standby');
-    } finally {
-      setLoading(false);
-    }
-  }, [user, deviceId]);
+
+      if (authLoading) {
+        return;
+      }
+
+      if (!user) {
+        setSystemState('standby');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        const response = await apiFetch<{
+          success: boolean;
+          data: SensorReading[];
+        }>(`/api/sensors/${deviceId}/readings?from=${today}`, user);
+
+        if (response.success && response.data && response.data.length > 0) {
+          const latest = response.data[response.data.length - 1];
+          switch (latest.sensorType) {
+            case 'waterflow':
+              setSystemState('flushing');
+              break;
+            default:
+              setSystemState('standby');
+          }
+        } else {
+          setSystemState('standby');
+        }
+      } catch {
+        // Keep the last known state on transient fetch failures.
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
+      }
+    },
+    [authLoading, deviceId, presentationMode, user],
+  );
 
   useEffect(() => {
-    fetchState();
-    const interval = setInterval(fetchState, 10_000);
-    return () => clearInterval(interval);
+    void fetchState(true);
+    const interval = window.setInterval(() => {
+      void fetchState(false);
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
   }, [fetchState]);
 
   return { systemState, loading };

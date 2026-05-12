@@ -35,12 +35,28 @@ export type MqttPayload =
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
+const AUTOMATION_RULES_CACHE_MS = readPositiveIntEnv(
+  'AUTOMATION_RULES_CACHE_MS',
+  60_000,
+);
 
 // ─── In-memory debounce cache ─────────────────────────────────────────────────
 // Tracks { alertType → lastFiredTimestamp } to avoid hitting Firestore for every
 // debounce check. Falls back to Firestore query when cache misses.
 const debounceCache = new Map<string, number>();
+let cachedRules: AutomationRule[] | null = null;
+let cachedRulesLoadedAt = 0;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +117,25 @@ async function todayFlushCount(deviceId: string): Promise<number> {
   return snap.size;
 }
 
+async function getEnabledSystemAlertRules(): Promise<AutomationRule[]> {
+  if (
+    cachedRules &&
+    Date.now() - cachedRulesLoadedAt < AUTOMATION_RULES_CACHE_MS
+  ) {
+    return cachedRules;
+  }
+
+  const rulesSnap = await adminDb
+    .collection('automationRules')
+    .where('group', '==', 'system_alert')
+    .where('enabled', '==', true)
+    .get();
+
+  cachedRules = rulesSnap.docs.map((d) => d.data() as AutomationRule);
+  cachedRulesLoadedAt = Date.now();
+  return cachedRules;
+}
+
 // ─── Device-offline watchdog ──────────────────────────────────────────────────
 
 const OFFLINE_TIMEOUT_MS = 60_000; // 60 seconds
@@ -152,14 +187,7 @@ export async function evaluateAlerts(
   deviceId: string,
 ): Promise<void> {
   try {
-    // Load enabled system_alert rules
-    const rulesSnap = await adminDb
-      .collection('automationRules')
-      .where('group', '==', 'system_alert')
-      .where('enabled', '==', true)
-      .get();
-
-    const rules = rulesSnap.docs.map((d) => d.data() as AutomationRule);
+    const rules = await getEnabledSystemAlertRules();
 
     for (const rule of rules) {
       await evaluateRule(rule, topic, payload, deviceId);

@@ -1,9 +1,11 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAlerts } from '@/hooks/useAlerts';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bell, User, LogOut, UserCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -16,7 +18,14 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { logout, user } = useAuth();
+  const { logout, user, loading } = useAuth();
+  const presentationMode = usePresentationMode();
+
+  useEffect(() => {
+    if (!loading && !user && !presentationMode) {
+      router.replace('/auth/login');
+    }
+  }, [loading, presentationMode, router, user]);
 
   const handleLogout = async () => {
     await logout();

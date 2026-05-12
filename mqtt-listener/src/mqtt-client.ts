@@ -15,6 +15,7 @@ import {
   type UVPayload,
 } from './firestore-writers';
 import { evaluateAlerts, resetOfflineWatchdog } from './alert-engine';
+import { recordDeviceHeartbeat } from './local-runtime-cache';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,15 @@ const BROKER_URL = process.env.MQTT_BROKER_URL;
 const USERNAME = process.env.MQTT_USERNAME;
 const PASSWORD = process.env.MQTT_PASSWORD;
 const PORT = process.env.MQTT_PORT ?? '8883';
+
+function buildBrokerUrl(hostOrUrl: string, port: string): string {
+  const value = hostOrUrl.trim();
+  if (/^mqtts?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `mqtts://${value}:${port.trim() || '8883'}`;
+}
 
 // ─── Timestamp helper ─────────────────────────────────────────────────────────
 
@@ -108,19 +118,22 @@ export function getMqttClient(): MqttClient {
     process.exit(1);
   }
 
-  const brokerUrl = `mqtts://${BROKER_URL}:${PORT}`;
+  const brokerUrl = buildBrokerUrl(BROKER_URL, PORT);
   console.log(`[${ts()}] [MQTT] Connecting to ${brokerUrl} …`);
 
   client = mqtt.connect(brokerUrl, {
     username: USERNAME,
     password: PASSWORD,
-    rejectUnauthorized: false, // Prototype — HiveMQ Cloud uses valid certs but Railway may not resolve them
+    rejectUnauthorized: true,
     reconnectPeriod: 5000, // 5 s between reconnect attempts
     connectTimeout: 10_000,
   });
 
   client.on('connect', () => {
     console.log(`[${ts()}] [MQTT] ✓ Connected to ${brokerUrl}`);
+    // Stamp a fresh heartbeat immediately so the dashboard shows online in dev mode
+    // even before the first sensor message arrives from the ESP32
+    void recordDeviceHeartbeat(DEVICE_ID);
     client!.subscribe(
       ['toilet/sensors/#', 'toilet/events/#'],
       { qos: 1 },

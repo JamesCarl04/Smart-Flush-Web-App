@@ -63,6 +63,18 @@ export interface Alert {
   timestamp: number;
 }
 
+export interface Task {
+  id: string;
+  toiletId: string;
+  triggeredBy: 'admin';
+  triggeredAt: number;
+  assignedTo?: string | null;
+  status: 'pending' | 'acknowledged' | 'completed';
+  note?: string | null;
+  acknowledgedAt?: number | null;
+  completedAt?: number | null;
+}
+
 export interface AutomationRule {
   id: string;
   name: string;

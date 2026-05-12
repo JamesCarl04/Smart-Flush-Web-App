@@ -3,6 +3,11 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helpers';
+import {
+  getCachedSensorReadings,
+  isQuotaExceededError,
+  shouldUseLocalRuntimeCache,
+} from '@/lib/local-runtime-cache';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,7 +58,6 @@ function timestampToMillis(value: SensorReadingDoc['timestamp']): number {
   return 0;
 }
 
-/** Returns an array of YYYY-MM-DD strings from start to end (inclusive) */
 function dateRange(from: string, to: string): string[] {
   const dates: string[] = [];
   const current = new Date(from);
@@ -89,19 +93,34 @@ export async function GET(
       );
     }
 
+    if (shouldUseLocalRuntimeCache()) {
+      const readings = await getCachedSensorReadings(id, from, to ?? from);
+      return NextResponse.json({ success: true, data: readings });
+    }
+
     const dates = dateRange(from, to ?? from);
 
-    // Query each date partition in parallel (no orderBy — sort in JS to avoid composite index)
-    const snapshots = await Promise.all(
-      dates.map((date) =>
-        adminDb
-          .collection('sensorReadings')
-          .doc(date)
-          .collection('readings')
-          .where('deviceId', '==', id)
-          .get(),
-      ),
-    );
+    let snapshots;
+
+    try {
+      snapshots = await Promise.all(
+        dates.map((date) =>
+          adminDb
+            .collection('sensorReadings')
+            .doc(date)
+            .collection('readings')
+            .where('deviceId', '==', id)
+            .get(),
+        ),
+      );
+    } catch (error) {
+      if (isQuotaExceededError(error)) {
+        const readings = await getCachedSensorReadings(id, from, to ?? from);
+        return NextResponse.json({ success: true, data: readings });
+      }
+
+      throw error;
+    }
 
     const readings: SensorReadingDoc[] = snapshots
       .flatMap((snap) => snap.docs.map((doc) => doc.data() as SensorReadingDoc))

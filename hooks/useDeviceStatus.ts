@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { getErrorMessage } from '@/lib/error-utils';
@@ -36,7 +37,8 @@ const DEFAULT_STATUS_STATE: DeviceStatusState = {
 };
 
 export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const presentationMode = usePresentationMode();
   const [data, setData] = useState<DeviceStatusState>(DEFAULT_STATUS_STATE);
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +46,24 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
     let cancelled = false;
 
     const fetchStatus = async (showLoading: boolean) => {
+      if (presentationMode) {
+        if (!cancelled) {
+          setData({
+            connected: true,
+            status: 'online',
+            lastSeen: Date.now(),
+            staleMs: 0,
+            reason: 'Presentation mode active',
+          });
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (authLoading) {
+        return;
+      }
+
       if (!user) {
         if (!cancelled) {
           setData(DEFAULT_STATUS_STATE);
@@ -74,10 +94,11 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
       } catch (error) {
         console.warn('[useDeviceStatus] status request failed:', error);
         if (!cancelled) {
-          setData({
-            ...DEFAULT_STATUS_STATE,
-            reason: getErrorMessage(error) ?? DEFAULT_STATUS_STATE.reason,
-          });
+          setData((current) => ({
+            ...current,
+            reason:
+              getErrorMessage(error) ?? current.reason ?? DEFAULT_STATUS_STATE.reason,
+          }));
         }
       } finally {
         if (showLoading && !cancelled) {
@@ -95,7 +116,7 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [deviceId, user]);
+  }, [authLoading, deviceId, presentationMode, user]);
 
   return { ...data, loading };
 }

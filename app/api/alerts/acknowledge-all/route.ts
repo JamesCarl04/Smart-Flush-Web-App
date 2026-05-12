@@ -1,13 +1,14 @@
 // app/api/alerts/acknowledge-all/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
-// POST /api/alerts/acknowledge-all — bulk acknowledge all unacknowledged alerts
+// POST /api/alerts/acknowledge-all — bulk acknowledge all unacknowledged alerts (admin only)
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
 
     const snap = await adminDb
       .collection('alerts')

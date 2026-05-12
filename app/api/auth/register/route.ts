@@ -41,11 +41,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       displayName,
     });
 
-    // Create Firestore users doc (no role field per README fix)
+    // Create Firestore users doc
     await adminDb.collection('users').doc(userRecord.uid).set({
       id: userRecord.uid,
       email,
       displayName,
+      role: 'user' as const,
       createdAt: FieldValue.serverTimestamp(),
     });
 

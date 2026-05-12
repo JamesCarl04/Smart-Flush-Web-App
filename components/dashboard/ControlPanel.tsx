@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { getIdToken } from 'firebase/auth';
 import { useDeviceStatus } from '@/hooks/useDeviceStatus';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { getErrorMessage } from '@/lib/error-utils';
 import { auth } from '@/lib/firebase';
 
@@ -26,6 +27,7 @@ export function ControlPanel() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [pumpOn, setPumpOn] = useState(false);
   const [uvOn, setUvOn] = useState(false);
+  const presentationMode = usePresentationMode();
   const {
     connected,
     status,
@@ -43,6 +45,13 @@ export function ControlPanel() {
     endpoint: string,
     payload: ActionPayload = {},
   ) => {
+    if (presentationMode) {
+      setLoadingAction(actionId);
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      setLoadingAction(null);
+      return { success: true, endpoint, payload };
+    }
+
     if (!connected) {
       toast.error(controlsDisabledReason);
       return null;
@@ -190,6 +199,11 @@ export function ControlPanel() {
               >
                 {status === 'online' ? 'Connected' : 'Disconnected'}
               </div>
+              {presentationMode && (
+                <div className="badge badge-info gap-1 border-0 font-semibold uppercase tracking-wide text-white shadow-sm">
+                  Presentation Mode
+                </div>
+              )}
               <div className="badge badge-error gap-1 border-0 bg-rose-500 font-semibold uppercase tracking-wide text-white shadow-sm">
                 Overrides Active
               </div>
