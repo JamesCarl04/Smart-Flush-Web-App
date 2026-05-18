@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "npx -y concurrently \"npm run dev:web\" \"npm run dev:listener\"",
-    "dev:web": "next dev",
     "dev:listener": "npm --prefix mqtt-listener run dev",
     "build": "next build",
     "start": "next start",
