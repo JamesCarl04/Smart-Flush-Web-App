@@ -13,18 +13,29 @@ const eslintConfig = defineConfig([
     'mqtt-listener/**',
   ]),
   {
-    // Enforce @/ path aliases — prevent bare relative parent imports
     rules: {
       'no-restricted-imports': [
-        'error',
+        'error',           // severity: 'error' means lint FAILS (not just a warning)
         {
           patterns: [
             {
-              group: ['../*'],
+              group: ['../*'],   // catches any import that starts with ../
               message:
                 'Use the @/ path alias instead of relative parent imports (e.g. "@/lib/firebase" instead of "../../lib/firebase").',
             },
           ],
+        },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'error',           // severity: 'error' means lint FAILS, not just warns
+        {
+          vars: 'all',               // check ALL declared variables, including imports
+          args: 'after-used',        // for function arguments: only flag if no
+                                     // later argument in the list is used either
+          ignoreRestSiblings: true,  // allow: const { a, ...rest } = obj
+                                     // (common pattern to intentionally omit 'a')
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
         },
       ],
     },
