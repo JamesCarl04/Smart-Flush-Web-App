@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "scripts\\dev-all.cmd",
-    "dev:web": "next dev",
+    "dev": "npx -y concurrently \"npm run dev:web\" \"npm run dev:listener\"",
     "dev:listener": "npm --prefix mqtt-listener run dev",
     "build": "next build",
     "start": "next start",
@@ -24,6 +23,7 @@
     "lucide-react": "^0.577.0",
     "mqtt": "^5.15.0",
     "next": "^16.1.6",
+    "nextjs-toploader": "^3.9.17",
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.71.2",

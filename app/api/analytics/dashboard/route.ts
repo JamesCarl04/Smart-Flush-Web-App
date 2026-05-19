@@ -32,8 +32,21 @@ export async function GET(request: Request): Promise<NextResponse> {
     for (const doc of flushSnap.docs) {
       const d = doc.data() as FlushEventDoc;
       totalWaterLiters += d.waterVolume ?? 0;
-      if (d.timestamp) {
-        const date = d.timestamp.toDate().toISOString().slice(0, 10);
+      
+      const ts = d.timestamp as any;
+      let dateObj: Date | null = null;
+      if (ts) {
+        if (typeof ts.toDate === 'function') {
+          dateObj = ts.toDate();
+        } else if (ts._seconds) {
+          dateObj = new Date(ts._seconds * 1000);
+        } else if (typeof ts === 'string' || typeof ts === 'number') {
+          dateObj = new Date(ts);
+        }
+      }
+
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const date = dateObj.toISOString().slice(0, 10);
         dateSet.add(date);
       }
     }
@@ -53,8 +66,18 @@ export async function GET(request: Request): Promise<NextResponse> {
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
     const totalDevices = devicesSnap.size;
     const onlineDevices = devicesSnap.docs.filter((d) => {
-      const lastSeen = d.data().lastSeen as Timestamp | null;
-      return lastSeen && lastSeen.toMillis() >= FIVE_MIN_AGO.toMillis();
+      const ls = d.data().lastSeen as any;
+      let lastSeenMillis = 0;
+      if (ls) {
+        if (typeof ls.toMillis === 'function') {
+          lastSeenMillis = ls.toMillis();
+        } else if (ls._seconds) {
+          lastSeenMillis = ls._seconds * 1000;
+        } else if (typeof ls === 'string' || typeof ls === 'number') {
+          lastSeenMillis = new Date(ls).getTime();
+        }
+      }
+      return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;
 
     const uptimePercent =
@@ -72,11 +95,15 @@ export async function GET(request: Request): Promise<NextResponse> {
         uptimePercent,
       },
     });
-  } catch (error) {
-    if (error instanceof Response) return new NextResponse(error.body, error);
+  } catch (error: any) {
+    // In some Next.js environments, instanceof Response can be unreliable.
+    if (error instanceof Response || (error && error.status && typeof error.json === 'function')) {
+      return new NextResponse(error.body, error);
+    }
     console.error('[Analytics] dashboard error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch dashboard analytics' },
+      { success: false, error: `Failed to fetch dashboard analytics: ${errorMessage}` },
       { status: 500 },
     );
   }
