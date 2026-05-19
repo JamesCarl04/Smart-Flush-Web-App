@@ -8,11 +8,12 @@ import {
   orderBy,
   query,
   Timestamp,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { db } from '@/lib/firebase';
-import type { Task } from '@/types';
+import type { Task, TaskTriggerType } from '@/types';
 
 function toMillis(value: unknown): number {
   if (typeof value === 'number') {
@@ -51,20 +52,28 @@ function toMillis(value: unknown): number {
 }
 
 function mapTask(docId: string, data: Record<string, unknown>): Task {
+  const triggerType: TaskTriggerType =
+    data.triggerType === 'uv_complete' ||
+    data.triggerType === 'flush_count' ||
+    data.triggerType === 'maintenance'
+      ? data.triggerType
+      : 'manual';
+
   return {
     id: typeof data.id === 'string' ? data.id : docId,
-    toiletId: typeof data.toiletId === 'string' ? data.toiletId : 'Unknown',
-    triggeredBy: 'admin',
-    triggeredAt: toMillis(data.triggeredAt),
+    deviceId: typeof data.deviceId === 'string' ? data.deviceId : 'Unknown',
+    triggerType,
+    message: typeof data.message === 'string' ? data.message : '',
     assignedTo:
       typeof data.assignedTo === 'string' ? data.assignedTo : (null as null),
     status:
       data.status === 'acknowledged' || data.status === 'completed'
         ? data.status
         : 'pending',
-    note: typeof data.note === 'string' ? data.note : null,
+    createdAt: toMillis(data.createdAt),
     acknowledgedAt: data.acknowledgedAt ? toMillis(data.acknowledgedAt) : null,
     completedAt: data.completedAt ? toMillis(data.completedAt) : null,
+    createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
   };
 }
 
@@ -74,36 +83,39 @@ function getDemoTasks(): Task[] {
   return [
     {
       id: 'demo-task-1',
-      toiletId: 'Toilet-01',
-      triggeredBy: 'admin',
-      triggeredAt: now - 5 * 60 * 1000,
+      deviceId: 'Toilet-01',
+      triggerType: 'manual',
+      message: 'Check the bowl area after repeated usage.',
+      createdAt: now - 5 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
       status: 'pending',
-      note: 'Check the bowl area after repeated usage.',
       acknowledgedAt: null,
       completedAt: null,
+      createdBy: 'demo-admin',
     },
     {
       id: 'demo-task-2',
-      toiletId: 'Toilet-02',
-      triggeredBy: 'admin',
-      triggeredAt: now - 18 * 60 * 1000,
+      deviceId: 'Toilet-02',
+      triggerType: 'uv_complete',
+      message: 'UV cycle complete. Manual cleaning required.',
+      createdAt: now - 18 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
       status: 'acknowledged',
-      note: null,
       acknowledgedAt: now - 12 * 60 * 1000,
       completedAt: null,
+      createdBy: 'system:mqtt',
     },
     {
       id: 'demo-task-3',
-      toiletId: 'Toilet-03',
-      triggeredBy: 'admin',
-      triggeredAt: now - 46 * 60 * 1000,
+      deviceId: 'Toilet-03',
+      triggerType: 'maintenance',
+      message: 'Deep clean after inspection.',
+      createdAt: now - 46 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
       status: 'completed',
-      note: 'Deep clean after inspection.',
       acknowledgedAt: now - 39 * 60 * 1000,
       completedAt: now - 14 * 60 * 1000,
+      createdBy: 'demo-admin',
     },
   ];
 }
@@ -112,18 +124,21 @@ interface UseTasksResult {
   tasks: Task[];
   pendingCount: number;
   loading: boolean;
+  error: string | null;
 }
 
 interface LiveTasksState {
   tasks: Task[];
+  error: string | null;
   readyForUserId: string | null;
 }
 
-export function useTasks(maxResults = 10): UseTasksResult {
+export function useTasks(maxResults?: number): UseTasksResult {
   const { user, loading: authLoading } = useAuth();
   const presentationMode = usePresentationMode();
   const [liveTasksState, setLiveTasksState] = useState<LiveTasksState>({
     tasks: [],
+    error: null,
     readyForUserId: null,
   });
 
@@ -132,17 +147,19 @@ export function useTasks(maxResults = 10): UseTasksResult {
       return;
     }
 
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      orderBy('triggeredAt', 'desc'),
-      limit(maxResults),
-    );
+    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
+    if (typeof maxResults === 'number') {
+      constraints.push(limit(maxResults));
+    }
+
+    const tasksQuery = query(collection(db, 'tasks'), ...constraints);
 
     const unsubscribe = onSnapshot(
       tasksQuery,
       (snapshot) => {
         setLiveTasksState({
           readyForUserId: user.uid,
+          error: null,
           tasks: snapshot.docs.map((taskDoc) =>
             mapTask(
               taskDoc.id,
@@ -157,6 +174,7 @@ export function useTasks(maxResults = 10): UseTasksResult {
         console.warn('[useTasks] snapshot failed:', error);
         setLiveTasksState({
           readyForUserId: user.uid,
+          error: error.message || 'Failed to load maintenance tasks',
           tasks: [],
         });
       },
@@ -190,6 +208,8 @@ export function useTasks(maxResults = 10): UseTasksResult {
     () => tasks.filter((task) => task.status === 'pending').length,
     [tasks],
   );
+  const error = presentationMode ? null : liveTasksState.error;
+  const resolvedError = !user || presentationMode ? null : error;
 
-  return { tasks, pendingCount, loading };
+  return { tasks, pendingCount, loading, error: resolvedError };
 }

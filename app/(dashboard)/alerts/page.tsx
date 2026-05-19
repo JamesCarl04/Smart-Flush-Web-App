@@ -37,7 +37,7 @@ type DashboardAlert =
       acknowledged: false;
       source: 'task';
       taskId: string;
-      toiletId: string;
+      deviceId: string;
     };
 
 const OVERDUE_TASK_THRESHOLD_MS = 30 * 60 * 1000;
@@ -71,23 +71,23 @@ export default function AlertsPage() {
     const overdueTaskAlerts: DashboardAlert[] = tasks
       .filter(
         (task) =>
-          task.triggeredAt > 0 &&
+          task.createdAt > 0 &&
           task.status === 'pending' &&
-          now - task.triggeredAt > OVERDUE_TASK_THRESHOLD_MS,
+          now - task.createdAt > OVERDUE_TASK_THRESHOLD_MS,
       )
       .map((task) => {
-        const pendingMinutes = Math.floor((now - task.triggeredAt) / 60_000);
+        const pendingMinutes = Math.floor((now - task.createdAt) / 60_000);
 
         return {
           id: `task-overdue-${task.id}`,
           title: 'Maintenance Task Overdue',
-          description: `Cleaning task for ${task.toiletId} has been pending for ${pendingMinutes} minutes without acknowledgment.`,
+          description: `Cleaning task for ${task.deviceId} has been pending for ${pendingMinutes} minutes without acknowledgment.`,
           severity: 'medium',
-          timestamp: new Date(task.triggeredAt + OVERDUE_TASK_THRESHOLD_MS),
+          timestamp: new Date(task.createdAt + OVERDUE_TASK_THRESHOLD_MS),
           acknowledged: false,
           source: 'task',
           taskId: task.id,
-          toiletId: task.toiletId,
+          deviceId: task.deviceId,
         };
       });
 

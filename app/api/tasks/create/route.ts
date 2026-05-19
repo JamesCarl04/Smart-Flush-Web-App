@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
-import { adminDb } from '@/lib/firebase-admin';
+import { createTaskAndNotify } from '@/lib/task-service';
 
 interface CreateTaskBody {
   toiletId: string;
   note?: string;
+  assignedTo?: string | null;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -16,6 +16,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     const body = (await request.json()) as Partial<CreateTaskBody>;
     const toiletId = body.toiletId?.trim();
     const note = body.note?.trim();
+    const assignedTo =
+      typeof body.assignedTo === 'string' && body.assignedTo.trim()
+        ? body.assignedTo.trim()
+        : null;
 
     if (!toiletId) {
       return NextResponse.json(
@@ -31,27 +35,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const deviceDoc = await adminDb.collection('devices').doc(toiletId).get();
-    if (!deviceDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'Selected toilet unit was not found' },
-        { status: 404 },
-      );
-    }
-
-    const docRef = adminDb.collection('tasks').doc();
-    await docRef.set({
-      id: docRef.id,
-      toiletId,
-      triggeredBy: 'admin' as const,
-      triggeredAt: FieldValue.serverTimestamp(),
-      assignedTo: 'maintenance-personnel',
-      status: 'pending' as const,
-      ...(note ? { note } : {}),
+    const task = await createTaskAndNotify({
+      deviceId: toiletId,
+      triggerType: 'manual',
+      message: note || `Manual cleaning requested for ${toiletId}.`,
+      assignedTo,
+      createdBy: user.uid,
     });
 
     return NextResponse.json(
-      { success: true, data: { id: docRef.id } },
+      { success: true, data: { taskId: task.id, id: task.id } },
       { status: 201 },
     );
   } catch (error) {

@@ -36,11 +36,15 @@ interface UVCycleDoc {
 
 interface TaskDoc {
   id: string;
-  toiletId: string;
+  deviceId: string;
+  triggerType: string;
+  message: string;
   status: 'pending' | 'acknowledged' | 'completed';
-  triggeredAt?: Timestamp | null;
+  assignedTo: string | null;
+  createdAt?: Timestamp | null;
   acknowledgedAt?: Timestamp | null;
   completedAt?: Timestamp | null;
+  createdBy: string;
 }
 
 const VALID_REPORT_TYPES: ReportBody['type'][] = [
@@ -165,9 +169,9 @@ async function fetchUsageReportData(fromTs: Timestamp, toTs: Timestamp) {
 async function fetchMaintenanceTaskData(fromTs: Timestamp, toTs: Timestamp) {
   const snapshot = await adminDb
     .collection('tasks')
-    .where('triggeredAt', '>=', fromTs)
-    .where('triggeredAt', '<=', toTs)
-    .orderBy('triggeredAt', 'asc')
+    .where('createdAt', '>=', fromTs)
+    .where('createdAt', '<=', toTs)
+    .orderBy('createdAt', 'asc')
     .get();
 
   return snapshot.docs.map<TaskDoc>((doc) => {
@@ -179,14 +183,24 @@ async function fetchMaintenanceTaskData(fromTs: Timestamp, toTs: Timestamp) {
 
     return {
       id: typeof data.id === 'string' ? data.id : doc.id,
-      toiletId:
-        typeof data.toiletId === 'string' && data.toiletId.trim()
-          ? data.toiletId
+      deviceId:
+        typeof data.deviceId === 'string' && data.deviceId.trim()
+          ? data.deviceId
           : 'Unknown',
+      triggerType:
+        typeof data.triggerType === 'string' && data.triggerType.trim()
+          ? data.triggerType
+          : 'manual',
+      message: typeof data.message === 'string' ? data.message : '',
       status,
-      triggeredAt: data.triggeredAt ?? null,
+      assignedTo:
+        typeof data.assignedTo === 'string' && data.assignedTo.trim()
+          ? data.assignedTo
+          : null,
+      createdAt: data.createdAt ?? null,
       acknowledgedAt: data.acknowledgedAt ?? null,
       completedAt: data.completedAt ?? null,
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
     };
   });
 }
@@ -262,7 +276,7 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
   summary: MaintenanceTaskSummary;
 } {
   const rows = tasks.map((task) => {
-    const assignedAt = toDate(task.triggeredAt);
+    const assignedAt = toDate(task.createdAt);
     const completedAt = toDate(task.completedAt);
     const completionDuration =
       assignedAt && completedAt
@@ -271,8 +285,12 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
 
     return {
       id: task.id,
-      toiletId: task.toiletId,
-      timeAssigned: toIsoString(task.triggeredAt) ?? 'Unknown',
+      deviceId: task.deviceId,
+      triggerType: task.triggerType,
+      message: task.message,
+      assignedTo: task.assignedTo,
+      createdBy: task.createdBy,
+      timeAssigned: toIsoString(task.createdAt) ?? 'Unknown',
       timeAcknowledged: toIsoString(task.acknowledgedAt) ?? 'Not Acknowledged',
       timeCompleted: toIsoString(task.completedAt) ?? 'Not Completed',
       totalDuration:
@@ -284,7 +302,7 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
   });
 
   const responseDurations = tasks.map((task) => {
-    const assignedAt = toDate(task.triggeredAt);
+    const assignedAt = toDate(task.createdAt);
     const acknowledgedAt = toDate(task.acknowledgedAt);
 
     return assignedAt && acknowledgedAt
@@ -293,7 +311,7 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
   });
 
   const completionDurations = tasks.map((task) => {
-    const assignedAt = toDate(task.triggeredAt);
+    const assignedAt = toDate(task.createdAt);
     const completedAt = toDate(task.completedAt);
 
     return assignedAt && completedAt
@@ -326,18 +344,23 @@ function buildMaintenanceTaskCSV(
     `Average Response Time,${escapeCsv(summary.averageResponseTime)}`,
     `Average Completion Time,${escapeCsv(summary.averageCompletionTime)}`,
     '',
-    'Toilet ID,Time Assigned,Time Acknowledged,Time Completed,Total Duration,Status',
+    'id,deviceId,triggerType,message,status,assignedTo,createdAt,acknowledgedAt,completedAt,createdBy,totalDuration',
   ];
 
   for (const row of rows) {
     lines.push(
       [
-        escapeCsv(row.toiletId),
+        escapeCsv(row.id),
+        escapeCsv(row.deviceId),
+        escapeCsv(row.triggerType),
+        escapeCsv(row.message),
+        escapeCsv(row.status),
+        escapeCsv(row.assignedTo ?? ''),
         escapeCsv(row.timeAssigned),
         escapeCsv(row.timeAcknowledged),
         escapeCsv(row.timeCompleted),
+        escapeCsv(row.createdBy),
         escapeCsv(row.totalDuration),
-        escapeCsv(row.status),
       ].join(','),
     );
   }
@@ -353,12 +376,16 @@ function buildMaintenanceTaskJSON(
     summary,
     tasks: rows.map((row) => ({
       id: row.id,
-      toiletId: row.toiletId,
+      deviceId: row.deviceId,
+      triggerType: row.triggerType,
+      message: row.message,
+      status: row.status,
+      assignedTo: row.assignedTo,
       timeAssigned: row.timeAssigned,
       timeAcknowledged: row.timeAcknowledged,
       timeCompleted: row.timeCompleted,
       totalDuration: row.totalDuration,
-      status: row.status,
+      createdBy: row.createdBy,
     })),
   };
 }

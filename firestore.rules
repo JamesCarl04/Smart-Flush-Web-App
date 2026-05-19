@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function currentUserRole() {
+      return isAuthenticated()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return currentUserRole() == 'admin';
+    }
+
+    function isMaintenance() {
+      return currentUserRole() == 'maintenance';
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create: if isSelf(userId) || isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSelf(userId)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+        );
+      allow delete: if isAdmin();
+
+      match /fcmToken/{tokenId} {
+        allow read, write: if isSelf(userId) || isAdmin();
+      }
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isMaintenance() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /devices/{deviceId} {
+      allow read, write: if isAuthenticated();
+      match /maintenanceCounters/{counterId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    match /sensorReadings/{date}/readings/{readingId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /alerts/{alertId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /automationRules/{ruleId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /flushEvents/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /lidEvents/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /uvCycles/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+  }
+}

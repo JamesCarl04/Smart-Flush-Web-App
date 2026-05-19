@@ -19,7 +19,11 @@ export interface UVCycleRow {
 
 export interface MaintenanceTaskRow {
   id: string;
-  toiletId: string;
+  deviceId: string;
+  triggerType: string;
+  message: string;
+  assignedTo: string | null;
+  createdBy: string;
   timeAssigned: string;
   timeAcknowledged: string;
   timeCompleted: string;
@@ -238,7 +242,7 @@ function buildMaintenanceTaskReportLines(
 
   for (const task of tasks.slice(0, 12)) {
     lines.push({
-      text: `${task.timeAssigned.slice(0, 16)}  ${task.toiletId}  ${task.status.toUpperCase()}`,
+      text: `${task.timeAssigned.slice(0, 16)}  ${task.deviceId}  ${task.status.toUpperCase()}`,
       fontSize: 10,
     });
     lines.push({

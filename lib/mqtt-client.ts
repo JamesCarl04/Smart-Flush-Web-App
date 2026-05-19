@@ -10,6 +10,7 @@ import {
   updateDeviceLastSeen,
 } from '@/lib/firestore-writers';
 import { evaluateAlerts } from '@/lib/alert-engine';
+import { createTaskAndNotify } from '@/lib/task-service';
 
 // The device ID associated with the single physical toilet unit.
 // Override via MQTT_DEVICE_ID env var if you later support multiple devices.
@@ -59,6 +60,29 @@ function buildBrokerUrl(hostOrUrl: string | undefined, port: string): string {
 
 // ─── Message router ───────────────────────────────────────────────────────────
 
+async function writeUvCycleAndMaybeCreateTask(
+  payload: UVPayload,
+  deviceId: string,
+): Promise<void> {
+  await writeUVCycle(payload, deviceId);
+
+  if (payload.completed !== true) {
+    return;
+  }
+
+  try {
+    await createTaskAndNotify({
+      deviceId,
+      triggerType: 'uv_complete',
+      message: 'UV cycle complete. Manual cleaning required.',
+      assignedTo: null,
+      createdBy: 'system:mqtt',
+    });
+  } catch (error) {
+    console.error('[MQTT] Failed to create UV completion task:', error);
+  }
+}
+
 async function handleMessage(topic: string, raw: Buffer): Promise<void> {
   console.log(`[MQTT] Message: ${topic}`);
 
@@ -93,7 +117,7 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
     }
     case 'toilet/events/uv': {
       const p = payload as UVPayload;
-      void writeUVCycle(p, DEVICE_ID);
+      void writeUvCycleAndMaybeCreateTask(p, DEVICE_ID);
       void evaluateAlerts(topic, p, DEVICE_ID);
       break;
     }

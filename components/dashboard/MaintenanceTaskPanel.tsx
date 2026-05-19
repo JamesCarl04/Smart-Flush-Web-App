@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { BrushCleaning, ClipboardList } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
-import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { useTasks } from '@/hooks/useTasks';
 import { apiFetch } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/error-utils';
 import { db } from '@/lib/firebase';
-import type { Device, Task } from '@/types';
+import type { Device, Task, TaskTriggerType } from '@/types';
 
 interface DevicesResponse {
   success: boolean;
@@ -20,12 +20,20 @@ interface DevicesResponse {
 interface CreateTaskResponse {
   success: boolean;
   data?: {
-    id: string;
+    taskId: string;
   };
   error?: string;
 }
 
-type UserRole = 'admin' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type ToastKind = 'success' | 'error';
+
+const TRIGGER_OPTIONS: Array<{ value: TaskTriggerType; label: string }> = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'uv_complete', label: 'UV Complete' },
+  { value: 'flush_count', label: 'Flush Count' },
+  { value: 'maintenance', label: 'Maintenance' },
+];
 
 function formatDeviceLabel(device: Device): string {
   if (device.name && device.name !== device.id) {
@@ -35,15 +43,32 @@ function formatDeviceLabel(device: Device): string {
   return device.name || device.id;
 }
 
+function getDefaultMessage(
+  triggerType: TaskTriggerType,
+  deviceLabel: string,
+): string {
+  switch (triggerType) {
+    case 'uv_complete':
+      return `UV cycle completed on ${deviceLabel}. Please verify sanitation and reset the unit for service.`;
+    case 'flush_count':
+      return `${deviceLabel} reached its flush-count service threshold. Inspect flush hardware and consumables.`;
+    case 'maintenance':
+      return `Scheduled maintenance is due for ${deviceLabel}. Complete the standard inspection checklist.`;
+    case 'manual':
+    default:
+      return `Manual maintenance requested for ${deviceLabel}.`;
+  }
+}
+
 function getStatusBadgeClassName(status: Task['status']): string {
   switch (status) {
     case 'acknowledged':
-      return 'badge-warning text-warning-content';
+      return 'badge-info text-info-content';
     case 'completed':
-      return 'badge-success text-white';
+      return 'badge-success text-success-content';
     case 'pending':
     default:
-      return 'badge-error text-white';
+      return 'badge-warning text-warning-content';
   }
 }
 
@@ -59,17 +84,73 @@ function getStatusLabel(status: Task['status']): string {
   }
 }
 
+function getTriggerLabel(triggerType: TaskTriggerType): string {
+  return (
+    TRIGGER_OPTIONS.find((option) => option.value === triggerType)?.label ??
+    'Manual'
+  );
+}
+
+function formatTimestamp(value?: number | null): string {
+  if (!value) {
+    return 'Not recorded';
+  }
+
+  return format(new Date(value), 'MMM d, yyyy HH:mm');
+}
+
+function formatRelativeTimestamp(value: number): string {
+  if (!value) {
+    return 'Time unavailable';
+  }
+
+  return formatDistanceToNow(new Date(value), { addSuffix: true });
+}
+
 export function MaintenanceTaskPanel() {
   const { user, loading: authLoading } = useAuth();
-  const { tasks, pendingCount, loading: tasksLoading } = useTasks();
+  const {
+    tasks,
+    pendingCount,
+    loading: tasksLoading,
+    error: tasksError,
+  } = useTasks();
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [selectedToiletId, setSelectedToiletId] = useState('');
-  const [note, setNote] = useState('');
+  const [triggerType, setTriggerType] = useState<TaskTriggerType>('manual');
+  const [message, setMessage] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
   const [role, setRole] = useState<UserRole>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [taskToast, setTaskToast] = useState<{
+    kind: ToastKind;
+    message: string;
+  } | null>(null);
   const confirmDialogRef = useRef<HTMLDialogElement | null>(null);
+  const previousDefaultMessageRef = useRef('');
+
+  const showAssignmentForm = role === 'admin';
+  const showAssignmentSkeleton = roleLoading;
+  const {
+    personnel,
+    personnelById,
+    loading: personnelLoading,
+    error: personnelError,
+  } = useMaintenancePersonnel({ enabled: showAssignmentForm });
+
+  useEffect(() => {
+    if (!taskToast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setTaskToast(null);
+    }, 3600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [taskToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,7 +236,10 @@ export function MaintenanceTaskPanel() {
         if (!cancelled) {
           setDevices([]);
           setSelectedToiletId('');
-          toast.error(getErrorMessage(error) ?? 'Failed to load toilet units');
+          setTaskToast({
+            kind: 'error',
+            message: getErrorMessage(error) ?? 'Failed to load toilet units',
+          });
         }
       } finally {
         if (!cancelled) {
@@ -177,15 +261,51 @@ export function MaintenanceTaskPanel() {
   );
   const selectedDeviceLabel = selectedDevice
     ? formatDeviceLabel(selectedDevice)
-    : selectedToiletId;
-  const recentTasks = tasks.filter((task) => task.triggeredAt > 0).slice(0, 5);
-  const showAssignmentForm = role === 'admin';
-  const showAssignmentSkeleton = roleLoading;
+    : selectedToiletId || 'the selected toilet unit';
+  const defaultMessage = useMemo(
+    () => getDefaultMessage(triggerType, selectedDeviceLabel),
+    [selectedDeviceLabel, triggerType],
+  );
   const useTwoColumnLayout = showAssignmentForm || showAssignmentSkeleton;
+
+  useEffect(() => {
+    const previousDefaultMessage = previousDefaultMessageRef.current;
+    previousDefaultMessageRef.current = defaultMessage;
+
+    setMessage((currentMessage) => {
+      if (
+        !currentMessage.trim() ||
+        currentMessage === previousDefaultMessage
+      ) {
+        return defaultMessage;
+      }
+
+      return currentMessage;
+    });
+  }, [defaultMessage]);
+
+  const resolveAssignedName = (assignedUserId?: string | null) => {
+    if (!assignedUserId) {
+      return 'Unassigned';
+    }
+
+    return personnelById[assignedUserId]?.displayName ?? assignedUserId;
+  };
 
   const openConfirmModal = () => {
     if (!selectedToiletId) {
-      toast.error('Select a toilet unit before assigning a task.');
+      setTaskToast({
+        kind: 'error',
+        message: 'Select a toilet unit before assigning a task.',
+      });
+      return;
+    }
+
+    if (!message.trim()) {
+      setTaskToast({
+        kind: 'error',
+        message: 'Enter a task message before assigning a task.',
+      });
       return;
     }
 
@@ -198,31 +318,55 @@ export function MaintenanceTaskPanel() {
 
   const handleAssignTask = async () => {
     if (!user) {
-      toast.error('You must be logged in to assign a task.');
+      setTaskToast({
+        kind: 'error',
+        message: 'You must be logged in to assign a task.',
+      });
       return;
     }
 
     if (!selectedToiletId) {
-      toast.error('Select a toilet unit before assigning a task.');
+      setTaskToast({
+        kind: 'error',
+        message: 'Select a toilet unit before assigning a task.',
+      });
+      return;
+    }
+
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
+      setTaskToast({
+        kind: 'error',
+        message: 'Enter a task message before assigning a task.',
+      });
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      await apiFetch<CreateTaskResponse>('/api/tasks/create', user, {
+      await apiFetch<CreateTaskResponse>('/api/tasks', user, {
         method: 'POST',
         body: JSON.stringify({
-          toiletId: selectedToiletId,
-          note: note.trim() || undefined,
+          deviceId: selectedToiletId,
+          triggerType,
+          message: trimmedMessage,
+          assignedTo: assignedTo || null,
         }),
       });
 
-      setNote('');
       closeConfirmModal();
-      toast.success('Cleaning task assigned to maintenance personnel');
+      setMessage(defaultMessage);
+      setAssignedTo('');
+      setTaskToast({
+        kind: 'success',
+        message: 'Task assigned and notification sent',
+      });
     } catch (error) {
-      toast.error(getErrorMessage(error) ?? 'Failed to assign cleaning task');
+      setTaskToast({
+        kind: 'error',
+        message: getErrorMessage(error) ?? 'Failed to assign task',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -232,7 +376,7 @@ export function MaintenanceTaskPanel() {
     <>
       <section
         id="maintenance-task-panel"
-        className={`grid gap-8 scroll-mt-24 ${
+        className={`grid scroll-mt-24 gap-8 ${
           useTwoColumnLayout ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'
         }`}
       >
@@ -243,10 +387,12 @@ export function MaintenanceTaskPanel() {
                 <div className="skeleton h-10 w-10 rounded-xl"></div>
                 <div className="space-y-2">
                   <div className="skeleton h-5 w-40"></div>
-                  <div className="skeleton h-3 w-56"></div>
+                  <div className="skeleton h-3 w-56 max-w-full"></div>
                 </div>
               </div>
               <div className="space-y-4">
+                <div className="skeleton h-4 w-32"></div>
+                <div className="skeleton h-12 w-full"></div>
                 <div className="skeleton h-4 w-32"></div>
                 <div className="skeleton h-12 w-full"></div>
                 <div className="skeleton h-4 w-24"></div>
@@ -259,14 +405,13 @@ export function MaintenanceTaskPanel() {
           <div className="card border border-base-200 bg-base-100 shadow-xl">
             <div className="card-body p-6">
               <div className="mb-6 flex items-center gap-3 border-b border-base-200 pb-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-warning/15 text-warning">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/15 text-warning">
                   <BrushCleaning className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="card-title text-xl">Assign Cleaning Task</h2>
+                  <h2 className="card-title text-xl">Assign Task</h2>
                   <p className="text-sm text-base-content/60">
-                    Send a maintenance task to the mobile team for a specific
-                    toilet unit.
+                    Send a task and notification to the maintenance team.
                   </p>
                 </div>
               </div>
@@ -303,29 +448,88 @@ export function MaintenanceTaskPanel() {
                 </div>
 
                 <div className="form-control w-full">
-                  <label className="label" htmlFor="maintenance-note">
+                  <label className="label" htmlFor="maintenance-trigger">
                     <span className="label-text font-medium text-base-content/80">
-                      Optional Note
+                      Trigger Type
+                    </span>
+                  </label>
+                  <select
+                    id="maintenance-trigger"
+                    className="select select-bordered w-full"
+                    value={triggerType}
+                    onChange={(event) =>
+                      setTriggerType(event.target.value as TaskTriggerType)
+                    }
+                  >
+                    {TRIGGER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-control w-full">
+                  <label className="label" htmlFor="maintenance-message">
+                    <span className="label-text font-medium text-base-content/80">
+                      Message
                     </span>
                     <span className="label-text-alt text-base-content/50">
-                      {note.length}/200
+                      {message.length}/500
                     </span>
                   </label>
                   <textarea
-                    id="maintenance-note"
+                    id="maintenance-message"
                     className="textarea textarea-bordered min-h-28 w-full"
-                    maxLength={200}
-                    placeholder="Add a note for maintenance personnel..."
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
+                    maxLength={500}
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
                   ></textarea>
+                </div>
+
+                <div className="form-control w-full">
+                  <label className="label" htmlFor="maintenance-assignee">
+                    <span className="label-text font-medium text-base-content/80">
+                      Assign To
+                    </span>
+                  </label>
+                  {personnelLoading ? (
+                    <div className="skeleton h-12 w-full"></div>
+                  ) : (
+                    <>
+                      <select
+                        id="maintenance-assignee"
+                        className="select select-bordered w-full"
+                        value={assignedTo}
+                        onChange={(event) => setAssignedTo(event.target.value)}
+                      >
+                        <option value="">Leave Unassigned</option>
+                        {personnel.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName}
+                            {person.email ? ` (${person.email})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {personnelError && (
+                        <label className="label">
+                          <span className="label-text-alt text-error">
+                            {personnelError}
+                          </span>
+                        </label>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   className="btn btn-warning h-12 w-full"
                   disabled={
-                    isSubmitting || devicesLoading || devices.length === 0
+                    isSubmitting ||
+                    devicesLoading ||
+                    personnelLoading ||
+                    devices.length === 0
                   }
                   onClick={openConfirmModal}
                 >
@@ -348,14 +552,14 @@ export function MaintenanceTaskPanel() {
 
         <div className="card border border-base-200 bg-base-100 shadow-xl">
           <div className="card-body p-6">
-            <div className="mb-6 flex items-center justify-between gap-4 border-b border-base-200 pb-4">
+            <div className="mb-6 flex flex-col gap-4 border-b border-base-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <ClipboardList className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="card-title text-xl">Maintenance Tasks</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="card-title text-xl">Live Task Feed</h2>
                     <span className="relative flex h-3 w-3 items-center justify-center">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75"></span>
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
@@ -365,7 +569,7 @@ export function MaintenanceTaskPanel() {
                     </span>
                   </div>
                   <p className="text-sm text-base-content/60">
-                    Latest mobile maintenance tasks and acknowledgments.
+                    Real-time maintenance tasks and acknowledgments.
                   </p>
                 </div>
               </div>
@@ -385,11 +589,12 @@ export function MaintenanceTaskPanel() {
                 {[1, 2, 3].map((item) => (
                   <div
                     key={item}
-                    className="rounded-2xl border border-base-200 bg-base-100 p-4"
+                    className="rounded-lg border border-base-200 bg-base-100 p-4"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="w-full space-y-3">
-                        <div className="skeleton h-4 w-28"></div>
+                        <div className="skeleton h-4 w-32"></div>
+                        <div className="skeleton h-3 w-52 max-w-full"></div>
                         <div className="skeleton h-3 w-40"></div>
                       </div>
                       <div className="skeleton h-7 w-24 rounded-full"></div>
@@ -397,31 +602,57 @@ export function MaintenanceTaskPanel() {
                   </div>
                 ))}
               </div>
-            ) : recentTasks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center text-base-content/55">
+            ) : tasksError ? (
+              <div className="alert alert-error">
+                <span>{tasksError}</span>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center text-base-content/55">
                 <p className="font-medium">No tasks assigned yet</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {recentTasks.map((task) => (
+              <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-1">
+                {tasks.map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-2xl border border-base-200 bg-base-100 p-4 shadow-sm transition-colors hover:bg-base-200/30"
+                    className="animate-fade-in-down rounded-lg border border-base-200 bg-base-100 p-4 shadow-sm transition-colors hover:bg-base-200/30"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <p className="font-semibold text-base-content">
-                          {task.toiletId}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="badge badge-sm badge-outline font-semibold">
+                            {getTriggerLabel(task.triggerType)}
+                          </span>
+                          <span className="text-xs text-base-content/50">
+                            {task.deviceId}
+                          </span>
+                        </div>
+                        <p className="mt-2 break-words text-sm font-semibold text-base-content">
+                          {task.message || 'No message provided'}
                         </p>
-                        <p className="mt-1 text-sm text-base-content/65">
-                          Time sent{' '}
-                          {formatDistanceToNow(new Date(task.triggeredAt), {
-                            addSuffix: true,
-                          })}
-                        </p>
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-base-content/60">
+                          <span>
+                            Assigned to{' '}
+                            <span className="font-semibold text-base-content/75">
+                              {resolveAssignedName(task.assignedTo)}
+                            </span>
+                          </span>
+                          <span>{formatRelativeTimestamp(task.createdAt)}</span>
+                          {task.acknowledgedAt ? (
+                            <span>
+                              Acknowledged{' '}
+                              {formatTimestamp(task.acknowledgedAt)}
+                            </span>
+                          ) : null}
+                          {task.completedAt ? (
+                            <span>
+                              Completed {formatTimestamp(task.completedAt)}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div
-                        className={`badge gap-1 border-0 px-3 py-3 font-semibold ${getStatusBadgeClassName(
+                        className={`badge shrink-0 gap-1 border-0 px-3 py-3 font-semibold ${getStatusBadgeClassName(
                           task.status,
                         )}`}
                       >
@@ -443,12 +674,21 @@ export function MaintenanceTaskPanel() {
         <div className="modal-box">
           <h3 className="flex items-center gap-2 text-lg font-bold text-warning">
             <BrushCleaning className="h-5 w-5" />
-            Confirm Cleaning Task
+            Confirm Task Assignment
           </h3>
-          <p className="py-4">
-            Assign a cleaning task to maintenance personnel for{' '}
-            <span className="font-semibold">{selectedDeviceLabel}</span>?
-          </p>
+          <div className="space-y-3 py-4 text-sm">
+            <p>
+              Send this task for{' '}
+              <span className="font-semibold">{selectedDeviceLabel}</span>?
+            </p>
+            <div className="rounded-lg bg-base-200 p-3">
+              <div className="font-semibold">{getTriggerLabel(triggerType)}</div>
+              <p className="mt-1 text-base-content/70">{message}</p>
+              <p className="mt-2 text-xs text-base-content/60">
+                Assigned to {resolveAssignedName(assignedTo)}
+              </p>
+            </div>
+          </div>
           <div className="modal-action">
             <button
               type="button"
@@ -470,7 +710,7 @@ export function MaintenanceTaskPanel() {
                   Assigning...
                 </>
               ) : (
-                'Confirm'
+                'Confirm & Send'
               )}
             </button>
           </div>
@@ -479,6 +719,18 @@ export function MaintenanceTaskPanel() {
           <button disabled={isSubmitting}>close</button>
         </form>
       </dialog>
+
+      {taskToast ? (
+        <div className="toast toast-top toast-end z-50">
+          <div
+            className={`alert ${
+              taskToast.kind === 'success' ? 'alert-success' : 'alert-error'
+            }`}
+          >
+            <span>{taskToast.message}</span>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -3,6 +3,20 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
+const USER_ROLES = ['admin', 'maintenance', 'viewer', 'user'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+function normalizeUserRole(value: unknown): UserRole | null {
+  if (
+    typeof value === 'string' &&
+    (USER_ROLES as readonly string[]).includes(value)
+  ) {
+    return value as UserRole;
+  }
+
+  return null;
+}
+
 /**
  * Extracts and verifies the Firebase ID token from the Authorization header.
  * Throws a Response with HTTP 401 if the token is missing or invalid.
@@ -32,18 +46,44 @@ export async function verifyAuthToken(
   }
 }
 
+export async function getUserRole(
+  user: DecodedIdToken,
+): Promise<UserRole | null> {
+  const doc = await adminDb.collection('users').doc(user.uid).get();
+  const roleValue: unknown = doc.data()?.role;
+
+  return normalizeUserRole(roleValue);
+}
+
 /**
  * Throws a Response with HTTP 403 if the authenticated user does not have
  * role 'admin' in the Firestore users collection.
  * Must be called AFTER verifyAuthToken().
  */
 export async function requireAdmin(user: DecodedIdToken): Promise<void> {
-  const doc = await adminDb.collection('users').doc(user.uid).get();
-  const role = doc.data()?.role as string | undefined;
+  const role = await getUserRole(user);
 
   if (role !== 'admin') {
     throw new Response(
       JSON.stringify({ success: false, error: 'Forbidden: admin only' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+}
+
+/**
+ * Throws a Response with HTTP 403 if the authenticated user does not have
+ * role 'maintenance' in the Firestore users collection.
+ * Must be called AFTER verifyAuthToken().
+ */
+export async function requireMaintenance(
+  user: DecodedIdToken,
+): Promise<void> {
+  const role = await getUserRole(user);
+
+  if (role !== 'maintenance') {
+    throw new Response(
+      JSON.stringify({ success: false, error: 'Forbidden: maintenance only' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },
     );
   }
@@ -56,8 +96,7 @@ export async function requireAdmin(user: DecodedIdToken): Promise<void> {
  * Must be called AFTER verifyAuthToken().
  */
 export async function requireNotViewer(user: DecodedIdToken): Promise<void> {
-  const doc = await adminDb.collection('users').doc(user.uid).get();
-  const role = doc.data()?.role as string | undefined;
+  const role = await getUserRole(user);
 
   if (role === 'viewer') {
     throw new Response(

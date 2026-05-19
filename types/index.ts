@@ -63,16 +63,25 @@ export interface Alert {
   timestamp: number;
 }
 
+export type TaskStatus = 'pending' | 'acknowledged' | 'completed';
+
+export type TaskTriggerType =
+  | 'manual'
+  | 'uv_complete'
+  | 'flush_count'
+  | 'maintenance';
+
 export interface Task {
   id: string;
-  toiletId: string;
-  triggeredBy: 'admin';
-  triggeredAt: number;
+  deviceId: string;
+  triggerType: TaskTriggerType;
+  message: string;
   assignedTo?: string | null;
-  status: 'pending' | 'acknowledged' | 'completed';
-  note?: string | null;
+  status: TaskStatus;
+  createdAt: number;
   acknowledgedAt?: number | null;
   completedAt?: number | null;
+  createdBy: string;
 }
 
 export interface AutomationRule {

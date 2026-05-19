@@ -16,6 +16,7 @@ import {
 } from './firestore-writers';
 import { evaluateAlerts, resetOfflineWatchdog } from './alert-engine';
 import { recordDeviceHeartbeat } from './local-runtime-cache';
+import { createTaskAndNotify } from './task-service';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,29 @@ function ts(): string {
 }
 
 // ─── Singleton state ──────────────────────────────────────────────────────────
+
+async function writeUvCycleAndMaybeCreateTask(
+  payload: UVPayload,
+  deviceId: string,
+): Promise<void> {
+  await writeUVCycle(payload, deviceId);
+
+  if (payload.completed !== true) {
+    return;
+  }
+
+  try {
+    await createTaskAndNotify({
+      deviceId,
+      triggerType: 'uv_complete',
+      message: 'UV cycle complete. Manual cleaning required.',
+      assignedTo: null,
+      createdBy: 'system:mqtt',
+    });
+  } catch (error) {
+    console.error(`[${ts()}] [MQTT] Failed to create UV completion task:`, error);
+  }
+}
 
 let client: MqttClient | null = null;
 
@@ -87,7 +111,7 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
     }
     case 'toilet/events/uv': {
       const p = payload as UVPayload;
-      void writeUVCycle(p, DEVICE_ID);
+      void writeUvCycleAndMaybeCreateTask(p, DEVICE_ID);
       void evaluateAlerts(topic, p, DEVICE_ID);
       break;
     }
