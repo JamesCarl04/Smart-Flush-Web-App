@@ -337,7 +337,6 @@ export default function AlertsPage() {
           </div>
         </div>
       </div>
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }

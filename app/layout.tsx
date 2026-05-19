@@ -3,6 +3,7 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { Toaster } from 'react-hot-toast';
 import NextTopLoader from 'nextjs-toploader';
 
 const geistSans = localFont({
@@ -53,7 +54,10 @@ export default function RootLayout({
       >
         <NextTopLoader />
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

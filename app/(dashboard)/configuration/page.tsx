@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import {
   AlertTriangle,
   Clock,
@@ -1068,7 +1068,6 @@ export default function ConfigurationPage() {
         </form>
       </dialog>
 
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useProfile } from '@/hooks/useProfile';
 import type { NotificationPrefs } from '@/types';
@@ -158,6 +158,7 @@ export default function ProfilePage() {
     try {
       await updateNotifications(updated);
       setSavedKey(key);
+      toast.success('Notification preference saved');
       setTimeout(() => setSavedKey(null), 2000);
     } catch {
       toast.error('Failed to save preference');
@@ -174,8 +175,6 @@ export default function ProfilePage() {
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-8 pb-20">
-      <Toaster position="top-right" />
-
       <div>
         <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
           Profile &amp; Settings
