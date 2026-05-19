@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -26,9 +26,7 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
-  useEffect(() => {
-    document.title = 'Smart Flush | Forgot Password';
-  }, []);
+
 
   const {
     register,

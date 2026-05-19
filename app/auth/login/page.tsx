@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -32,9 +32,7 @@ export default function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    document.title = 'Smart Flush | Login';
-  }, []);
+
 
   const {
     register,
