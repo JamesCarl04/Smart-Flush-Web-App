@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "npx -y concurrently \"npm run dev:web\" \"npm run dev:listener\"",
     "dev:listener": "npm --prefix mqtt-listener run dev",
+    "dev:web": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
