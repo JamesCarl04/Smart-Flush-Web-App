@@ -140,8 +140,17 @@ function getRuleBasis(trigger: string, threshold: number): string {
 }
 
 function validateDeviceName(name: string): string | null {
-  if (!name.trim()) {
+  const trimmed = name.trim();
+  if (!trimmed) {
     return 'Device name is required.';
+  }
+
+  if (trimmed.length > 100) {
+    return 'Device name must be at most 100 characters.';
+  }
+
+  if (!/^[a-zA-Z0-9\s\-']+$/.test(trimmed)) {
+    return "Device name can only contain letters, numbers, spaces, hyphens, and apostrophes.";
   }
 
   return null;
@@ -184,13 +193,26 @@ function validateTimingConfig(timing: TimingConfig): string | null {
 }
 
 function validateRuleForm(ruleForm: RuleFormState): string | null {
-  if (!ruleForm.name.trim()) {
+  const trimmedName = ruleForm.name.trim();
+  if (!trimmedName) {
     return 'Rule name is required.';
+  }
+
+  if (trimmedName.length > 100) {
+    return 'Rule name must be at most 100 characters.';
+  }
+
+  if (!/^[a-zA-Z0-9\s\-']+$/.test(trimmedName)) {
+    return "Rule name can only contain letters, numbers, spaces, hyphens, and apostrophes.";
   }
 
   const threshold = Number(ruleForm.threshold);
   if (!Number.isFinite(threshold) || threshold < 0) {
     return 'Rule threshold must be a valid number greater than or equal to 0.';
+  }
+
+  if (threshold > 1_000_000) {
+    return 'Rule threshold value is too large.';
   }
 
   return null;

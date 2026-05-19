@@ -11,14 +11,26 @@ import type { NotificationPrefs } from '@/types';
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 const accountSchema = z.object({
-  displayName: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
+  displayName: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(50, 'Name must be at most 50 characters')
+    .regex(/^[a-zA-Z\s]+$/, 'Name can only contain letters and spaces'),
+  email: z
+    .string()
+    .trim()
+    .email('Invalid email address')
+    .toLowerCase(),
 });
 
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
+      .regex(/[0-9]/, 'Password must contain at least one number'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {
