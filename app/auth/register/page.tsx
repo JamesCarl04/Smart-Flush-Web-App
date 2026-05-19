@@ -44,6 +44,8 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+
+
   const {
     register,
     handleSubmit,

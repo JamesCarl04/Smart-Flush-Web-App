@@ -21,6 +21,23 @@ export default function DashboardLayout({
   const { logout, user, loading } = useAuth();
   const presentationMode = usePresentationMode();
 
+  // Dynamic page title based on current route
+  useEffect(() => {
+    const routeTitles: Record<string, string> = {
+      '/dashboard': 'Smart Flush | Dashboard',
+      '/analytics': 'Smart Flush | Analytics',
+      '/configuration': 'Smart Flush | Configuration',
+      '/alerts': 'Smart Flush | Alerts',
+      '/reports': 'Smart Flush | Reports',
+      '/profile': 'Smart Flush | Profile',
+    };
+
+    const matchedRoute = Object.keys(routeTitles).find((route) =>
+      pathname?.startsWith(route)
+    );
+    document.title = matchedRoute ? routeTitles[matchedRoute] : 'Smart Flush';
+  }, [pathname]);
+
   useEffect(() => {
     if (!loading && !user && !presentationMode) {
       router.replace('/auth/login');

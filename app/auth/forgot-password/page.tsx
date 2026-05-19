@@ -26,6 +26,8 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
+
+
   const {
     register,
     handleSubmit,
