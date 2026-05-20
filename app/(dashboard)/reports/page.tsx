@@ -110,7 +110,8 @@ export default function ReportsPage() {
     }
   }, [customRange, dateRange, usesExplicitRange]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) {
       toast.error('You must be logged in to generate reports.');
       return;
@@ -200,25 +201,26 @@ export default function ReportsPage() {
             </h2>
           </div>
 
-          <div className="space-y-6 p-6">
-            <div className="form-control w-full">
-              <label className="label">
-                <span className="label-text font-medium text-base-content/80">
-                  Report Type
-                </span>
-              </label>
-              <select
-                className="select select-bordered w-full"
-                value={reportType}
-                onChange={(event) => setReportType(event.target.value as ReportType)}
-              >
-                {REPORT_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <form onSubmit={handleGenerate}>
+            <div className="space-y-6 p-6">
+              <div className="form-control w-full">
+                <label className="label">
+                  <span className="label-text font-medium text-base-content/80">
+                    Report Type
+                  </span>
+                </label>
+                <select
+                  className="select select-bordered w-full"
+                  value={reportType}
+                  onChange={(event) => setReportType(event.target.value as ReportType)}
+                >
+                  {REPORT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
             {usesExplicitRange ? (
               <div className="space-y-4 rounded-xl border border-base-200 bg-base-200/30 p-4">
@@ -269,7 +271,7 @@ export default function ReportsPage() {
               <div className="form-control w-full">
                 <label className="label">
                   <span className="label-text font-medium text-base-content/80">
-                    Report Type
+                    Date Range
                   </span>
                 </label>
                 <select
@@ -279,81 +281,14 @@ export default function ReportsPage() {
                     setDateRange(event.target.value as DateRangeOption)
                   }
                 >
-                  {REPORT_TYPE_OPTIONS.map((option) => (
+                  {RANGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
               </div>
-
-              {isCustomRange ? (
-                <div className="space-y-4 rounded-xl border border-base-200 bg-base-200/30 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-base-content/70">
-                    <CalendarRange className="h-4 w-4 text-primary" /> )
-                    Custom Range
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="form-control w-full">
-                      <label className="label">
-                        <span className="label-text font-medium text-base-content/80">
-                          From Date
-                        </span>
-                      </label>
-                      <input
-                        type="date"
-                        className="input input-bordered w-full"
-                        value={customRange.from}
-                        onChange={(e) =>
-                          setCustomRange((current) => ({
-                            ...current,
-                            from: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="form-control w-full">
-                      <label className="label">
-                        <span className="label-text font-medium text-base-content/80">
-                          To Date
-                        </span>
-                      </label>
-                      <input
-                        type="date"
-                        className="input input-bordered w-full"
-                        value={customRange.to}
-                        onChange={(e) =>
-                          setCustomRange((current) => ({
-                            ...current,
-                            to: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="form-control w-full">
-                  <label className="label">
-                    <span className="label-text font-medium text-base-content/80">
-                      Date Range
-                    </span>
-                  </label>
-                  <select
-                    className="select select-bordered w-full"
-                    value={dateRange}
-                    onChange={(e) =>
-                      setDateRange(e.target.value as DateRangeOption)
-                    }
-                  >
-                    {RANGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            )}
 
               <div className="form-control w-full">
                 <label className="label">
@@ -392,8 +327,8 @@ export default function ReportsPage() {
 
             <div className="pt-2">
               <button
+                type="submit"
                 className="btn btn-primary h-12 w-full shadow-lg"
-                onClick={handleGenerate}
                 disabled={isGenerating || hasInvalidDateRange}
               >
                 {isGenerating ? (
