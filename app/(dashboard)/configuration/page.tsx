@@ -319,7 +319,8 @@ export default function ConfigurationPage() {
     }
   };
 
-  const handleDeviceSave = async () => {
+  const handleDeviceSave = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) {
       toast.error('You must be logged in to save device settings.');
       return;
@@ -350,7 +351,8 @@ export default function ConfigurationPage() {
     }
   };
 
-  const handleCalibrationSave = async () => {
+  const handleCalibrationSave = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) {
       toast.error('You must be logged in to save calibration values.');
       return;
@@ -382,7 +384,8 @@ export default function ConfigurationPage() {
     }
   };
 
-  const handleTimingSave = async () => {
+  const handleTimingSave = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) {
       toast.error('You must be logged in to save timing parameters.');
       return;
@@ -432,7 +435,8 @@ export default function ConfigurationPage() {
     getRuleModal()?.close();
   };
 
-  const handleCreateRule = async () => {
+  const handleCreateRule = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) {
       toast.error('You must be logged in to create automation rules.');
       return;
@@ -557,10 +561,7 @@ export default function ConfigurationPage() {
               Device Profile
             </h2>
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleDeviceSave();
-              }}
+              onSubmit={handleDeviceSave}
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="form-control w-full">
@@ -646,10 +647,7 @@ export default function ConfigurationPage() {
               Sensor Calibration
             </h2>
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleCalibrationSave();
-              }}
+              onSubmit={handleCalibrationSave}
             >
               <div className="flex flex-col items-center gap-8 md:flex-row">
                 <div className="form-control w-full flex-1">
@@ -719,10 +717,7 @@ export default function ConfigurationPage() {
               Timing Parameters
             </h2>
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleTimingSave();
-              }}
+              onSubmit={handleTimingSave}
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 <div className="form-control w-full">
@@ -962,10 +957,7 @@ export default function ConfigurationPage() {
         <div className="modal-box">
           <h3 className="font-bold text-lg mb-4">Create Automation Rule</h3>
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void handleCreateRule();
-            }}
+            onSubmit={handleCreateRule}
           >
             <div className="space-y-4">
               <div className="form-control w-full">
