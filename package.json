@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "scripts\\dev-all.cmd",
+    "dev": "next dev",
     "dev:web": "next dev",
+    "dev:all": "scripts\\dev-all.cmd",
     "dev:listener": "npm --prefix mqtt-listener run dev",
     "build": "next build",
     "start": "next start",
