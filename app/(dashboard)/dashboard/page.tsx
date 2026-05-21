@@ -2,6 +2,7 @@ import { StatCards } from '@/components/dashboard/StatCards';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { ControlPanel } from '@/components/dashboard/ControlPanel';
 import { MaintenanceTaskPanel } from '@/components/dashboard/MaintenanceTaskPanel';
+import { RestroomMaintenanceNotes } from '@/components/dashboard/RestroomMaintenanceNotes';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardPage() {
@@ -31,6 +32,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2">
           <ControlPanel />
         </div>
+      </div>
+
+      <div className="mt-8">
+        <RestroomMaintenanceNotes />
       </div>
 
       {/* ROW 4 */}

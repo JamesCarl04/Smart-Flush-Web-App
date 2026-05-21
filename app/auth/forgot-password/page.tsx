@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
-import { app } from '@/lib/firebase';
-import { getErrorCode } from '@/lib/error-utils';
+import { getErrorMessage } from '@/lib/error-utils';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon } from 'lucide-react';
@@ -40,16 +38,26 @@ export default function ForgotPasswordPage() {
     setError(null);
     setSuccess(null);
     try {
-      const auth = getAuth(app);
-      await sendPasswordResetEmail(auth, data.email);
-      setSuccess('Password reset email sent! Check your inbox.');
+      const response = await fetch('/api/auth/password-reset/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email }),
+      });
+      const result = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to send reset email.');
+      }
+
+      setSuccess(
+        'If an account exists for that email, a password reset link has been sent.',
+      );
     } catch (err: unknown) {
       console.error('Reset password error:', err);
-      if (getErrorCode(err) === 'auth/user-not-found') {
-        setError('No account found with this email.');
-      } else {
-        setError('Failed to send reset email. Please try again.');
-      }
+      setError(getErrorMessage(err) ?? 'Failed to send reset email.');
     } finally {
       setIsLoading(false);
     }

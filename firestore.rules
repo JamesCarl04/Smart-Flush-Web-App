@@ -45,6 +45,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /maintenanceNotes/{noteId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && currentUserRole() != 'viewer';
+      allow update, delete: if false;
+    }
+
     match /devices/{deviceId} {
       allow read, write: if isAuthenticated();
       match /maintenanceCounters/{counterId} {
