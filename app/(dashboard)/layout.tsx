@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAlerts } from '@/hooks/useAlerts';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
-import { useTasks } from '@/hooks/useTasks';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bell, User, LogOut, UserCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,16 +33,10 @@ export default function DashboardLayout({
   };
 
   const { alerts, unreadCount } = useAlerts();
-  const { pendingCount } = useTasks();
   const recentAlerts = alerts.slice(0, 5);
 
   const navLinks = [
     { name: 'Dashboard', href: '/dashboard' },
-    {
-      name: 'Tasks',
-      href: '/dashboard#maintenance-task-panel',
-      badgeCount: pendingCount,
-    },
     { name: 'Analytics', href: '/analytics' },
     { name: 'Configuration', href: '/configuration' },
     { name: 'Alerts', href: '/alerts' },
@@ -285,29 +278,20 @@ export default function DashboardLayout({
             </div>
           </li>
           <div className="divider mt-0 mb-2"></div>
-          {navLinks.map((link) => {
-            const badgeCount = 'badgeCount' in link ? (link.badgeCount ?? 0) : 0;
-
-            return (
-              <li key={link.name}>
-                <Link
-                  href={link.href}
-                  className={`flex items-center justify-between gap-3 ${
-                    pathname?.startsWith(link.href)
-                      ? 'active bg-primary text-primary-content font-semibold shadow-sm'
-                      : 'transition-colors hover:bg-base-300/80'
-                  }`}
-                >
-                  <span>{link.name}</span>
-                  {badgeCount > 0 ? (
-                    <span className="badge badge-error badge-sm border-0 text-error-content">
-                      {badgeCount}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
+          {navLinks.map((link) => (
+            <li key={link.name}>
+              <Link
+                href={link.href}
+                className={`flex items-center justify-between gap-3 ${
+                  pathname?.startsWith(link.href)
+                    ? 'active bg-primary text-primary-content font-semibold shadow-sm'
+                    : 'transition-colors hover:bg-base-300/80'
+                }`}
+              >
+                <span>{link.name}</span>
+              </Link>
+            </li>
+          ))}
         </ul>
       </div>
     </div>
