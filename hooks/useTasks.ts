@@ -1,18 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-  type QueryConstraint,
-} from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
-import { db } from '@/lib/firebase';
+import { apiFetch } from '@/lib/api-client';
 import type { Task, TaskTriggerType } from '@/types';
 
 function toMillis(value: unknown): number {
@@ -22,10 +13,6 @@ function toMillis(value: unknown): number {
 
   if (value instanceof Date) {
     return value.getTime();
-  }
-
-  if (value instanceof Timestamp) {
-    return value.toMillis();
   }
 
   if (
@@ -51,7 +38,12 @@ function toMillis(value: unknown): number {
   return 0;
 }
 
-function mapTask(docId: string, data: Record<string, unknown>): Task {
+function mapTask(data: Record<string, unknown>): Task | null {
+  const id = typeof data.id === 'string' ? data.id : null;
+  if (!id) {
+    return null;
+  }
+
   const triggerType: TaskTriggerType =
     data.triggerType === 'uv_complete' ||
     data.triggerType === 'flush_count' ||
@@ -60,7 +52,7 @@ function mapTask(docId: string, data: Record<string, unknown>): Task {
       : 'manual';
 
   return {
-    id: typeof data.id === 'string' ? data.id : docId,
+    id,
     deviceId: typeof data.deviceId === 'string' ? data.deviceId : 'Unknown',
     triggerType,
     message: typeof data.message === 'string' ? data.message : '',
@@ -75,6 +67,12 @@ function mapTask(docId: string, data: Record<string, unknown>): Task {
     completedAt: data.completedAt ? toMillis(data.completedAt) : null,
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
   };
+}
+
+interface TasksResponse {
+  success: boolean;
+  data?: Array<Record<string, unknown>>;
+  error?: string;
 }
 
 function getDemoTasks(): Task[] {
@@ -147,40 +145,59 @@ export function useTasks(maxResults?: number): UseTasksResult {
       return;
     }
 
-    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
-    if (typeof maxResults === 'number') {
-      constraints.push(limit(maxResults));
-    }
+    let cancelled = false;
 
-    const tasksQuery = query(collection(db, 'tasks'), ...constraints);
+    const loadTasks = async () => {
+      try {
+        const response = await apiFetch<TasksResponse>('/api/tasks', user);
+        if (!response.success) {
+          throw new Error(response.error ?? 'Failed to load maintenance tasks');
+        }
 
-    const unsubscribe = onSnapshot(
-      tasksQuery,
-      (snapshot) => {
+        const tasks = Array.isArray(response.data)
+          ? response.data
+              .map(mapTask)
+              .filter((task): task is Task => task !== null)
+              .sort((left, right) => right.createdAt - left.createdAt)
+          : [];
+
+        if (cancelled) {
+          return;
+        }
+
         setLiveTasksState({
           readyForUserId: user.uid,
           error: null,
-          tasks: snapshot.docs.map((taskDoc) =>
-            mapTask(
-              taskDoc.id,
-              taskDoc.data({
-                serverTimestamps: 'estimate',
-              }) as Record<string, unknown>,
-            ),
-          ),
+          tasks:
+            typeof maxResults === 'number' ? tasks.slice(0, maxResults) : tasks,
         });
-      },
-      (error) => {
-        console.warn('[useTasks] snapshot failed:', error);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Failed to load maintenance tasks';
+        console.warn('[useTasks] API load failed:', error);
         setLiveTasksState({
           readyForUserId: user.uid,
-          error: error.message || 'Failed to load maintenance tasks',
+          error: message,
           tasks: [],
         });
-      },
-    );
+      }
+    };
 
-    return () => unsubscribe();
+    void loadTasks();
+    const intervalId = window.setInterval(() => {
+      void loadTasks();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [authLoading, maxResults, presentationMode, user]);
 
   const demoTasks = useMemo(
