@@ -51,6 +51,22 @@ function nullableString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function timestampMapToMillis(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<
+    Record<string, number>
+  >((result, [key, timestamp]) => {
+    const millis = timestampToMillis(timestamp);
+    if (millis !== null) {
+      result[key] = millis;
+    }
+    return result;
+  }, {});
+}
+
 function statusOrPending(value: unknown): TaskStatus {
   return isTaskStatus(value) ? value : 'pending';
 }
@@ -73,6 +89,8 @@ export function serializeTaskData(
     createdAt: timestampToMillis(data.createdAt),
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),
     completedAt: timestampToMillis(data.completedAt),
+    acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
+    completedBy: timestampMapToMillis(data.completedBy),
     createdBy: stringOrFallback(data.createdBy, 'unknown'),
   };
 }
@@ -98,6 +116,8 @@ export async function createTaskDocument(
     createdAt: now,
     acknowledgedAt: null,
     completedAt: null,
+    acknowledgedBy: {},
+    completedBy: {},
     createdBy: input.createdBy,
   };
 

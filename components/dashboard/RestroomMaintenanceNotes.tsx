@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { MessageSquareText, Send, Smartphone } from 'lucide-react';
+import { DashboardToast } from '@/components/dashboard/DashboardToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { apiFetch } from '@/lib/api-client';
@@ -195,6 +196,7 @@ export function RestroomMaintenanceNotes() {
 
       setNote('');
       setAssignedTo('');
+      window.dispatchEvent(new Event('maintenance-tasks:refresh'));
       setToast({
         kind: 'success',
         message: 'Maintenance note sent to staff phones',
@@ -362,15 +364,7 @@ export function RestroomMaintenanceNotes() {
       </section>
 
       {toast ? (
-        <div className="toast toast-top toast-end z-50">
-          <div
-            className={`alert ${
-              toast.kind === 'success' ? 'alert-success' : 'alert-error'
-            }`}
-          >
-            <span>{toast.message}</span>
-          </div>
-        </div>
+        <DashboardToast kind={toast.kind} message={toast.message} />
       ) : null}
     </>
   );

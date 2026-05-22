@@ -21,6 +21,8 @@ export interface TaskDoc {
   createdAt: Timestamp;
   acknowledgedAt: Timestamp | null;
   completedAt: Timestamp | null;
+  acknowledgedBy?: Record<string, Timestamp>;
+  completedBy?: Record<string, Timestamp>;
   createdBy: string;
 }
 
@@ -34,6 +36,8 @@ export interface TaskApiData {
   createdAt: number | null;
   acknowledgedAt: number | null;
   completedAt: number | null;
+  acknowledgedBy: Record<string, number>;
+  completedBy: Record<string, number>;
   createdBy: string;
 }
 

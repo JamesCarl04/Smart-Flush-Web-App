@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
@@ -123,6 +123,7 @@ interface UseTasksResult {
   pendingCount: number;
   loading: boolean;
   error: string | null;
+  refreshTasks: () => Promise<void>;
 }
 
 interface LiveTasksState {
@@ -140,14 +141,12 @@ export function useTasks(maxResults?: number): UseTasksResult {
     readyForUserId: null,
   });
 
-  useEffect(() => {
-    if (presentationMode || authLoading || !user) {
-      return;
-    }
+  const loadTasks = useCallback(
+    async (cancelledRef?: { cancelled: boolean }) => {
+      if (presentationMode || authLoading || !user) {
+        return;
+      }
 
-    let cancelled = false;
-
-    const loadTasks = async () => {
       try {
         const response = await apiFetch<TasksResponse>('/api/tasks', user);
         if (!response.success) {
@@ -161,7 +160,7 @@ export function useTasks(maxResults?: number): UseTasksResult {
               .sort((left, right) => right.createdAt - left.createdAt)
           : [];
 
-        if (cancelled) {
+        if (cancelledRef?.cancelled) {
           return;
         }
 
@@ -172,7 +171,7 @@ export function useTasks(maxResults?: number): UseTasksResult {
             typeof maxResults === 'number' ? tasks.slice(0, maxResults) : tasks,
         });
       } catch (error) {
-        if (cancelled) {
+        if (cancelledRef?.cancelled) {
           return;
         }
 
@@ -187,18 +186,35 @@ export function useTasks(maxResults?: number): UseTasksResult {
           tasks: [],
         });
       }
-    };
+    },
+    [authLoading, maxResults, presentationMode, user],
+  );
 
-    void loadTasks();
+  useEffect(() => {
+    if (presentationMode || authLoading || !user) {
+      return;
+    }
+
+    const cancelledRef = { cancelled: false };
+
+    void loadTasks(cancelledRef);
+    const handleRefreshTasks = () => {
+      void loadTasks(cancelledRef);
+    };
+    window.addEventListener('maintenance-tasks:refresh', handleRefreshTasks);
     const intervalId = window.setInterval(() => {
-      void loadTasks();
+      void loadTasks(cancelledRef);
     }, 10000);
 
     return () => {
-      cancelled = true;
+      cancelledRef.cancelled = true;
+      window.removeEventListener(
+        'maintenance-tasks:refresh',
+        handleRefreshTasks,
+      );
       window.clearInterval(intervalId);
     };
-  }, [authLoading, maxResults, presentationMode, user]);
+  }, [authLoading, loadTasks, presentationMode, user]);
 
   const demoTasks = useMemo(
     () => getDemoTasks().slice(0, maxResults),
@@ -228,5 +244,13 @@ export function useTasks(maxResults?: number): UseTasksResult {
   const error = presentationMode ? null : liveTasksState.error;
   const resolvedError = !user || presentationMode ? null : error;
 
-  return { tasks, pendingCount, loading, error: resolvedError };
+  return {
+    tasks,
+    pendingCount,
+    loading,
+    error: resolvedError,
+    refreshTasks: async () => {
+      await loadTasks();
+    },
+  };
 }

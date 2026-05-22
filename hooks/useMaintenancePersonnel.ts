@@ -1,15 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  type DocumentData,
-} from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
-import { db } from '@/lib/firebase';
+import { apiFetch } from '@/lib/api-client';
 
 export interface MaintenancePersonnel {
   id: string;
@@ -34,21 +27,13 @@ interface PersonnelSnapshotState {
   readyForUserId: string | null;
 }
 
-const EMPTY_PERSONNEL: MaintenancePersonnel[] = [];
-
-function mapPersonnel(docId: string, data: DocumentData): MaintenancePersonnel {
-  const email = typeof data.email === 'string' ? data.email : null;
-  const displayName =
-    typeof data.displayName === 'string' && data.displayName.trim()
-      ? data.displayName.trim()
-      : email || docId;
-
-  return {
-    id: docId,
-    displayName,
-    email,
-  };
+interface MaintenancePersonnelResponse {
+  success: boolean;
+  data?: MaintenancePersonnel[];
+  error?: string;
 }
+
+const EMPTY_PERSONNEL: MaintenancePersonnel[] = [];
 
 export function useMaintenancePersonnel({
   enabled = true,
@@ -65,41 +50,56 @@ export function useMaintenancePersonnel({
       return;
     }
 
-    const personnelQuery = query(
-      collection(db, 'users'),
-      where('role', '==', 'maintenance'),
-    );
+    let cancelled = false;
 
-    const unsubscribe = onSnapshot(
-      personnelQuery,
-      (snapshot) => {
-        const nextPersonnel = snapshot.docs
-          .map((personDoc) => mapPersonnel(personDoc.id, personDoc.data()))
-          .sort((first, second) =>
-            first.displayName.localeCompare(second.displayName),
+    const loadPersonnel = async () => {
+      try {
+        const response = await apiFetch<MaintenancePersonnelResponse>(
+          '/api/maintenance-personnel',
+          user,
+        );
+
+        if (!response.success) {
+          throw new Error(
+            response.error ?? 'Failed to load maintenance personnel',
           );
+        }
 
+        if (cancelled) {
+          return;
+        }
+
+        const nextPersonnel = Array.isArray(response.data)
+          ? response.data
+          : [];
         setSnapshotState({
           personnel: nextPersonnel,
           error: null,
           readyForUserId: user.uid,
         });
-      },
-      (snapshotError) => {
-        console.warn(
-          '[useMaintenancePersonnel] snapshot failed:',
-          snapshotError,
-        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Failed to load maintenance personnel';
+        console.warn('[useMaintenancePersonnel] API load failed:', error);
         setSnapshotState({
           personnel: [],
-          error:
-            snapshotError.message || 'Failed to load maintenance personnel',
+          error: message,
           readyForUserId: user.uid,
         });
-      },
-    );
+      }
+    };
 
-    return () => unsubscribe();
+    void loadPersonnel();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, enabled, user]);
 
   const personnel =

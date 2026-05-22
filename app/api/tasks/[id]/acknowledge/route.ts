@@ -7,6 +7,20 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+interface TaskActionDoc {
+  assignedTo?: unknown;
+  acknowledgedBy?: Record<string, unknown>;
+}
+
+async function listMaintenanceUserIds(): Promise<string[]> {
+  const snapshot = await adminDb
+    .collection('users')
+    .where('role', '==', 'maintenance')
+    .get();
+
+  return snapshot.docs.map((doc) => doc.id);
+}
+
 export async function POST(
   request: Request,
   { params }: RouteParams,
@@ -17,17 +31,50 @@ export async function POST(
     const { id } = await params;
 
     const taskRef = adminDb.collection('tasks').doc(id);
-    const task = await taskRef.get();
-    if (!task.exists) {
+    const taskSnapshot = await taskRef.get();
+    if (!taskSnapshot.exists) {
       return NextResponse.json(
         { success: false, error: 'Task not found' },
         { status: 404 },
       );
     }
 
+    const task = taskSnapshot.data() as TaskActionDoc;
+    const now = Timestamp.now();
+
+    if (task.assignedTo === null) {
+      const maintenanceUserIds = await listMaintenanceUserIds();
+      const acknowledgedBy = {
+        ...(task.acknowledgedBy ?? {}),
+        [user.uid]: now,
+      };
+      const allAcknowledged =
+        maintenanceUserIds.length > 0 &&
+        maintenanceUserIds.every((uid) => acknowledgedBy[uid]);
+
+      await taskRef.update({
+        [`acknowledgedBy.${user.uid}`]: now,
+        ...(allAcknowledged
+          ? {
+              status: 'acknowledged',
+              acknowledgedAt: now,
+            }
+          : {}),
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (typeof task.assignedTo === 'string' && task.assignedTo !== user.uid) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 },
+      );
+    }
+
     await taskRef.update({
       status: 'acknowledged',
-      acknowledgedAt: Timestamp.now(),
+      acknowledgedAt: now,
       assignedTo: user.uid,
     });
 

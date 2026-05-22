@@ -27,6 +27,42 @@ function taskCreatedAtMillis(task: { createdAt: number | null }): number {
   return task.createdAt ?? 0;
 }
 
+function withMaintenanceUserStatus(
+  task: ReturnType<typeof serializeTaskData>,
+  userId: string,
+): ReturnType<typeof serializeTaskData> {
+  if (task.assignedTo !== null) {
+    return task;
+  }
+
+  const completedAt = task.completedBy[userId] ?? null;
+  if (completedAt !== null) {
+    return {
+      ...task,
+      status: 'completed',
+      acknowledgedAt: task.acknowledgedBy[userId] ?? task.acknowledgedAt,
+      completedAt,
+    };
+  }
+
+  const acknowledgedAt = task.acknowledgedBy[userId] ?? null;
+  if (acknowledgedAt !== null) {
+    return {
+      ...task,
+      status: 'acknowledged',
+      acknowledgedAt,
+      completedAt: null,
+    };
+  }
+
+  return {
+    ...task,
+    status: 'pending',
+    acknowledgedAt: null,
+    completedAt: null,
+  };
+}
+
 // GET /api/tasks
 export async function GET(request: Request): Promise<NextResponse> {
   try {
@@ -66,17 +102,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         }
       }
 
-      if (!statusParam || statusParam === 'pending') {
-        const pendingSnapshot = await adminDb
-          .collection('tasks')
-          .where('status', '==', 'pending')
-          .get();
+      const teamSnapshot = await adminDb
+        .collection('tasks')
+        .where('assignedTo', '==', null)
+        .get();
 
-        for (const doc of pendingSnapshot.docs) {
-          const task = serializeTaskSnapshot(doc);
-          if (task.assignedTo === null) {
-            taskMap.set(task.id, task);
-          }
+      for (const doc of teamSnapshot.docs) {
+        const task = withMaintenanceUserStatus(
+          serializeTaskSnapshot(doc),
+          user.uid,
+        );
+        if (!statusParam || task.status === statusParam) {
+          taskMap.set(task.id, task);
         }
       }
 

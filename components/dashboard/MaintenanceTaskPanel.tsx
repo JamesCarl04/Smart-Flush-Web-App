@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { BrushCleaning, ClipboardList } from 'lucide-react';
+import { BrushCleaning, ClipboardList, Pencil, Trash2 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { useTasks } from '@/hooks/useTasks';
+import { DashboardToast } from '@/components/dashboard/DashboardToast';
 import { apiFetch } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/error-utils';
 import { db } from '@/lib/firebase';
-import type { Device, Task, TaskTriggerType } from '@/types';
+import type { Device, Task } from '@/types';
 
 interface DevicesResponse {
   success: boolean;
@@ -25,15 +26,22 @@ interface CreateTaskResponse {
   error?: string;
 }
 
+interface UpdateTaskResponse {
+  success: boolean;
+  data?: Task;
+  error?: string;
+}
+
+interface DeleteTaskResponse {
+  success: boolean;
+  data?: {
+    id: string;
+  };
+  error?: string;
+}
+
 type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
-
-const TRIGGER_OPTIONS: Array<{ value: TaskTriggerType; label: string }> = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'uv_complete', label: 'UV Complete' },
-  { value: 'flush_count', label: 'Flush Count' },
-  { value: 'maintenance', label: 'Maintenance' },
-];
 
 function formatDeviceLabel(device: Device): string {
   if (device.name && device.name !== device.id) {
@@ -43,21 +51,8 @@ function formatDeviceLabel(device: Device): string {
   return device.name || device.id;
 }
 
-function getDefaultMessage(
-  triggerType: TaskTriggerType,
-  deviceLabel: string,
-): string {
-  switch (triggerType) {
-    case 'uv_complete':
-      return `UV cycle completed on ${deviceLabel}. Please verify sanitation and reset the unit for service.`;
-    case 'flush_count':
-      return `${deviceLabel} reached its flush-count service threshold. Inspect flush hardware and consumables.`;
-    case 'maintenance':
-      return `Scheduled maintenance is due for ${deviceLabel}. Complete the standard inspection checklist.`;
-    case 'manual':
-    default:
-      return `Manual maintenance requested for ${deviceLabel}.`;
-  }
+function getDefaultMessage(deviceLabel: string): string {
+  return `Manual maintenance requested for ${deviceLabel}.`;
 }
 
 function getStatusBadgeClassName(status: Task['status']): string {
@@ -84,13 +79,6 @@ function getStatusLabel(status: Task['status']): string {
   }
 }
 
-function getTriggerLabel(triggerType: TaskTriggerType): string {
-  return (
-    TRIGGER_OPTIONS.find((option) => option.value === triggerType)?.label ??
-    'Manual'
-  );
-}
-
 function formatTimestamp(value?: number | null): string {
   if (!value) {
     return 'Not recorded';
@@ -114,25 +102,36 @@ export function MaintenanceTaskPanel() {
     pendingCount,
     loading: tasksLoading,
     error: tasksError,
+    refreshTasks,
   } = useTasks();
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [selectedToiletId, setSelectedToiletId] = useState('');
-  const [triggerType, setTriggerType] = useState<TaskTriggerType>('manual');
   const [message, setMessage] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [role, setRole] = useState<UserRole>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [taskAction, setTaskAction] = useState<
+    'edit' | 'delete' | null
+  >(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [editToiletId, setEditToiletId] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
   const [taskToast, setTaskToast] = useState<{
     kind: ToastKind;
     message: string;
   } | null>(null);
   const confirmDialogRef = useRef<HTMLDialogElement | null>(null);
+  const editDialogRef = useRef<HTMLDialogElement | null>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
   const previousDefaultMessageRef = useRef('');
 
   const showAssignmentForm = role === 'admin';
   const showAssignmentSkeleton = roleLoading;
+  const canManageTasks = role !== null && role !== 'viewer';
   const {
     personnel,
     personnelById,
@@ -263,8 +262,8 @@ export function MaintenanceTaskPanel() {
     ? formatDeviceLabel(selectedDevice)
     : selectedToiletId || 'the selected toilet unit';
   const defaultMessage = useMemo(
-    () => getDefaultMessage(triggerType, selectedDeviceLabel),
-    [selectedDeviceLabel, triggerType],
+    () => getDefaultMessage(selectedDeviceLabel),
+    [selectedDeviceLabel],
   );
   const useTwoColumnLayout = showAssignmentForm || showAssignmentSkeleton;
 
@@ -286,7 +285,11 @@ export function MaintenanceTaskPanel() {
 
   const resolveAssignedName = (assignedUserId?: string | null) => {
     if (!assignedUserId) {
-      return 'Unassigned';
+      return 'All maintenance team';
+    }
+
+    if (personnelLoading) {
+      return 'Loading staff...';
     }
 
     return personnelById[assignedUserId]?.displayName ?? assignedUserId;
@@ -349,7 +352,7 @@ export function MaintenanceTaskPanel() {
         method: 'POST',
         body: JSON.stringify({
           deviceId: selectedToiletId,
-          triggerType,
+          triggerType: 'manual',
           message: trimmedMessage,
           assignedTo: assignedTo || null,
         }),
@@ -358,6 +361,7 @@ export function MaintenanceTaskPanel() {
       closeConfirmModal();
       setMessage(defaultMessage);
       setAssignedTo('');
+      await refreshTasks();
       setTaskToast({
         kind: 'success',
         message: 'Task assigned and notification sent',
@@ -369,6 +373,107 @@ export function MaintenanceTaskPanel() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openEditTaskModal = (task: Task) => {
+    setEditingTask(task);
+    setEditToiletId(task.deviceId);
+    setEditMessage(task.message);
+    setEditAssignedTo(task.assignedTo ?? '');
+    editDialogRef.current?.showModal();
+  };
+
+  const closeEditTaskModal = () => {
+    editDialogRef.current?.close();
+  };
+
+  const handleUpdateTask = async () => {
+    if (!user || !editingTask || taskAction) {
+      return;
+    }
+
+    const trimmedMessage = editMessage.trim();
+    if (!editToiletId) {
+      setTaskToast({
+        kind: 'error',
+        message: 'Select a toilet unit before saving the task.',
+      });
+      return;
+    }
+
+    if (!trimmedMessage) {
+      setTaskToast({
+        kind: 'error',
+        message: 'Enter a task message before saving.',
+      });
+      return;
+    }
+
+    setTaskAction('edit');
+
+    try {
+      await apiFetch<UpdateTaskResponse>(`/api/tasks/${editingTask.id}`, user, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          deviceId: editToiletId,
+          message: trimmedMessage,
+          assignedTo: editAssignedTo || null,
+        }),
+      });
+
+      closeEditTaskModal();
+      setEditingTask(null);
+      await refreshTasks();
+      setTaskToast({
+        kind: 'success',
+        message: 'Task updated',
+      });
+    } catch (error) {
+      setTaskToast({
+        kind: 'error',
+        message: getErrorMessage(error) ?? 'Failed to update task',
+      });
+    } finally {
+      setTaskAction(null);
+    }
+  };
+
+  const openDeleteTaskModal = (task: Task) => {
+    setDeletingTask(task);
+    deleteDialogRef.current?.showModal();
+  };
+
+  const closeDeleteTaskModal = () => {
+    deleteDialogRef.current?.close();
+  };
+
+  const handleDeleteTask = async () => {
+    if (!user || !deletingTask || taskAction) {
+      return;
+    }
+
+    setTaskAction('delete');
+
+    try {
+      await apiFetch<DeleteTaskResponse>(`/api/tasks/${deletingTask.id}`, user, {
+        method: 'DELETE',
+      });
+
+      closeDeleteTaskModal();
+      setDeletingTask(null);
+      await refreshTasks();
+      setTaskToast({
+        kind: 'success',
+        message: 'Task deleted',
+      });
+    } catch (error) {
+      setTaskToast({
+        kind: 'error',
+        message: getErrorMessage(error) ?? 'Failed to delete task',
+      });
+    } finally {
+      setTaskAction(null);
     }
   };
 
@@ -448,28 +553,6 @@ export function MaintenanceTaskPanel() {
                 </div>
 
                 <div className="form-control w-full">
-                  <label className="label" htmlFor="maintenance-trigger">
-                    <span className="label-text font-medium text-base-content/80">
-                      Trigger Type
-                    </span>
-                  </label>
-                  <select
-                    id="maintenance-trigger"
-                    className="select select-bordered w-full"
-                    value={triggerType}
-                    onChange={(event) =>
-                      setTriggerType(event.target.value as TaskTriggerType)
-                    }
-                  >
-                    {TRIGGER_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-control w-full">
                   <label className="label" htmlFor="maintenance-message">
                     <span className="label-text font-medium text-base-content/80">
                       Message
@@ -503,7 +586,7 @@ export function MaintenanceTaskPanel() {
                         value={assignedTo}
                         onChange={(event) => setAssignedTo(event.target.value)}
                       >
-                        <option value="">Leave Unassigned</option>
+                        <option value="">All maintenance team</option>
                         {personnel.map((person) => (
                           <option key={person.id} value={person.id}>
                             {person.displayName}
@@ -620,9 +703,6 @@ export function MaintenanceTaskPanel() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="badge badge-sm badge-outline font-semibold">
-                            {getTriggerLabel(task.triggerType)}
-                          </span>
                           <span className="text-xs text-base-content/50">
                             {task.deviceId}
                           </span>
@@ -651,12 +731,35 @@ export function MaintenanceTaskPanel() {
                           ) : null}
                         </div>
                       </div>
-                      <div
-                        className={`badge shrink-0 gap-1 border-0 px-3 py-3 font-semibold ${getStatusBadgeClassName(
-                          task.status,
-                        )}`}
-                      >
-                        {getStatusLabel(task.status)}
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                        <div
+                          className={`badge gap-1 border-0 px-3 py-3 font-semibold ${getStatusBadgeClassName(
+                            task.status,
+                          )}`}
+                        >
+                          {getStatusLabel(task.status)}
+                        </div>
+
+                        {canManageTasks ? (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => openEditTaskModal(task)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs text-error hover:bg-error/10"
+                              onClick={() => openDeleteTaskModal(task)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -682,8 +785,7 @@ export function MaintenanceTaskPanel() {
               <span className="font-semibold">{selectedDeviceLabel}</span>?
             </p>
             <div className="rounded-lg bg-base-200 p-3">
-              <div className="font-semibold">{getTriggerLabel(triggerType)}</div>
-              <p className="mt-1 text-base-content/70">{message}</p>
+              <p className="text-base-content/70">{message}</p>
               <p className="mt-2 text-xs text-base-content/60">
                 Assigned to {resolveAssignedName(assignedTo)}
               </p>
@@ -720,16 +822,166 @@ export function MaintenanceTaskPanel() {
         </form>
       </dialog>
 
-      {taskToast ? (
-        <div className="toast toast-top toast-end z-50">
-          <div
-            className={`alert ${
-              taskToast.kind === 'success' ? 'alert-success' : 'alert-error'
-            }`}
-          >
-            <span>{taskToast.message}</span>
+      <dialog
+        ref={editDialogRef}
+        className="modal modal-bottom sm:modal-middle"
+      >
+        <div className="modal-box max-w-2xl">
+          <h3 className="flex items-center gap-2 text-lg font-bold">
+            <Pencil className="h-5 w-5" />
+            Edit Task
+          </h3>
+          <div className="space-y-4 py-4">
+            <div className="form-control">
+              <label className="label" htmlFor="edit-maintenance-toilet">
+                <span className="label-text font-medium">Toilet Unit</span>
+              </label>
+              <select
+                id="edit-maintenance-toilet"
+                className="select select-bordered w-full"
+                value={editToiletId}
+                onChange={(event) => setEditToiletId(event.target.value)}
+              >
+                {editToiletId &&
+                !devices.some((device) => device.id === editToiletId) ? (
+                  <option value={editToiletId}>{editToiletId}</option>
+                ) : null}
+                {devices.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {formatDeviceLabel(device)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-control">
+              <label className="label" htmlFor="edit-maintenance-message">
+                <span className="label-text font-medium">Message</span>
+                <span className="label-text-alt text-base-content/50">
+                  {editMessage.length}/500
+                </span>
+              </label>
+              <textarea
+                id="edit-maintenance-message"
+                className="textarea textarea-bordered min-h-28 w-full"
+                maxLength={500}
+                value={editMessage}
+                onChange={(event) => setEditMessage(event.target.value)}
+              ></textarea>
+            </div>
+
+            <div className="form-control">
+              <label className="label" htmlFor="edit-maintenance-assignee">
+                <span className="label-text font-medium">Assign To</span>
+              </label>
+              <select
+                id="edit-maintenance-assignee"
+                className="select select-bordered w-full"
+                value={editAssignedTo}
+                onChange={(event) => setEditAssignedTo(event.target.value)}
+              >
+                <option value="">All maintenance team</option>
+                {editAssignedTo &&
+                !personnel.some((person) => person.id === editAssignedTo) ? (
+                  <option value={editAssignedTo}>
+                    {resolveAssignedName(editAssignedTo)}
+                  </option>
+                ) : null}
+                {personnel.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.displayName}
+                    {person.email ? ` (${person.email})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="modal-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={closeEditTaskModal}
+              disabled={taskAction === 'edit'}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleUpdateTask()}
+              disabled={taskAction === 'edit'}
+            >
+              {taskAction === 'edit' ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </button>
           </div>
         </div>
+        <form method="dialog" className="modal-backdrop">
+          <button disabled={taskAction === 'edit'}>close</button>
+        </form>
+      </dialog>
+
+      <dialog
+        ref={deleteDialogRef}
+        className="modal modal-bottom sm:modal-middle"
+      >
+        <div className="modal-box">
+          <h3 className="flex items-center gap-2 text-lg font-bold text-error">
+            <Trash2 className="h-5 w-5" />
+            Delete Task
+          </h3>
+          <div className="space-y-3 py-4 text-sm">
+            <p>
+              Delete this task from the dashboard and cleaner mobile inbox?
+            </p>
+            {deletingTask ? (
+              <div className="rounded-lg bg-base-200 p-3">
+                <div className="font-semibold">{deletingTask.deviceId}</div>
+                <p className="mt-1 text-base-content/70">
+                  {deletingTask.message}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <div className="modal-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={closeDeleteTaskModal}
+              disabled={taskAction === 'delete'}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-error"
+              onClick={() => void handleDeleteTask()}
+              disabled={taskAction === 'delete'}
+            >
+              {taskAction === 'delete' ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Deleting...
+                </>
+              ) : (
+                'Delete Task'
+              )}
+            </button>
+          </div>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button disabled={taskAction === 'delete'}>close</button>
+        </form>
+      </dialog>
+
+      {taskToast ? (
+        <DashboardToast kind={taskToast.kind} message={taskToast.message} />
       ) : null}
     </>
   );
