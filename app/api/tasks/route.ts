@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth-helpers';
 import {
   createTaskAndNotify,
+  serializeTaskData,
   serializeTaskSnapshot,
 } from '@/lib/task-service';
 import { isTaskStatus, isTaskTriggerType } from '@/lib/task-types';
@@ -20,6 +21,10 @@ interface CreateTaskBody {
 
 function trimmedString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function taskCreatedAtMillis(task: { createdAt: number | null }): number {
+  return task.createdAt ?? 0;
 }
 
 // GET /api/tasks
@@ -47,14 +52,46 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
-    let tasksQuery: FirebaseFirestore.Query = adminDb.collection('tasks');
     if (role === 'maintenance') {
-      tasksQuery = tasksQuery.where('assignedTo', '==', user.uid);
+      const taskMap = new Map<string, ReturnType<typeof serializeTaskData>>();
+      const assignedSnapshot = await adminDb
+        .collection('tasks')
+        .where('assignedTo', '==', user.uid)
+        .get();
+
+      for (const doc of assignedSnapshot.docs) {
+        const task = serializeTaskSnapshot(doc);
+        if (!statusParam || task.status === statusParam) {
+          taskMap.set(task.id, task);
+        }
+      }
+
+      if (!statusParam || statusParam === 'pending') {
+        const pendingSnapshot = await adminDb
+          .collection('tasks')
+          .where('status', '==', 'pending')
+          .get();
+
+        for (const doc of pendingSnapshot.docs) {
+          const task = serializeTaskSnapshot(doc);
+          if (task.assignedTo === null) {
+            taskMap.set(task.id, task);
+          }
+        }
+      }
+
+      const tasks = Array.from(taskMap.values()).sort(
+        (left, right) =>
+          taskCreatedAtMillis(right) - taskCreatedAtMillis(left),
+      );
+
+      return NextResponse.json({ success: true, data: tasks });
     }
+
+    let tasksQuery: FirebaseFirestore.Query = adminDb.collection('tasks');
     if (statusParam) {
       tasksQuery = tasksQuery.where('status', '==', statusParam);
     }
-
     const snapshot = await tasksQuery.orderBy('createdAt', 'desc').get();
     const tasks = snapshot.docs.map(serializeTaskSnapshot);
 
