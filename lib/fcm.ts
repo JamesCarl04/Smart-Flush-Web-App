@@ -187,7 +187,24 @@ async function sendToManyTokens(
 export async function sendTaskNotification(
   task: TaskDoc,
   assignedToUid: string | null,
+  assignedToUids: string[] = [],
 ): Promise<void> {
+  if (assignedToUids.length > 0) {
+    const owners = (
+      await Promise.all(assignedToUids.map((uid) => readAssignedToken(uid)))
+    ).filter((owner): owner is TokenOwner => owner !== null);
+
+    if (owners.length === 0) {
+      console.info(
+        '[FCM] No FCM tokens found for assigned users. success=0 failure=0',
+      );
+      return;
+    }
+
+    await sendToManyTokens(task, owners);
+    return;
+  }
+
   if (assignedToUid) {
     const owner = await readAssignedToken(assignedToUid);
     if (!owner) {

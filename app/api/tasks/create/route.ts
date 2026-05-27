@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { createTaskAndNotify } from '@/lib/task-service';
+import { normalizeTaskAssignment } from '@/lib/task-assignment';
 
 interface CreateTaskBody {
   toiletId: string;
   note?: string;
   assignedTo?: string | null;
+  assignedToIds?: string[];
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -16,10 +18,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     const body = (await request.json()) as Partial<CreateTaskBody>;
     const toiletId = body.toiletId?.trim();
     const note = body.note?.trim();
-    const assignedTo =
-      typeof body.assignedTo === 'string' && body.assignedTo.trim()
-        ? body.assignedTo.trim()
-        : null;
+    const assignment = normalizeTaskAssignment(
+      body.assignedTo,
+      body.assignedToIds,
+    );
 
     if (!toiletId) {
       return NextResponse.json(
@@ -39,7 +41,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       deviceId: toiletId,
       triggerType: 'manual',
       message: note || `Manual cleaning requested for ${toiletId}.`,
-      assignedTo,
+      assignedTo: assignment.assignedTo,
+      assignedToIds: assignment.assignedToIds,
       createdBy: user.uid,
     });
 

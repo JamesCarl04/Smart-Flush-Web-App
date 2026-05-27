@@ -38,6 +38,22 @@ function toMillis(value: unknown): number {
   return 0;
 }
 
+function timestampMapToMillis(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<
+    Record<string, number>
+  >((result, [key, timestamp]) => {
+    const millis = toMillis(timestamp);
+    if (millis > 0) {
+      result[key] = millis;
+    }
+    return result;
+  }, {});
+}
+
 function mapTask(data: Record<string, unknown>): Task | null {
   const id = typeof data.id === 'string' ? data.id : null;
   if (!id) {
@@ -58,6 +74,9 @@ function mapTask(data: Record<string, unknown>): Task | null {
     message: typeof data.message === 'string' ? data.message : '',
     assignedTo:
       typeof data.assignedTo === 'string' ? data.assignedTo : (null as null),
+    assignedToIds: Array.isArray(data.assignedToIds)
+      ? data.assignedToIds.filter((id): id is string => typeof id === 'string')
+      : [],
     status:
       data.status === 'acknowledged' || data.status === 'completed'
         ? data.status
@@ -65,6 +84,8 @@ function mapTask(data: Record<string, unknown>): Task | null {
     createdAt: toMillis(data.createdAt),
     acknowledgedAt: data.acknowledgedAt ? toMillis(data.acknowledgedAt) : null,
     completedAt: data.completedAt ? toMillis(data.completedAt) : null,
+    acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
+    completedBy: timestampMapToMillis(data.completedBy),
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
   };
 }
@@ -86,9 +107,12 @@ function getDemoTasks(): Task[] {
       message: 'Check the bowl area after repeated usage.',
       createdAt: now - 5 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
+      assignedToIds: ['maintenance-personnel'],
       status: 'pending',
       acknowledgedAt: null,
       completedAt: null,
+      acknowledgedBy: {},
+      completedBy: {},
       createdBy: 'demo-admin',
     },
     {
@@ -98,9 +122,12 @@ function getDemoTasks(): Task[] {
       message: 'UV cycle complete. Manual cleaning required.',
       createdAt: now - 18 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
+      assignedToIds: ['maintenance-personnel'],
       status: 'acknowledged',
       acknowledgedAt: now - 12 * 60 * 1000,
       completedAt: null,
+      acknowledgedBy: { 'maintenance-personnel': now - 12 * 60 * 1000 },
+      completedBy: {},
       createdBy: 'system:mqtt',
     },
     {
@@ -110,9 +137,12 @@ function getDemoTasks(): Task[] {
       message: 'Deep clean after inspection.',
       createdAt: now - 46 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
+      assignedToIds: ['maintenance-personnel'],
       status: 'completed',
       acknowledgedAt: now - 39 * 60 * 1000,
       completedAt: now - 14 * 60 * 1000,
+      acknowledgedBy: { 'maintenance-personnel': now - 39 * 60 * 1000 },
+      completedBy: { 'maintenance-personnel': now - 14 * 60 * 1000 },
       createdBy: 'demo-admin',
     },
   ];

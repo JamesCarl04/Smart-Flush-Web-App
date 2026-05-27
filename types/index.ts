@@ -77,10 +77,13 @@ export interface Task {
   triggerType: TaskTriggerType;
   message: string;
   assignedTo?: string | null;
+  assignedToIds?: string[];
   status: TaskStatus;
   createdAt: number;
   acknowledgedAt?: number | null;
   completedAt?: number | null;
+  acknowledgedBy?: Record<string, number>;
+  completedBy?: Record<string, number>;
   createdBy: string;
 }
 

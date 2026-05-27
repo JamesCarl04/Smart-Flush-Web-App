@@ -57,9 +57,12 @@ export async function createMaintenanceNoteAndNotify(
     message: input.message,
     status: 'pending',
     assignedTo: input.assignedTo,
+    assignedToIds: input.assignedTo ? [input.assignedTo] : [],
     createdAt: now,
     acknowledgedAt: null,
     completedAt: null,
+    acknowledgedBy: {},
+    completedBy: {},
     createdBy: input.createdBy,
   };
 
@@ -80,7 +83,7 @@ export async function createMaintenanceNoteAndNotify(
   batch.set(noteRef, note);
   await batch.commit();
 
-  await sendTaskNotification(task, task.assignedTo);
+  await sendTaskNotification(task, task.assignedTo, task.assignedToIds);
 
   return { note, task };
 }

@@ -76,6 +76,7 @@ async function writeUvCycleAndMaybeCreateTask(
       triggerType: 'uv_complete',
       message: 'UV cycle complete. Manual cleaning required.',
       assignedTo: null,
+      assignedToIds: [],
       createdBy: 'system:mqtt',
     });
   } catch (error) {

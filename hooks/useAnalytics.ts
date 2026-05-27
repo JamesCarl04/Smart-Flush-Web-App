@@ -76,6 +76,8 @@ interface SystemPerformanceResponse {
   };
 }
 
+const ANALYTICS_REFRESH_MS = 10_000;
+
 export function useAnalytics(range: DateRange) {
   const { user } = useAuth();
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -84,9 +86,15 @@ export function useAnalytics(range: DateRange) {
   const fromTime = range.from.getTime();
   const toTime = range.to.getTime();
 
-  const fetchAnalytics = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
+  const fetchAnalytics = useCallback(async (showLoading = false) => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -94,15 +102,23 @@ export function useAnalytics(range: DateRange) {
       const toStr = format(new Date(toTime), 'yyyy-MM-dd');
 
       const [dashboardRes, waterRes, patternsRes, perfRes] = await Promise.all([
-        apiFetch<DashboardResponse>('/api/analytics/dashboard', user),
+        apiFetch<DashboardResponse>('/api/analytics/dashboard', user, {
+          cache: 'no-store',
+        }),
         apiFetch<WaterUsageResponse>(
           `/api/analytics/water-usage?from=${fromStr}&to=${toStr}`,
           user,
+          { cache: 'no-store' },
         ),
-        apiFetch<FlushPatternsResponse>('/api/analytics/flush-patterns', user),
+        apiFetch<FlushPatternsResponse>(
+          '/api/analytics/flush-patterns',
+          user,
+          { cache: 'no-store' },
+        ),
         apiFetch<SystemPerformanceResponse>(
           '/api/analytics/system-performance',
           user,
+          { cache: 'no-store' },
         ),
       ]);
 
@@ -164,7 +180,13 @@ export function useAnalytics(range: DateRange) {
   }, [user, fromTime, toTime]);
 
   useEffect(() => {
-    fetchAnalytics();
+    void fetchAnalytics(true);
+
+    const intervalId = window.setInterval(() => {
+      void fetchAnalytics(false);
+    }, ANALYTICS_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
   }, [fetchAnalytics]);
 
   return { data, loading, error };

@@ -7,16 +7,28 @@ import {
 } from '@/lib/auth-helpers';
 import {
   createTaskAndNotify,
-  serializeTaskData,
   serializeTaskSnapshot,
 } from '@/lib/task-service';
-import { isTaskStatus, isTaskTriggerType } from '@/lib/task-types';
+import {
+  isAssignedToUser,
+  normalizeTaskAssignment,
+} from '@/lib/task-assignment';
+import {
+  withDashboardTaskStatus,
+  withMaintenanceUserStatus,
+} from '@/lib/task-status';
+import {
+  isTaskStatus,
+  isTaskTriggerType,
+  type TaskApiData,
+} from '@/lib/task-types';
 
 interface CreateTaskBody {
   deviceId?: unknown;
   triggerType?: unknown;
   message?: unknown;
   assignedTo?: unknown;
+  assignedToIds?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -27,40 +39,13 @@ function taskCreatedAtMillis(task: { createdAt: number | null }): number {
   return task.createdAt ?? 0;
 }
 
-function withMaintenanceUserStatus(
-  task: ReturnType<typeof serializeTaskData>,
-  userId: string,
-): ReturnType<typeof serializeTaskData> {
-  if (task.assignedTo !== null) {
-    return task;
-  }
+async function listMaintenanceUserIds(): Promise<string[]> {
+  const snapshot = await adminDb
+    .collection('users')
+    .where('role', '==', 'maintenance')
+    .get();
 
-  const completedAt = task.completedBy[userId] ?? null;
-  if (completedAt !== null) {
-    return {
-      ...task,
-      status: 'completed',
-      acknowledgedAt: task.acknowledgedBy[userId] ?? task.acknowledgedAt,
-      completedAt,
-    };
-  }
-
-  const acknowledgedAt = task.acknowledgedBy[userId] ?? null;
-  if (acknowledgedAt !== null) {
-    return {
-      ...task,
-      status: 'acknowledged',
-      acknowledgedAt,
-      completedAt: null,
-    };
-  }
-
-  return {
-    ...task,
-    status: 'pending',
-    acknowledgedAt: null,
-    completedAt: null,
-  };
+  return snapshot.docs.map((doc) => doc.id);
 }
 
 // GET /api/tasks
@@ -89,11 +74,11 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     if (role === 'maintenance') {
-      const taskMap = new Map<string, ReturnType<typeof serializeTaskData>>();
-      const assignedSnapshot = await adminDb
-        .collection('tasks')
-        .where('assignedTo', '==', user.uid)
-        .get();
+      const taskMap = new Map<string, TaskApiData>();
+      const [assignedSnapshot, teamSnapshot] = await Promise.all([
+        adminDb.collection('tasks').where('assignedTo', '==', user.uid).get(),
+        adminDb.collection('tasks').where('assignedTo', '==', null).get(),
+      ]);
 
       for (const doc of assignedSnapshot.docs) {
         const task = serializeTaskSnapshot(doc);
@@ -102,16 +87,13 @@ export async function GET(request: Request): Promise<NextResponse> {
         }
       }
 
-      const teamSnapshot = await adminDb
-        .collection('tasks')
-        .where('assignedTo', '==', null)
-        .get();
-
       for (const doc of teamSnapshot.docs) {
-        const task = withMaintenanceUserStatus(
-          serializeTaskSnapshot(doc),
-          user.uid,
-        );
+        const rawTask = serializeTaskSnapshot(doc);
+        if (!isAssignedToUser(rawTask, user.uid)) {
+          continue;
+        }
+
+        const task = withMaintenanceUserStatus(rawTask, user.uid);
         if (!statusParam || task.status === statusParam) {
           taskMap.set(task.id, task);
         }
@@ -125,12 +107,14 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json({ success: true, data: tasks });
     }
 
-    let tasksQuery: FirebaseFirestore.Query = adminDb.collection('tasks');
-    if (statusParam) {
-      tasksQuery = tasksQuery.where('status', '==', statusParam);
-    }
-    const snapshot = await tasksQuery.orderBy('createdAt', 'desc').get();
-    const tasks = snapshot.docs.map(serializeTaskSnapshot);
+    const [snapshot, maintenanceUserIds] = await Promise.all([
+      adminDb.collection('tasks').orderBy('createdAt', 'desc').get(),
+      listMaintenanceUserIds(),
+    ]);
+    const tasks = snapshot.docs
+      .map(serializeTaskSnapshot)
+      .map((task) => withDashboardTaskStatus(task, maintenanceUserIds))
+      .filter((task) => !statusParam || task.status === statusParam);
 
     return NextResponse.json({ success: true, data: tasks });
   } catch (error) {
@@ -155,10 +139,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     const body = (await request.json()) as CreateTaskBody;
     const deviceId = trimmedString(body.deviceId);
     const message = trimmedString(body.message);
-    const assignedTo =
-      body.assignedTo === undefined || body.assignedTo === null
-        ? null
-        : trimmedString(body.assignedTo);
+    const assignment = normalizeTaskAssignment(
+      body.assignedTo,
+      body.assignedToIds,
+    );
 
     if (!deviceId) {
       return NextResponse.json(
@@ -187,7 +171,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       deviceId,
       triggerType: body.triggerType,
       message,
-      assignedTo,
+      assignedTo: assignment.assignedTo,
+      assignedToIds: assignment.assignedToIds,
       createdBy: user.uid,
     });
 

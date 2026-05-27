@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { serializeTaskData } from '@/lib/task-service';
+import {
+  isAssignedToUser,
+  normalizeTaskAssignment,
+} from '@/lib/task-assignment';
+import {
+  withDashboardTaskStatus,
+  withMaintenanceUserStatus,
+} from '@/lib/task-status';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -11,6 +19,7 @@ interface UpdateTaskBody {
   deviceId?: unknown;
   message?: unknown;
   assignedTo?: unknown;
+  assignedToIds?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -30,47 +39,16 @@ function canManageTask(
     return false;
   }
 
-  return (
-    task.createdBy === userId ||
-    task.assignedTo === userId ||
-    task.assignedTo === null
-  );
+  return task.createdBy === userId || isAssignedToUser(task, userId);
 }
 
-function withMaintenanceUserStatus(
-  task: ReturnType<typeof serializeTaskData>,
-  userId: string,
-): ReturnType<typeof serializeTaskData> {
-  if (task.assignedTo !== null) {
-    return task;
-  }
+async function listMaintenanceUserIds(): Promise<string[]> {
+  const snapshot = await adminDb
+    .collection('users')
+    .where('role', '==', 'maintenance')
+    .get();
 
-  const completedAt = task.completedBy[userId] ?? null;
-  if (completedAt !== null) {
-    return {
-      ...task,
-      status: 'completed',
-      acknowledgedAt: task.acknowledgedBy[userId] ?? task.acknowledgedAt,
-      completedAt,
-    };
-  }
-
-  const acknowledgedAt = task.acknowledgedBy[userId] ?? null;
-  if (acknowledgedAt !== null) {
-    return {
-      ...task,
-      status: 'acknowledged',
-      acknowledgedAt,
-      completedAt: null,
-    };
-  }
-
-  return {
-    ...task,
-    status: 'pending',
-    acknowledgedAt: null,
-    completedAt: null,
-  };
+  return snapshot.docs.map((doc) => doc.id);
 }
 
 export async function GET(
@@ -104,8 +82,7 @@ export async function GET(
 
     if (
       role === 'maintenance' &&
-      task.assignedTo !== user.uid &&
-      task.assignedTo !== null
+      !isAssignedToUser(task, user.uid)
     ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
@@ -118,7 +95,7 @@ export async function GET(
       data:
         role === 'maintenance'
           ? withMaintenanceUserStatus(task, user.uid)
-          : task,
+          : withDashboardTaskStatus(task, await listMaintenanceUserIds()),
     });
   } catch (error) {
     if (error instanceof Response) {
@@ -174,11 +151,18 @@ export async function PATCH(
       updates.message = message;
     }
 
-    if ('assignedTo' in body) {
-      updates.assignedTo =
-        body.assignedTo === null || body.assignedTo === undefined
-          ? null
-          : trimmedString(body.assignedTo);
+    if ('assignedTo' in body || 'assignedToIds' in body) {
+      const assignment = normalizeTaskAssignment(
+        body.assignedTo,
+        body.assignedToIds,
+      );
+      updates.assignedTo = assignment.assignedTo;
+      updates.assignedToIds = assignment.assignedToIds;
+      updates.status = 'pending';
+      updates.acknowledgedAt = null;
+      updates.completedAt = null;
+      updates.acknowledgedBy = {};
+      updates.completedBy = {};
     }
 
     if (Object.keys(updates).length === 0) {
@@ -217,7 +201,13 @@ export async function PATCH(
       updatedSnapshot.data() as Record<string, unknown>,
     );
 
-    return NextResponse.json({ success: true, data: task });
+    return NextResponse.json({
+      success: true,
+      data:
+        role === 'maintenance'
+          ? withMaintenanceUserStatus(task, user.uid)
+          : withDashboardTaskStatus(task, await listMaintenanceUserIds()),
+    });
   } catch (error) {
     if (error instanceof Response) {
       return new NextResponse(error.body, error);

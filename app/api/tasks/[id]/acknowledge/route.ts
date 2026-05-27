@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
+import {
+  listRequiredTaskUserIds,
+  normalizeAssignedToIds,
+} from '@/lib/task-assignment';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -9,16 +13,9 @@ interface RouteParams {
 
 interface TaskActionDoc {
   assignedTo?: unknown;
+  assignedToIds?: unknown;
   acknowledgedBy?: Record<string, unknown>;
-}
-
-async function listMaintenanceUserIds(): Promise<string[]> {
-  const snapshot = await adminDb
-    .collection('users')
-    .where('role', '==', 'maintenance')
-    .get();
-
-  return snapshot.docs.map((doc) => doc.id);
+  completedBy?: Record<string, unknown>;
 }
 
 export async function POST(
@@ -41,41 +38,52 @@ export async function POST(
 
     const task = taskSnapshot.data() as TaskActionDoc;
     const now = Timestamp.now();
-
-    if (task.assignedTo === null) {
-      const maintenanceUserIds = await listMaintenanceUserIds();
-      const acknowledgedBy = {
-        ...(task.acknowledgedBy ?? {}),
-        [user.uid]: now,
-      };
-      const allAcknowledged =
-        maintenanceUserIds.length > 0 &&
-        maintenanceUserIds.every((uid) => acknowledgedBy[uid]);
-
-      await taskRef.update({
-        [`acknowledgedBy.${user.uid}`]: now,
-        ...(allAcknowledged
-          ? {
-              status: 'acknowledged',
-              acknowledgedAt: now,
-            }
-          : {}),
-      });
-
-      return NextResponse.json({ success: true });
-    }
-
-    if (typeof task.assignedTo === 'string' && task.assignedTo !== user.uid) {
+    const assignment = {
+      assignedTo:
+        typeof task.assignedTo === 'string' && task.assignedTo.trim()
+          ? task.assignedTo.trim()
+          : null,
+      assignedToIds: normalizeAssignedToIds(task.assignedToIds),
+    };
+    const requiredUserIds = await listRequiredTaskUserIds(assignment);
+    if (!requiredUserIds.includes(user.uid)) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
       );
     }
 
+    const acknowledgedBy = {
+      ...(task.acknowledgedBy ?? {}),
+      [user.uid]: now,
+    };
+    const allAcknowledged =
+      requiredUserIds.length > 0 &&
+      requiredUserIds.every((uid) => acknowledgedBy[uid]);
+    const completedBy = allAcknowledged
+      ? requiredUserIds.reduce<Record<string, unknown>>(
+          (result, uid) => {
+            result[uid] = acknowledgedBy[uid];
+            return result;
+          },
+          { ...(task.completedBy ?? {}) },
+        )
+      : task.completedBy;
+
     await taskRef.update({
-      status: 'acknowledged',
-      acknowledgedAt: now,
-      assignedTo: user.uid,
+      [`acknowledgedBy.${user.uid}`]: now,
+      ...(allAcknowledged
+        ? {
+            status: 'completed',
+            acknowledgedAt: now,
+            completedAt: now,
+            completedBy,
+          }
+        : {
+            status: 'acknowledged',
+            acknowledgedAt: now,
+            completedAt: null,
+          }),
     });
 
     return NextResponse.json({ success: true });

@@ -18,6 +18,7 @@ export interface TaskDoc {
   message: string;
   status: TaskStatus;
   assignedTo: string | null;
+  assignedToIds: string[];
   createdAt: Timestamp;
   acknowledgedAt: Timestamp | null;
   completedAt: Timestamp | null;
@@ -33,6 +34,7 @@ export interface TaskApiData {
   message: string;
   status: TaskStatus;
   assignedTo: string | null;
+  assignedToIds: string[];
   createdAt: number | null;
   acknowledgedAt: number | null;
   completedAt: number | null;
@@ -46,6 +48,7 @@ export interface CreateTaskInput {
   triggerType: TaskTriggerType;
   message: string;
   assignedTo: string | null;
+  assignedToIds: string[];
   createdBy: string;
 }
 
