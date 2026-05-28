@@ -29,10 +29,6 @@ type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
 
 function formatDeviceLabel(device: Device): string {
-  if (device.name && device.name !== device.id) {
-    return `${device.name} (${device.id})`;
-  }
-
   return device.name || device.id;
 }
 

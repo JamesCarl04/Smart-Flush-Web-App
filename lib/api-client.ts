@@ -12,15 +12,23 @@ export async function apiFetch<T = unknown>(
   user: User,
   options?: RequestInit,
 ): Promise<T> {
-  const token = await user.getIdToken();
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const buildRequest = async (forceRefresh = false) => {
+    const token = await user.getIdToken(forceRefresh);
+    return fetch(path, {
+      ...options,
+      headers: {
+        ...options?.headers,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+  };
+
+  let res = await buildRequest();
+
+  if (res.status === 401) {
+    res = await buildRequest(true);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

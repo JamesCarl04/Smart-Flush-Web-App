@@ -45,10 +45,6 @@ type ToastKind = 'success' | 'error';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
 
 function formatDeviceLabel(device: Device): string {
-  if (device.name && device.name !== device.id) {
-    return `${device.name} (${device.id})`;
-  }
-
   return device.name || device.id;
 }
 
