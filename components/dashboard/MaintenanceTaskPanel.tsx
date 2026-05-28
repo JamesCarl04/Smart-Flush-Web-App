@@ -173,6 +173,8 @@ export function MaintenanceTaskPanel() {
     loading: personnelLoading,
     error: personnelError,
   } = useMaintenancePersonnel({ enabled: showAssignmentForm });
+  const resolveDeviceLabel = (deviceId: string) =>
+    devices.find((device) => device.id === deviceId)?.name || deviceId;
 
   useEffect(() => {
     if (!taskToast) {
@@ -919,7 +921,7 @@ export function MaintenanceTaskPanel() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-base-content/50">
-                            {task.deviceId}
+                            {resolveDeviceLabel(task.deviceId)}
                           </span>
                         </div>
                         <p className="mt-2 break-words text-sm font-semibold text-base-content">
@@ -1227,7 +1229,9 @@ export function MaintenanceTaskPanel() {
             </p>
             {deletingTask ? (
               <div className="rounded-lg bg-base-200 p-3">
-                <div className="font-semibold">{deletingTask.deviceId}</div>
+                <div className="font-semibold">
+                  {resolveDeviceLabel(deletingTask.deviceId)}
+                </div>
                 <p className="mt-1 text-base-content/70">
                   {deletingTask.message}
                 </p>
