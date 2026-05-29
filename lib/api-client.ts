@@ -12,6 +12,7 @@ export async function apiFetch<T = unknown>(
   user: User,
   options?: RequestInit,
 ): Promise<T> {
+  const method = options?.method?.toUpperCase() ?? 'GET';
   const buildRequest = async (forceRefresh = false) => {
     const token = await user.getIdToken(forceRefresh);
     return fetch(path, {
@@ -34,6 +35,16 @@ export async function apiFetch<T = unknown>(
     const body = await res.json().catch(() => ({}));
     const errorMessage =
       (body as { error?: string }).error ?? `Request failed: ${res.status}`;
+
+    if (method === 'GET' && res.status >= 500) {
+      console.warn(
+        `[apiFetch] ${path} returned ${res.status}: ${errorMessage}`,
+      );
+      return {
+        success: false,
+        error: errorMessage,
+      } as T;
+    }
 
     throw new Error(
       `${errorMessage} (${res.status} ${res.statusText || 'Error'}: ${path})`,

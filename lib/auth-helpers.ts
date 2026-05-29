@@ -6,6 +6,13 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 const USER_ROLES = ['admin', 'maintenance', 'viewer', 'user'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+export interface UserProfile {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: UserRole | null;
+}
+
 function normalizeUserRole(value: unknown): UserRole | null {
   if (
     typeof value === 'string' &&
@@ -15,6 +22,10 @@ function normalizeUserRole(value: unknown): UserRole | null {
   }
 
   return null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 /**
@@ -63,10 +74,55 @@ export async function verifyAuthToken(
 export async function getUserRole(
   user: DecodedIdToken,
 ): Promise<UserRole | null> {
-  const doc = await adminDb.collection('users').doc(user.uid).get();
-  const roleValue: unknown = doc.data()?.role;
+  const profile = await getUserProfile(user);
 
-  return normalizeUserRole(roleValue);
+  return profile.role;
+}
+
+export async function getUserProfile(
+  user: DecodedIdToken,
+): Promise<UserProfile> {
+  const doc = await adminDb.collection('users').doc(user.uid).get();
+  const uidData = doc.data();
+  const uidRole = normalizeUserRole(uidData?.role);
+
+  if (doc.exists && uidRole !== null) {
+    return {
+      id: doc.id,
+      email: stringOrNull(uidData?.email) ?? user.email ?? null,
+      displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+      role: uidRole,
+    };
+  }
+
+  if (user.email) {
+    const emailSnapshot = await adminDb
+      .collection('users')
+      .where('email', '==', user.email)
+      .limit(1)
+      .get();
+
+    const emailDoc = emailSnapshot.docs[0];
+    const emailData = emailDoc?.data();
+    const emailRole = normalizeUserRole(emailData?.role);
+
+    if (emailDoc && emailRole !== null) {
+      return {
+        id: emailDoc.id,
+        email: stringOrNull(emailData?.email) ?? user.email,
+        displayName:
+          stringOrNull(emailData?.displayName) ?? user.name ?? null,
+        role: emailRole,
+      };
+    }
+  }
+
+  return {
+    id: user.uid,
+    email: user.email ?? null,
+    displayName: user.name ?? null,
+    role: null,
+  };
 }
 
 /**
