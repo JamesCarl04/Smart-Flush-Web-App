@@ -35,10 +35,24 @@ export async function verifyAuthToken(
 
   const token = authHeader.slice(7); // Strip "Bearer "
 
+  if (typeof adminAuth.verifyIdToken !== 'function') {
+    console.error(
+      '[Auth] Firebase Admin Auth is not initialized. Check FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, and FIREBASE_ADMIN_PRIVATE_KEY.',
+    );
+    throw new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Firebase Admin is not configured on the server',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
   try {
     const decoded = await adminAuth.verifyIdToken(token);
     return decoded;
-  } catch {
+  } catch (error) {
+    console.warn('[Auth] Firebase ID token verification failed:', error);
     throw new Response(
       JSON.stringify({ success: false, error: 'Unauthorized' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } },
