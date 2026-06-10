@@ -12,6 +12,7 @@ import {
   Power,
   Sun,
 } from 'lucide-react';
+import { formatDuration } from '@/lib/format-utils';
 
 type SystemStateKey = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
 
@@ -184,7 +185,7 @@ export function StatCards() {
                 </div>
                 {lastSeen ? (
                   <div className="mt-2 text-xs font-medium text-base-content/60">
-                    Last seen {secondsAgo} seconds ago
+                    Last seen {formatDuration(secondsAgo)} ago
                   </div>
                 ) : (
                   <div className="mt-2 text-xs font-medium text-base-content/60">

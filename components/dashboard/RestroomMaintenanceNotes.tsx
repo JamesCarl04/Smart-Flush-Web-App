@@ -1,4 +1,4 @@
-'use client';
+c'use client';
 
 import { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
@@ -25,7 +25,7 @@ interface MaintenanceNoteResponse {
   error?: string;
 }
 
-type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'supervisor' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
 
 function formatDeviceLabel(device: Device): string {
@@ -48,7 +48,7 @@ export function RestroomMaintenanceNotes() {
   } | null>(null);
 
   const showComposer = role !== null && role !== 'viewer';
-  const showAssigneeSelect = role === 'admin';
+  const showAssigneeSelect = role === 'admin' || role === 'supervisor';
   const { personnel, loading: personnelLoading } = useMaintenancePersonnel({
     enabled: showAssigneeSelect,
   });

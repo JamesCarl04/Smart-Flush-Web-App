@@ -131,7 +131,7 @@ function buildReportLines(
       : `${Math.round((completedUvCycles / uvCycles.length) * 100)}%`;
 
   const lines: PdfLine[] = [
-    { text: 'Smart Flush System Report', fontSize: 20, spacingAfter: 10 },
+    { text: 'KLIR - System Report', fontSize: 20, spacingAfter: 10 },
     { text: `Period: ${from} to ${to}`, fontSize: 11, spacingAfter: 14 },
     { text: 'Summary', fontSize: 14, spacingAfter: 6 },
     { text: `Total Flushes: ${flushEvents.length}`, fontSize: 11 },

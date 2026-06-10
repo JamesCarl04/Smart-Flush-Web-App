@@ -89,6 +89,20 @@ function triggerTypeOrManual(value: unknown): TaskTriggerType {
   return isTaskTriggerType(value) ? value : 'manual';
 }
 
+function parseChecklist(value: unknown): Record<string, boolean> | string[] | null {
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, boolean> = {};
+    for (const [key, val] of Object.entries(value)) {
+      result[key] = Boolean(val);
+    }
+    return result;
+  }
+  return null;
+}
+
 export function serializeTaskData(
   docId: string,
   data: Record<string, unknown>,
@@ -107,6 +121,18 @@ export function serializeTaskData(
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
     createdBy: stringOrFallback(data.createdBy, 'unknown'),
+    photos: stringArray(data.photos),
+    component: nullableString(data.component),
+    location: nullableString(data.location),
+    floor: nullableString(data.floor),
+    building: nullableString(data.building),
+    shift: nullableString(data.shift),
+    remarks: nullableString(data.remarks),
+    flagged: typeof data.flagged === 'boolean' ? data.flagged : false,
+    biometricVerified: typeof data.biometricVerified === 'boolean' ? data.biometricVerified : false,
+    offlineSynced: typeof data.offlineSynced === 'boolean' ? data.offlineSynced : false,
+    checklist: parseChecklist(data.checklist),
+    assignedAt: timestampToMillis(data.assignedAt),
   };
 }
 
@@ -121,6 +147,7 @@ export async function createTaskDocument(
 ): Promise<TaskDoc> {
   const docRef = adminDb.collection('tasks').doc();
   const now = Timestamp.now();
+  const hasAssignee = input.assignedTo != null || (input.assignedToIds && input.assignedToIds.length > 0);
   const task: TaskDoc = {
     id: docRef.id,
     deviceId: input.deviceId,
@@ -135,6 +162,18 @@ export async function createTaskDocument(
     acknowledgedBy: {},
     completedBy: {},
     createdBy: input.createdBy,
+    photos: input.photos,
+    component: input.component ?? null,
+    location: input.location ?? null,
+    floor: input.floor ?? null,
+    building: input.building ?? null,
+    shift: input.shift ?? null,
+    remarks: input.remarks ?? null,
+    flagged: input.flagged ?? false,
+    biometricVerified: input.biometricVerified ?? false,
+    offlineSynced: input.offlineSynced ?? false,
+    checklist: input.checklist ?? null,
+    assignedAt: input.assignedAt ?? (hasAssignee ? now : null),
   };
 
   await docRef.set(task);

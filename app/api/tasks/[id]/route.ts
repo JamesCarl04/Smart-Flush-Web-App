@@ -20,6 +20,17 @@ interface UpdateTaskBody {
   message?: unknown;
   assignedTo?: unknown;
   assignedToIds?: unknown;
+  photos?: unknown;
+  component?: unknown;
+  location?: unknown;
+  floor?: unknown;
+  building?: unknown;
+  shift?: unknown;
+  remarks?: unknown;
+  flagged?: unknown;
+  biometricVerified?: unknown;
+  offlineSynced?: unknown;
+  checklist?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -31,7 +42,7 @@ function canManageTask(
   userId: string,
   task: ReturnType<typeof serializeTaskData>,
 ): boolean {
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'supervisor') {
     return true;
   }
 
@@ -59,7 +70,7 @@ export async function GET(
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance') {
+    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -163,6 +174,50 @@ export async function PATCH(
       updates.completedAt = null;
       updates.acknowledgedBy = {};
       updates.completedBy = {};
+    }
+
+    if ('photos' in body && Array.isArray(body.photos)) {
+      updates.photos = body.photos.map(String);
+    }
+
+    if ('component' in body) {
+      updates.component = trimmedString(body.component);
+    }
+
+    if ('location' in body) {
+      updates.location = trimmedString(body.location);
+    }
+
+    if ('floor' in body) {
+      updates.floor = trimmedString(body.floor);
+    }
+
+    if ('building' in body) {
+      updates.building = trimmedString(body.building);
+    }
+
+    if ('shift' in body) {
+      updates.shift = trimmedString(body.shift);
+    }
+
+    if ('remarks' in body) {
+      updates.remarks = trimmedString(body.remarks);
+    }
+
+    if ('flagged' in body) {
+      updates.flagged = typeof body.flagged === 'boolean' ? body.flagged : false;
+    }
+
+    if ('biometricVerified' in body) {
+      updates.biometricVerified = typeof body.biometricVerified === 'boolean' ? body.biometricVerified : false;
+    }
+
+    if ('offlineSynced' in body) {
+      updates.offlineSynced = typeof body.offlineSynced === 'boolean' ? body.offlineSynced : false;
+    }
+
+    if ('checklist' in body) {
+      updates.checklist = (Array.isArray(body.checklist) || (body.checklist && typeof body.checklist === 'object')) ? body.checklist : null;
     }
 
     if (Object.keys(updates).length === 0) {

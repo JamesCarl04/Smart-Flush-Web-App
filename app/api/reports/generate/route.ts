@@ -10,6 +10,7 @@ import type {
   MaintenanceTaskSummary,
   UVCycleRow,
 } from '@/lib/pdf-report';
+import { formatDurationMs } from '@/lib/format-utils';
 
 interface ReportBody {
   type: 'daily' | 'weekly' | 'monthly' | 'custom' | 'maintenance_tasks';
@@ -93,36 +94,7 @@ function toIsoString(value?: Timestamp | Date | null): string | null {
   return date ? date.toISOString() : null;
 }
 
-function formatDuration(milliseconds: number | null): string {
-  if (milliseconds === null || milliseconds < 0) {
-    return 'N/A';
-  }
 
-  const totalSeconds = Math.floor(milliseconds / 1000);
-  const days = Math.floor(totalSeconds / 86_400);
-  const hours = Math.floor((totalSeconds % 86_400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const parts: string[] = [];
-
-  if (days > 0) {
-    parts.push(`${days}d`);
-  }
-
-  if (hours > 0) {
-    parts.push(`${hours}h`);
-  }
-
-  if (minutes > 0) {
-    parts.push(`${minutes}m`);
-  }
-
-  if (seconds > 0 || parts.length === 0) {
-    parts.push(`${seconds}s`);
-  }
-
-  return parts.join(' ');
-}
 
 function averageDurationLabel(values: Array<number | null>): string {
   const resolvedValues = values.filter(
@@ -136,7 +108,7 @@ function averageDurationLabel(values: Array<number | null>): string {
   const average =
     resolvedValues.reduce((sum, value) => sum + value, 0) /
     resolvedValues.length;
-  return formatDuration(Math.round(average));
+  return formatDurationMs(Math.round(average));
 }
 
 function escapeCsv(value: string): string {
@@ -296,7 +268,7 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
       totalDuration:
         completionDuration === null
           ? 'Not Completed'
-          : formatDuration(completionDuration),
+          : formatDurationMs(completionDuration),
       status: task.status,
     };
   });

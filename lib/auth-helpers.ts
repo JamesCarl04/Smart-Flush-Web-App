@@ -3,7 +3,7 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
-const USER_ROLES = ['admin', 'maintenance', 'viewer', 'user'] as const;
+const USER_ROLES = ['admin', 'supervisor', 'maintenance', 'viewer', 'user'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export interface UserProfile {
@@ -174,6 +174,24 @@ export async function requireNotViewer(user: DecodedIdToken): Promise<void> {
         success: false,
         error: 'Forbidden: viewer role cannot perform this action',
       }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+}
+
+/**
+ * Throws a Response with HTTP 403 if the authenticated user does not have
+ * role 'admin' or 'supervisor'.
+ * Supervisors have most admin capabilities except device config, rules, reports, and user management.
+ */
+export async function requireAdminOrSupervisor(
+  user: DecodedIdToken,
+): Promise<void> {
+  const role = await getUserRole(user);
+
+  if (role !== 'admin' && role !== 'supervisor') {
+    throw new Response(
+      JSON.stringify({ success: false, error: 'Forbidden: admin or supervisor only' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },
     );
   }

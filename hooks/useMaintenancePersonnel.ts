@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { apiFetch } from '@/lib/api-client';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface MaintenancePersonnel {
   id: string;
@@ -50,56 +51,38 @@ export function useMaintenancePersonnel({
       return;
     }
 
-    let cancelled = false;
+    const q = query(collection(db, 'users'), where('role', '==', 'maintenance'));
 
-    const loadPersonnel = async () => {
-      try {
-        const response = await apiFetch<MaintenancePersonnelResponse>(
-          '/api/maintenance-personnel',
-          user,
-        );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const nextPersonnel = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          const email = typeof data.email === 'string' && data.email.trim() ? data.email : null;
+          return {
+            id: doc.id,
+            displayName: data.displayName || email || doc.id,
+            email,
+          };
+        }).sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-        if (!response.success) {
-          throw new Error(
-            response.error ?? 'Failed to load maintenance personnel',
-          );
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextPersonnel = Array.isArray(response.data)
-          ? response.data
-          : [];
         setSnapshotState({
           personnel: nextPersonnel,
           error: null,
           readyForUserId: user.uid,
         });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Failed to load maintenance personnel';
-        console.warn('[useMaintenancePersonnel] API load failed:', error);
+      },
+      (error) => {
+        console.warn('[useMaintenancePersonnel] Firestore onSnapshot error:', error);
         setSnapshotState({
           personnel: [],
-          error: message,
+          error: error.message,
           readyForUserId: user.uid,
         });
       }
-    };
+    );
 
-    void loadPersonnel();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => unsubscribe();
   }, [authLoading, enabled, user]);
 
   const personnel =

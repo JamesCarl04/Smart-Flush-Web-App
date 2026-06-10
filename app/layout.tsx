@@ -17,8 +17,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Smart Flush',
-  description: 'IoT Smart Flush Management Dashboard',
+  title: 'KLIR',
+  description: 'KLIR',
 };
 
 export default function RootLayout({

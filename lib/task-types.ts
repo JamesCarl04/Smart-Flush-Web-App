@@ -25,6 +25,18 @@ export interface TaskDoc {
   acknowledgedBy?: Record<string, Timestamp>;
   completedBy?: Record<string, Timestamp>;
   createdBy: string;
+  photos?: string[];
+  component?: string | null;
+  location?: string | null;
+  floor?: string | null;
+  building?: string | null;
+  shift?: string | null;
+  remarks?: string | null;
+  flagged?: boolean;
+  biometricVerified?: boolean;
+  offlineSynced?: boolean;
+  checklist?: Record<string, boolean> | string[] | null;
+  assignedAt?: Timestamp | null;
 }
 
 export interface TaskApiData {
@@ -41,6 +53,18 @@ export interface TaskApiData {
   acknowledgedBy: Record<string, number>;
   completedBy: Record<string, number>;
   createdBy: string;
+  photos: string[];
+  component: string | null;
+  location: string | null;
+  floor: string | null;
+  building: string | null;
+  shift: string | null;
+  remarks: string | null;
+  flagged: boolean;
+  biometricVerified: boolean;
+  offlineSynced: boolean;
+  checklist: Record<string, boolean> | string[] | null;
+  assignedAt: number | null;
 }
 
 export interface CreateTaskInput {
@@ -50,6 +74,18 @@ export interface CreateTaskInput {
   assignedTo: string | null;
   assignedToIds: string[];
   createdBy: string;
+  photos?: string[];
+  component?: string;
+  location?: string;
+  floor?: string;
+  building?: string;
+  shift?: string;
+  remarks?: string;
+  flagged?: boolean;
+  biometricVerified?: boolean;
+  offlineSynced?: boolean;
+  checklist?: Record<string, boolean> | string[];
+  assignedAt?: Timestamp | null;
 }
 
 export function isTaskStatus(value: unknown): value is TaskStatus {

@@ -40,7 +40,7 @@ interface DeleteTaskResponse {
   error?: string;
 }
 
-type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'supervisor' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
 
@@ -164,7 +164,7 @@ export function MaintenanceTaskPanel() {
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
   const previousDefaultMessageRef = useRef('');
 
-  const showAssignmentForm = role === 'admin';
+  const showAssignmentForm = role === 'admin' || role === 'supervisor';
   const showAssignmentSkeleton = roleLoading;
   const canManageTasks = role !== null && role !== 'viewer';
   const {
@@ -241,7 +241,7 @@ export function MaintenanceTaskPanel() {
         return;
       }
 
-      if (!user || role !== 'admin') {
+      if (!user || (role !== 'admin' && role !== 'supervisor')) {
         if (!cancelled) {
           setDevices([]);
           setDevicesLoading(false);

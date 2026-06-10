@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
-import { apiFetch } from '@/lib/api-client';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Task, TaskTriggerType } from '@/types';
 
 function toMillis(value: unknown): number {
@@ -87,6 +88,18 @@ function mapTask(data: Record<string, unknown>): Task | null {
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
+    photos: Array.isArray(data.photos) ? data.photos.map(String) : [],
+    component: typeof data.component === 'string' ? data.component : null,
+    location: typeof data.location === 'string' ? data.location : null,
+    floor: typeof data.floor === 'string' ? data.floor : null,
+    building: typeof data.building === 'string' ? data.building : null,
+    shift: typeof data.shift === 'string' ? data.shift : null,
+    remarks: typeof data.remarks === 'string' ? data.remarks : null,
+    flagged: typeof data.flagged === 'boolean' ? data.flagged : false,
+    biometricVerified: typeof data.biometricVerified === 'boolean' ? data.biometricVerified : false,
+    offlineSynced: typeof data.offlineSynced === 'boolean' ? data.offlineSynced : false,
+    checklist: (Array.isArray(data.checklist) || (data.checklist && typeof data.checklist === 'object')) ? (data.checklist as any) : null,
+    assignedAt: data.assignedAt ? toMillis(data.assignedAt) : null,
   };
 }
 
@@ -144,6 +157,67 @@ function getDemoTasks(): Task[] {
       acknowledgedBy: { 'maintenance-personnel': now - 39 * 60 * 1000 },
       completedBy: { 'maintenance-personnel': now - 14 * 60 * 1000 },
       createdBy: 'demo-admin',
+      photos: [
+        'https://images.unsplash.com/photo-1620626011160-9928f1b9b630?q=80&w=600&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?q=80&w=600&auto=format&fit=crop',
+      ],
+      component: 'General',
+      location: 'Restroom 1',
+      floor: 'Ground Floor',
+      building: 'GB3',
+      shift: 'Morning',
+      remarks: 'Deep cleaned bowl and floor drains. Replaced air freshener cartridge and soap refill. Verified valve flush pressure.',
+      flagged: true,
+      biometricVerified: true,
+      offlineSynced: true,
+      checklist: {
+        '01': true,
+        '02': true,
+        '03': true,
+        '04': true,
+        '05': true,
+        '06': true,
+        '07': true,
+        '08': true,
+        '09': true,
+        '10': true,
+      },
+      assignedAt: now - 45 * 60 * 1000,
+    },
+    {
+      id: 'demo-task-4',
+      deviceId: 'Toilet-04',
+      triggerType: 'flush_count',
+      message: 'Valve inspection due to high flush count.',
+      createdAt: now - 120 * 60 * 1000,
+      assignedTo: 'maintenance-personnel',
+      assignedToIds: ['maintenance-personnel'],
+      status: 'completed',
+      acknowledgedAt: now - 110 * 60 * 1000,
+      completedAt: now - 85 * 60 * 1000,
+      acknowledgedBy: { 'maintenance-personnel': now - 110 * 60 * 1000 },
+      completedBy: { 'maintenance-personnel': now - 85 * 60 * 1000 },
+      createdBy: 'system:mqtt',
+      photos: [],
+      component: 'Valve',
+      location: 'Restroom 2',
+      floor: '2nd Floor',
+      building: 'Main Bldg',
+      shift: 'Afternoon',
+      remarks: 'Valve clean-up completed, but no camera feed was active to capture photos.',
+      flagged: false,
+      biometricVerified: false,
+      offlineSynced: false,
+      checklist: {
+        '01': true,
+        '02': false,
+        '03': true,
+        '04': true,
+        '05': false,
+        '06': true,
+        '07': true,
+      },
+      assignedAt: now - 118 * 60 * 1000,
     },
   ];
 }
@@ -171,80 +245,43 @@ export function useTasks(maxResults?: number): UseTasksResult {
     readyForUserId: null,
   });
 
-  const loadTasks = useCallback(
-    async (cancelledRef?: { cancelled: boolean }) => {
-      if (presentationMode || authLoading || !user) {
-        return;
-      }
-
-      try {
-        const response = await apiFetch<TasksResponse>('/api/tasks', user);
-        if (!response.success) {
-          throw new Error(response.error ?? 'Failed to load maintenance tasks');
-        }
-
-        const tasks = Array.isArray(response.data)
-          ? response.data
-              .map(mapTask)
-              .filter((task): task is Task => task !== null)
-              .sort((left, right) => right.createdAt - left.createdAt)
-          : [];
-
-        if (cancelledRef?.cancelled) {
-          return;
-        }
-
-        setLiveTasksState({
-          readyForUserId: user.uid,
-          error: null,
-          tasks:
-            typeof maxResults === 'number' ? tasks.slice(0, maxResults) : tasks,
-        });
-      } catch (error) {
-        if (cancelledRef?.cancelled) {
-          return;
-        }
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Failed to load maintenance tasks';
-        console.warn('[useTasks] API load failed:', error);
-        setLiveTasksState({
-          readyForUserId: user.uid,
-          error: message,
-          tasks: [],
-        });
-      }
-    },
-    [authLoading, maxResults, presentationMode, user],
-  );
-
   useEffect(() => {
     if (presentationMode || authLoading || !user) {
       return;
     }
 
-    const cancelledRef = { cancelled: false };
+    const q = query(collection(db, 'tasks'));
 
-    void loadTasks(cancelledRef);
-    const handleRefreshTasks = () => {
-      void loadTasks(cancelledRef);
-    };
-    window.addEventListener('maintenance-tasks:refresh', handleRefreshTasks);
-    const intervalId = window.setInterval(() => {
-      void loadTasks(cancelledRef);
-    }, 10000);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        let mappedTasks = snapshot.docs
+          .map((doc) => mapTask({ id: doc.id, ...doc.data() }))
+          .filter((task): task is Task => task !== null)
+          .sort((left, right) => right.createdAt - left.createdAt);
 
-    return () => {
-      cancelledRef.cancelled = true;
-      window.removeEventListener(
-        'maintenance-tasks:refresh',
-        handleRefreshTasks,
-      );
-      window.clearInterval(intervalId);
-    };
-  }, [authLoading, loadTasks, presentationMode, user]);
+        if (typeof maxResults === 'number') {
+          mappedTasks = mappedTasks.slice(0, maxResults);
+        }
+
+        setLiveTasksState({
+          readyForUserId: user.uid,
+          error: null,
+          tasks: mappedTasks,
+        });
+      },
+      (error) => {
+        console.warn('[useTasks] Firestore onSnapshot failed:', error);
+        setLiveTasksState({
+          readyForUserId: user.uid,
+          error: error.message,
+          tasks: [],
+        });
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authLoading, maxResults, presentationMode, user]);
 
   const demoTasks = useMemo(
     () => getDemoTasks().slice(0, maxResults),
@@ -280,7 +317,7 @@ export function useTasks(maxResults?: number): UseTasksResult {
     loading,
     error: resolvedError,
     refreshTasks: async () => {
-      await loadTasks();
+      // Real-time onSnapshot handles updates automatically
     },
   };
 }

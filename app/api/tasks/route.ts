@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import {
   getUserRole,
-  requireAdmin,
+  requireAdminOrSupervisor,
   verifyAuthToken,
 } from '@/lib/auth-helpers';
 import {
@@ -29,6 +29,17 @@ interface CreateTaskBody {
   message?: unknown;
   assignedTo?: unknown;
   assignedToIds?: unknown;
+  photos?: unknown;
+  component?: unknown;
+  location?: unknown;
+  floor?: unknown;
+  building?: unknown;
+  shift?: unknown;
+  remarks?: unknown;
+  flagged?: unknown;
+  biometricVerified?: unknown;
+  offlineSynced?: unknown;
+  checklist?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -54,7 +65,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance') {
+    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -134,7 +145,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireAdmin(user);
+    await requireAdminOrSupervisor(user);
 
     const body = (await request.json()) as CreateTaskBody;
     const deviceId = trimmedString(body.deviceId);
@@ -174,6 +185,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       assignedTo: assignment.assignedTo,
       assignedToIds: assignment.assignedToIds,
       createdBy: user.uid,
+      photos: Array.isArray(body.photos) ? body.photos.map(String) : undefined,
+      component: trimmedString(body.component) ?? undefined,
+      location: trimmedString(body.location) ?? undefined,
+      floor: trimmedString(body.floor) ?? undefined,
+      building: trimmedString(body.building) ?? undefined,
+      shift: trimmedString(body.shift) ?? undefined,
+      remarks: trimmedString(body.remarks) ?? undefined,
+      flagged: typeof body.flagged === 'boolean' ? body.flagged : undefined,
+      biometricVerified: typeof body.biometricVerified === 'boolean' ? body.biometricVerified : undefined,
+      offlineSynced: typeof body.offlineSynced === 'boolean' ? body.offlineSynced : undefined,
+      checklist: (Array.isArray(body.checklist) || (body.checklist && typeof body.checklist === 'object')) ? (body.checklist as any) : undefined,
     });
 
     return NextResponse.json(

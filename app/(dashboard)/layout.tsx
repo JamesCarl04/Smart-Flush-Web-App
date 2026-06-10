@@ -7,7 +7,8 @@ import { useAlerts } from '@/hooks/useAlerts';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bell, User, LogOut, UserCircle } from 'lucide-react';
+import { useUserRole, SUPERVISOR_RESTRICTED_PATHS } from '@/hooks/useUserRole';
+import { Bell, User, LogOut, UserCircle, Shield } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function DashboardLayout({
@@ -20,12 +21,26 @@ export default function DashboardLayout({
   const { theme, toggleTheme } = useTheme();
   const { logout, user, loading } = useAuth();
   const presentationMode = usePresentationMode();
+  const { role, loading: roleLoading } = useUserRole();
 
+  // Redirect unauthenticated users to login
   useEffect(() => {
     if (!loading && !user && !presentationMode) {
       router.replace('/auth/login');
     }
   }, [loading, presentationMode, router, user]);
+
+  // Redirect supervisors away from restricted pages
+  useEffect(() => {
+    if (roleLoading || !pathname) return;
+    if (role !== 'supervisor') return;
+    const isRestricted = SUPERVISOR_RESTRICTED_PATHS.some((p) =>
+      pathname.startsWith(p)
+    );
+    if (isRestricted) {
+      router.replace('/dashboard/maintenance');
+    }
+  }, [role, roleLoading, pathname, router]);
 
   const handleLogout = async () => {
     await logout();
@@ -35,13 +50,21 @@ export default function DashboardLayout({
   const { alerts, unreadCount } = useAlerts();
   const recentAlerts = alerts.slice(0, 5);
 
-  const navLinks = [
-    { name: 'Dashboard', href: '/dashboard' },
-    { name: 'Analytics', href: '/analytics' },
-    { name: 'Configuration', href: '/configuration' },
-    { name: 'Alerts', href: '/alerts' },
-    { name: 'Reports', href: '/reports' },
+  // Full nav — admin sees all, supervisor sees a filtered set
+  const allNavLinks = [
+    { name: 'Dashboard', href: '/dashboard', supervisorAllowed: true },
+    { name: 'Analytics', href: '/analytics', supervisorAllowed: true },
+    { name: 'Configuration', href: '/configuration', supervisorAllowed: false },
+    { name: 'Alerts', href: '/alerts', supervisorAllowed: true },
+    { name: 'Reports', href: '/reports', supervisorAllowed: false },
+    { name: 'User Management', href: '/user-management', supervisorAllowed: false },
+    { name: 'Maintenance Overview', href: '/dashboard/maintenance', supervisorAllowed: true },
+    { name: 'Task History', href: '/dashboard/history', supervisorAllowed: true },
   ];
+
+  const navLinks = allNavLinks.filter((link) =>
+    role === 'supervisor' ? link.supervisorAllowed : true
+  );
 
   return (
     <div className="drawer transition-colors duration-300 lg:drawer-open">
@@ -66,7 +89,7 @@ export default function DashboardLayout({
               </svg>
             </label>
           </div>
-          <div className="flex-1 px-2 mx-2 text-xl font-bold">Smart Flush</div>
+          <div className="flex-1 px-2 mx-2 text-sm font-bold leading-tight">KLIR</div>
           <div className="flex-none">
             <div className="dropdown dropdown-end">
               <div
@@ -234,10 +257,22 @@ export default function DashboardLayout({
               >
                 {/* User info header */}
                 <li className="pointer-events-none">
-                  <div className="flex flex-col gap-0.5 px-2 py-1">
+                  <div className="flex flex-col gap-1 px-2 py-1">
                     <span className="text-xs text-base-content/50 truncate">
                       {user?.email}
                     </span>
+                    {role && (
+                      <span className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        role === 'admin'
+                          ? 'bg-primary/15 text-primary'
+                          : role === 'supervisor'
+                            ? 'bg-warning/15 text-warning'
+                            : 'bg-base-300 text-base-content/60'
+                      }`}>
+                        {role === 'supervisor' && <Shield className="w-2.5 h-2.5" />}
+                        {role}
+                      </span>
+                    )}
                   </div>
                 </li>
                 <li className="border-t border-base-200 mt-1 pt-1">
@@ -272,11 +307,25 @@ export default function DashboardLayout({
         <ul className="menu min-h-full w-80 bg-base-200 p-4 text-base-content transition-colors duration-300">
           <li className="mb-4">
             <div className="flex flex-row justify-between items-center bg-transparent hover:bg-transparent cursor-default">
-              <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-                Klir
+              <span className="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary leading-tight">
+                KLIR
               </span>
             </div>
           </li>
+
+          {/* Role badge for supervisor */}
+          {role === 'supervisor' && (
+            <li className="mb-1 pointer-events-none">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-warning/10 border border-warning/20 cursor-default hover:bg-warning/10">
+                <Shield className="w-3.5 h-3.5 text-warning shrink-0" />
+                <div>
+                  <p className="text-[11px] font-bold text-warning uppercase tracking-wide">Supervisor</p>
+                  <p className="text-[10px] text-base-content/50 leading-tight">Device Config, Reports & User Management are restricted</p>
+                </div>
+              </div>
+            </li>
+          )}
+
           <div className="divider mt-0 mb-2"></div>
           {navLinks.map((link) => (
             <li key={link.name}>

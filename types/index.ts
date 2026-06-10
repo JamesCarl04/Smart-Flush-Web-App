@@ -85,6 +85,18 @@ export interface Task {
   acknowledgedBy?: Record<string, number>;
   completedBy?: Record<string, number>;
   createdBy: string;
+  photos?: string[];
+  component?: string | null;
+  location?: string | null;
+  floor?: string | null;
+  building?: string | null;
+  shift?: string | null;
+  remarks?: string | null;
+  flagged?: boolean;
+  biometricVerified?: boolean;
+  offlineSynced?: boolean;
+  checklist?: Record<string, boolean> | string[] | null;
+  assignedAt?: number | null;
 }
 
 export interface AutomationRule {
