@@ -36,16 +36,16 @@ export function withDashboardTaskStatus(
     return task;
   }
 
-  const allCompleted = userIds.every((userId) => task.completedBy[userId]);
+  const allCompleted = userIds.every((userId) => task.completedByMap[userId]);
   if (allCompleted) {
     return {
       ...task,
-      status: 'completed',
+      status: 'acknowledged',
       acknowledgedAt:
         task.acknowledgedAt ??
         latestTimestamp(task.acknowledgedBy, userIds),
       completedAt:
-        task.completedAt ?? latestTimestamp(task.completedBy, userIds),
+        task.completedAt ?? latestTimestamp(task.completedByMap, userIds),
     };
   }
 
@@ -61,7 +61,7 @@ export function withDashboardTaskStatus(
         latestTimestamp(task.acknowledgedBy, userIds),
       completedAt:
         task.completedAt ??
-        latestTimestamp(task.completedBy, userIds) ??
+        latestTimestamp(task.completedByMap, userIds) ??
         latestTimestamp(task.acknowledgedBy, userIds),
     };
   }
@@ -78,7 +78,7 @@ export function withDashboardTaskStatus(
 
   return {
     ...task,
-    status: 'pending',
+    status: task.assignedTo ? 'assigned' : 'unassigned',
     acknowledgedAt: null,
     completedAt: null,
   };
@@ -92,7 +92,7 @@ export function withMaintenanceUserStatus(
     return task;
   }
 
-  const completedAt = task.completedBy[userId] ?? null;
+  const completedAt = task.completedByMap[userId] ?? null;
   if (completedAt !== null) {
     return {
       ...task,
@@ -114,7 +114,7 @@ export function withMaintenanceUserStatus(
 
   return {
     ...task,
-    status: 'pending',
+    status: task.assignedTo ? 'assigned' : 'unassigned',
     acknowledgedAt: null,
     completedAt: null,
   };

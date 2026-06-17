@@ -62,8 +62,7 @@ const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
 
 const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
   manual: 'Manual',
-  uv_complete: 'UV Complete',
-  flush_count: 'Flush Count',
+  hardware_failure: 'Hardware Failure',
   maintenance: 'Maintenance',
 };
 
@@ -73,7 +72,10 @@ function getStatusBadgeClassName(status: TaskStatus): string {
       return 'badge-info text-info-content';
     case 'completed':
       return 'badge-success text-success-content';
-    case 'pending':
+    case 'unassigned':
+    case 'assigned':
+    case 'reassignment_needed':
+    case 'flagged':
     default:
       return 'badge-warning text-warning-content';
   }

@@ -3,7 +3,7 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
-const USER_ROLES = ['admin', 'maintenance', 'viewer', 'user'] as const;
+const USER_ROLES = ['admin', 'supervisor', 'maintenance', 'viewer'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export interface UserProfile {
@@ -90,7 +90,11 @@ export async function getUserProfile(
     return {
       id: doc.id,
       email: stringOrNull(uidData?.email) ?? user.email ?? null,
-      displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+      displayName:
+        stringOrNull(uidData?.displayName) ??
+        stringOrNull(uidData?.name) ??
+        user.name ??
+        null,
       role: uidRole,
     };
   }
@@ -111,7 +115,10 @@ export async function getUserProfile(
         id: emailDoc.id,
         email: stringOrNull(emailData?.email) ?? user.email,
         displayName:
-          stringOrNull(emailData?.displayName) ?? user.name ?? null,
+          stringOrNull(emailData?.displayName) ??
+          stringOrNull(emailData?.name) ??
+          user.name ??
+          null,
         role: emailRole,
       };
     }
@@ -159,6 +166,33 @@ export async function requireMaintenance(
   }
 }
 
+export async function requireSupervisor(user: DecodedIdToken): Promise<void> {
+  const role = await getUserRole(user);
+
+  if (role !== 'supervisor') {
+    throw new Response(
+      JSON.stringify({ success: false, error: 'Forbidden: supervisor only' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+}
+
+export async function requireSupervisorOrAdmin(
+  user: DecodedIdToken,
+): Promise<void> {
+  const role = await getUserRole(user);
+
+  if (role !== 'supervisor' && role !== 'admin') {
+    throw new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Forbidden: supervisor or admin only',
+      }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+}
+
 /**
  * Throws a Response with HTTP 403 if the authenticated user has
  * role 'viewer' in the Firestore users collection.
@@ -168,7 +202,7 @@ export async function requireMaintenance(
 export async function requireNotViewer(user: DecodedIdToken): Promise<void> {
   const role = await getUserRole(user);
 
-  if (role === 'viewer') {
+  if (role === 'viewer' || role === null) {
     throw new Response(
       JSON.stringify({
         success: false,

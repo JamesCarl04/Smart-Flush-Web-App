@@ -13,6 +13,51 @@ interface UVCycleDoc {
   completed: boolean;
 }
 
+interface TimestampLike {
+  toDate?: () => Date;
+  toMillis?: () => number;
+  seconds?: number;
+  _seconds?: number;
+}
+
+function timestampToMillis(value: unknown): number | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const millis = new Date(value).getTime();
+    return Number.isNaN(millis) ? null : millis;
+  }
+
+  if (typeof value !== 'object') {
+    return null;
+  }
+
+  const timestamp = value as TimestampLike;
+  if (typeof timestamp.toMillis === 'function') {
+    return timestamp.toMillis();
+  }
+
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate().getTime();
+  }
+
+  if (typeof timestamp.seconds === 'number') {
+    return timestamp.seconds * 1000;
+  }
+
+  if (typeof timestamp._seconds === 'number') {
+    return timestamp._seconds * 1000;
+  }
+
+  return null;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
@@ -32,21 +77,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     for (const doc of flushSnap.docs) {
       const d = doc.data() as FlushEventDoc;
       totalWaterLiters += d.waterVolume ?? 0;
-      
-      const ts = d.timestamp as any;
-      let dateObj: Date | null = null;
-      if (ts) {
-        if (typeof ts.toDate === 'function') {
-          dateObj = ts.toDate();
-        } else if (ts._seconds) {
-          dateObj = new Date(ts._seconds * 1000);
-        } else if (typeof ts === 'string' || typeof ts === 'number') {
-          dateObj = new Date(ts);
-        }
-      }
-
-      if (dateObj && !isNaN(dateObj.getTime())) {
-        const date = dateObj.toISOString().slice(0, 10);
+      const timestampMillis = timestampToMillis(d.timestamp);
+      if (timestampMillis !== null) {
+        const date = new Date(timestampMillis).toISOString().slice(0, 10);
         dateSet.add(date);
       }
     }
@@ -66,17 +99,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
     const totalDevices = devicesSnap.size;
     const onlineDevices = devicesSnap.docs.filter((d) => {
-      const ls = d.data().lastSeen as any;
-      let lastSeenMillis = 0;
-      if (ls) {
-        if (typeof ls.toMillis === 'function') {
-          lastSeenMillis = ls.toMillis();
-        } else if (ls._seconds) {
-          lastSeenMillis = ls._seconds * 1000;
-        } else if (typeof ls === 'string' || typeof ls === 'number') {
-          lastSeenMillis = new Date(ls).getTime();
-        }
-      }
+      const lastSeenMillis = timestampToMillis(d.data().lastSeen) ?? 0;
       return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;
 
@@ -95,15 +118,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         uptimePercent,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // In some Next.js environments, instanceof Response can be unreliable.
-    if (error instanceof Response || (error && error.status && typeof error.json === 'function')) {
+    if (error instanceof Response) {
       return new NextResponse(error.body, error);
     }
     console.error('[Analytics] dashboard error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: `Failed to fetch dashboard analytics: ${errorMessage}` },
+      {
+        success: false,
+        error: `Failed to fetch dashboard analytics: ${errorMessage}`,
+      },
       { status: 500 },
     );
   }

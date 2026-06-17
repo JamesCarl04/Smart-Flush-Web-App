@@ -11,29 +11,36 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance' && role !== 'viewer') {
+    if (
+      role !== 'admin' &&
+      role !== 'supervisor' &&
+      role !== 'maintenance' &&
+      role !== 'viewer'
+    ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
       );
     }
 
-    const snapshot = await adminDb
-      .collection('users')
-      .where('role', '==', 'maintenance')
-      .get();
+    const snapshot = await adminDb.collection('maintenancePersonnel').get();
 
     const personnel = snapshot.docs
       .map((doc) => {
         const data = doc.data();
         const email = stringOrNull(data.email);
         const displayName =
-          stringOrNull(data.displayName) ?? email ?? doc.id;
+          stringOrNull(data.name) ?? stringOrNull(data.displayName) ?? email ?? doc.id;
 
         return {
           id: doc.id,
           displayName,
           email,
+          isAvailable: data.isAvailable === true,
+          currentTaskId: stringOrNull(data.currentTaskId),
+          shift: stringOrNull(data.shift),
+          building: stringOrNull(data.building),
+          supervisorUid: stringOrNull(data.supervisorUid),
         };
       })
       .sort((first, second) =>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
-import type { Task, TaskTriggerType } from '@/types';
+import type { Task, TaskStatus, TaskTriggerType } from '@/types';
 
 function toMillis(value: unknown): number {
   if (typeof value === 'number') {
@@ -61,15 +61,30 @@ function mapTask(data: Record<string, unknown>): Task | null {
   }
 
   const triggerType: TaskTriggerType =
-    data.triggerType === 'uv_complete' ||
-    data.triggerType === 'flush_count' ||
+    data.triggerType === 'hardware_failure' ||
     data.triggerType === 'maintenance'
       ? data.triggerType
       : 'manual';
+  const status: TaskStatus =
+    data.status === 'unassigned' ||
+    data.status === 'assigned' ||
+    data.status === 'acknowledged' ||
+    data.status === 'completed' ||
+    data.status === 'reassignment_needed' ||
+    data.status === 'flagged'
+      ? data.status
+      : 'unassigned';
 
   return {
     id,
+    alertId: typeof data.alertId === 'string' ? data.alertId : null,
     deviceId: typeof data.deviceId === 'string' ? data.deviceId : 'Unknown',
+    type: data.type === 'cleaning' ? 'cleaning' : 'maintenance',
+    component: typeof data.component === 'string' ? data.component : 'manual',
+    location: typeof data.location === 'string' ? data.location : '',
+    floor: typeof data.floor === 'string' ? data.floor : '',
+    building: typeof data.building === 'string' ? data.building : '',
+    shift: data.shift === '2nd' ? '2nd' : '1st',
     triggerType,
     message: typeof data.message === 'string' ? data.message : '',
     assignedTo:
@@ -77,16 +92,22 @@ function mapTask(data: Record<string, unknown>): Task | null {
     assignedToIds: Array.isArray(data.assignedToIds)
       ? data.assignedToIds.filter((id): id is string => typeof id === 'string')
       : [],
-    status:
-      data.status === 'acknowledged' || data.status === 'completed'
-        ? data.status
-        : 'pending',
+    status,
     createdAt: toMillis(data.createdAt),
+    assignedAt: data.assignedAt ? toMillis(data.assignedAt) : null,
     acknowledgedAt: data.acknowledgedAt ? toMillis(data.acknowledgedAt) : null,
     completedAt: data.completedAt ? toMillis(data.completedAt) : null,
+    responseTime: typeof data.responseTime === 'number' ? data.responseTime : null,
+    workDuration: typeof data.workDuration === 'number' ? data.workDuration : null,
+    totalTime: typeof data.totalTime === 'number' ? data.totalTime : null,
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
-    completedBy: timestampMapToMillis(data.completedBy),
+    completedBy: typeof data.completedBy === 'string' ? data.completedBy : null,
+    completedByMap: timestampMapToMillis(data.completedByMap),
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
+    reassignCount:
+      typeof data.reassignCount === 'number' ? data.reassignCount : 0,
+    supervisorUid:
+      typeof data.supervisorUid === 'string' ? data.supervisorUid : null,
   };
 }
 
@@ -108,17 +129,18 @@ function getDemoTasks(): Task[] {
       createdAt: now - 5 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
       assignedToIds: ['maintenance-personnel'],
-      status: 'pending',
+      status: 'assigned',
       acknowledgedAt: null,
       completedAt: null,
       acknowledgedBy: {},
-      completedBy: {},
+      completedBy: null,
+      completedByMap: {},
       createdBy: 'demo-admin',
     },
     {
       id: 'demo-task-2',
       deviceId: 'Toilet-02',
-      triggerType: 'uv_complete',
+      triggerType: 'maintenance',
       message: 'UV cycle complete. Manual cleaning required.',
       createdAt: now - 18 * 60 * 1000,
       assignedTo: 'maintenance-personnel',
@@ -127,7 +149,8 @@ function getDemoTasks(): Task[] {
       acknowledgedAt: now - 12 * 60 * 1000,
       completedAt: null,
       acknowledgedBy: { 'maintenance-personnel': now - 12 * 60 * 1000 },
-      completedBy: {},
+      completedBy: null,
+      completedByMap: {},
       createdBy: 'system:mqtt',
     },
     {
@@ -142,7 +165,8 @@ function getDemoTasks(): Task[] {
       acknowledgedAt: now - 39 * 60 * 1000,
       completedAt: now - 14 * 60 * 1000,
       acknowledgedBy: { 'maintenance-personnel': now - 39 * 60 * 1000 },
-      completedBy: { 'maintenance-personnel': now - 14 * 60 * 1000 },
+      completedBy: 'maintenance-personnel',
+      completedByMap: { 'maintenance-personnel': now - 14 * 60 * 1000 },
       createdBy: 'demo-admin',
     },
   ];
@@ -268,7 +292,13 @@ export function useTasks(maxResults?: number): UseTasksResult {
       : !!user && liveTasksState.readyForUserId !== user.uid;
 
   const pendingCount = useMemo(
-    () => tasks.filter((task) => task.status === 'pending').length,
+    () =>
+      tasks.filter(
+        (task) =>
+          task.status === 'unassigned' ||
+          task.status === 'assigned' ||
+          task.status === 'reassignment_needed',
+      ).length,
     [tasks],
   );
   const error = presentationMode ? null : liveTasksState.error;

@@ -1,4 +1,4 @@
-# SmartFlush MQTT Listener Service
+# IoT-Based Toilet Sanitation MQTT Listener Service
 
 Standalone MQTT listener that bridges **HiveMQ Cloud ↔ Firebase Firestore**.  
 Deployed on **Railway** as a long-lived process (not serverless).

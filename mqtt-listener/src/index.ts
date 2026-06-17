@@ -1,5 +1,5 @@
 // src/index.ts
-// Entry point for the standalone SmartFlush MQTT listener service.
+// Entry point for the standalone toilet sanitation MQTT listener service.
 // Deployed on Railway — runs as a long-lived process (NOT serverless).
 //
 // Start command:  ts-node src/index.ts
@@ -27,7 +27,7 @@ import { getMqttClient } from './mqtt-client';
 
 console.log('');
 console.log('╔══════════════════════════════════════════════════════╗');
-console.log('║   SmartFlush MQTT Listener Service                  ║');
+console.log('║   Toilet Sanitation MQTT Listener Service           ║');
 console.log('║   Runtime: Railway (long-lived process)             ║');
 console.log('╚══════════════════════════════════════════════════════╝');
 console.log('');

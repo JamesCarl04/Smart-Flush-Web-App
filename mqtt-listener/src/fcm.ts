@@ -22,6 +22,12 @@ interface TaskNotificationPayload {
   };
 }
 
+interface AppNotificationPayload {
+  title: string;
+  body: string;
+  data: Record<string, string>;
+}
+
 function readStringField(
   data: Record<string, unknown> | undefined,
   field: string,
@@ -42,6 +48,16 @@ function buildPayload(task: TaskDoc): TaskNotificationPayload {
       triggerType: task.triggerType,
     },
   };
+}
+
+function taskNotificationBody(task: TaskDoc): string {
+  const component = task.component
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const floor = /floor$/i.test(task.floor) ? task.floor : `${task.floor} Floor`;
+  return `${component} failure - ${task.location}, ${floor}, ${task.building}`;
 }
 
 function errorCode(error: unknown): string | null {
@@ -96,9 +112,17 @@ async function removeFcmToken(owner: TokenOwner): Promise<void> {
 }
 
 async function readAssignedToken(uid: string): Promise<TokenOwner | null> {
-  const snapshot = await adminDb.collection('users').doc(uid).get();
-  const data = snapshot.data() as Record<string, unknown> | undefined;
-  const token = readStringField(data, 'fcmToken');
+  const [userSnapshot, personnelSnapshot] = await Promise.all([
+    adminDb.collection('users').doc(uid).get(),
+    adminDb.collection('maintenancePersonnel').doc(uid).get(),
+  ]);
+  const userData = userSnapshot.data() as Record<string, unknown> | undefined;
+  const personnelData = personnelSnapshot.data() as
+    | Record<string, unknown>
+    | undefined;
+  const token =
+    readStringField(personnelData, 'fcmToken') ??
+    readStringField(userData, 'fcmToken');
 
   return token ? { uid, token } : null;
 }
@@ -208,4 +232,79 @@ export async function sendTaskNotification(
   }
 
   await sendToManyTokens(task, owners);
+}
+
+async function sendAppNotification(
+  uid: string,
+  payload: AppNotificationPayload,
+): Promise<void> {
+  const owner = await readAssignedToken(uid);
+  if (!owner) {
+    console.info(`[FCM] No FCM token found for user ${uid}. success=0 failure=0`);
+    return;
+  }
+
+  try {
+    await adminMessaging.send({
+      token: owner.token,
+      notification: {
+        title: payload.title,
+        body: payload.body,
+      },
+      data: payload.data,
+    });
+    console.info('[FCM] App notification sent. success=1 failure=0');
+  } catch (error) {
+    if (isStaleTokenError(error)) {
+      await removeFcmToken(owner);
+    }
+    console.error('[FCM] App notification failed. success=0 failure=1', error);
+  }
+}
+
+export async function sendTaskAssignedNotification(
+  task: TaskDoc,
+  uid: string,
+): Promise<void> {
+  await sendAppNotification(uid, {
+    title: 'New Task Assigned',
+    body: taskNotificationBody(task),
+    data: {
+      type: 'task_assigned',
+      taskId: task.id,
+      component: task.component,
+      location: task.location,
+      floor: task.floor,
+      building: task.building,
+    },
+  });
+}
+
+export async function sendSupervisorEscalationNotification(
+  task: TaskDoc,
+  supervisorUid: string,
+): Promise<void> {
+  await sendAppNotification(supervisorUid, {
+    title: 'URGENT - No Available Maintenance',
+    body: `${taskNotificationBody(task)} - no personnel available`,
+    data: {
+      type: 'supervisor_escalation',
+      taskId: task.id,
+      urgency: 'high',
+    },
+  });
+}
+
+export async function sendTaskAwarenessNotification(
+  task: TaskDoc,
+  supervisorUid: string,
+): Promise<void> {
+  await sendAppNotification(supervisorUid, {
+    title: 'Task Auto-Assigned',
+    body: taskNotificationBody(task),
+    data: {
+      type: 'task_assigned_awareness',
+      taskId: task.id,
+    },
+  });
 }

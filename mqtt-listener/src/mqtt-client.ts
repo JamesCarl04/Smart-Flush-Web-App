@@ -57,9 +57,12 @@ async function writeUvCycleAndMaybeCreateTask(
   try {
     await createTaskAndNotify({
       deviceId,
-      triggerType: 'uv_complete',
+      triggerType: 'maintenance',
+      type: 'cleaning',
+      component: 'uv_lights',
       message: 'UV cycle complete. Manual cleaning required.',
       assignedTo: null,
+      assignedToIds: [],
       createdBy: 'system:mqtt',
     });
   } catch (error) {
@@ -120,6 +123,10 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
       console.log(`[${ts()}] [MQTT] Pump event:`, JSON.stringify(payload));
       break;
     }
+    case 'toilet/hardware/failure': {
+      void evaluateAlerts(topic, payload as Record<string, unknown>, DEVICE_ID);
+      break;
+    }
     default:
       console.warn(`[${ts()}] [MQTT] Unhandled topic: ${topic}`);
   }
@@ -159,7 +166,7 @@ export function getMqttClient(): MqttClient {
     // even before the first sensor message arrives from the ESP32
     void recordDeviceHeartbeat(DEVICE_ID);
     client!.subscribe(
-      ['toilet/sensors/#', 'toilet/events/#'],
+      ['toilet/sensors/#', 'toilet/events/#', 'toilet/hardware/#'],
       { qos: 1 },
       (err) => {
         if (err) {

@@ -40,7 +40,7 @@ interface DeleteTaskResponse {
   error?: string;
 }
 
-type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'supervisor' | 'maintenance' | 'viewer' | null;
 type ToastKind = 'success' | 'error';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
 
@@ -58,7 +58,10 @@ function getStatusBadgeClassName(status: Task['status']): string {
       return 'badge-info text-white';
     case 'completed':
       return 'badge-success text-white';
-    case 'pending':
+    case 'unassigned':
+    case 'assigned':
+    case 'reassignment_needed':
+    case 'flagged':
     default:
       return 'badge-warning text-white';
   }
@@ -70,9 +73,16 @@ function getStatusLabel(status: Task['status']): string {
       return 'Acknowledged';
     case 'completed':
       return 'Completed';
-    case 'pending':
+    case 'unassigned':
+      return 'Unassigned';
+    case 'assigned':
+      return 'Assigned';
+    case 'reassignment_needed':
+      return 'Reassignment needed';
+    case 'flagged':
+      return 'Flagged';
     default:
-      return 'Pending';
+      return 'Assigned';
   }
 }
 
@@ -210,14 +220,14 @@ export function MaintenanceTaskPanel() {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (!cancelled) {
           const nextRole = userDoc.exists()
-            ? ((userDoc.data().role as UserRole | undefined) ?? 'user')
-            : 'user';
+            ? ((userDoc.data().role as UserRole | undefined) ?? 'viewer')
+            : 'viewer';
           setRole(nextRole);
         }
       } catch (error) {
         console.warn('[MaintenanceTaskPanel] role lookup failed:', error);
         if (!cancelled) {
-          setRole('user');
+          setRole('viewer');
         }
       } finally {
         if (!cancelled) {
@@ -361,7 +371,7 @@ export function MaintenanceTaskPanel() {
     return Array.from(
       new Set([
         ...Object.keys(task.acknowledgedBy ?? {}),
-        ...Object.keys(task.completedBy ?? {}),
+        ...Object.keys(task.completedByMap ?? {}),
       ]),
     );
   };
@@ -369,7 +379,8 @@ export function MaintenanceTaskPanel() {
   const getAcknowledgementSummary = (task: Task) => {
     const requiredAssigneeIds = getRequiredAssigneeIds(task);
     const acknowledgedUserIds = requiredAssigneeIds.filter(
-      (userId) => task.acknowledgedBy?.[userId] || task.completedBy?.[userId],
+      (userId) =>
+        task.acknowledgedBy?.[userId] || task.completedByMap?.[userId],
     );
 
     if (acknowledgedUserIds.length === 0) {

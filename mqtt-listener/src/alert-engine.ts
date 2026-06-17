@@ -3,6 +3,7 @@
 // Called from mqtt-client.ts after every inbound message.
 import { adminDb } from './firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { createHardwareFailureTask } from './task-service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +188,11 @@ export async function evaluateAlerts(
   deviceId: string,
 ): Promise<void> {
   try {
+    if (topic === 'toilet/hardware/failure') {
+      await createHardwareFailureTask(payload as Record<string, unknown>, deviceId);
+      return;
+    }
+
     const rules = await getEnabledSystemAlertRules();
 
     for (const rule of rules) {

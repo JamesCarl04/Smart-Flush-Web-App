@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     'build/**',
     'next-env.d.ts',
     'mqtt-listener/**',
+    'scripts/dev-all.js',
   ]),
   {
     plugins: {

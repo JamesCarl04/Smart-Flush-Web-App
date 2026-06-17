@@ -72,7 +72,9 @@ export default function AlertsPage() {
       .filter(
         (task) =>
           task.createdAt > 0 &&
-          task.status === 'pending' &&
+          (task.status === 'unassigned' ||
+            task.status === 'assigned' ||
+            task.status === 'reassignment_needed') &&
           now - task.createdAt > OVERDUE_TASK_THRESHOLD_MS,
       )
       .map((task) => {

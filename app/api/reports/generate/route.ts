@@ -39,7 +39,13 @@ interface TaskDoc {
   deviceId: string;
   triggerType: string;
   message: string;
-  status: 'pending' | 'acknowledged' | 'completed';
+  status:
+    | 'unassigned'
+    | 'assigned'
+    | 'acknowledged'
+    | 'completed'
+    | 'reassignment_needed'
+    | 'flagged';
   assignedTo: string | null;
   createdAt?: Timestamp | null;
   acknowledgedAt?: Timestamp | null;
@@ -177,9 +183,14 @@ async function fetchMaintenanceTaskData(fromTs: Timestamp, toTs: Timestamp) {
   return snapshot.docs.map<TaskDoc>((doc) => {
     const data = doc.data() as Partial<TaskDoc>;
     const status: TaskDoc['status'] =
-      data.status === 'acknowledged' || data.status === 'completed'
+      data.status === 'unassigned' ||
+      data.status === 'assigned' ||
+      data.status === 'acknowledged' ||
+      data.status === 'completed' ||
+      data.status === 'reassignment_needed' ||
+      data.status === 'flagged'
         ? data.status
-        : 'pending';
+        : 'unassigned';
 
     return {
       id: typeof data.id === 'string' ? data.id : doc.id,
@@ -325,7 +336,12 @@ function buildMaintenanceTaskDataset(tasks: TaskDoc[]): {
       totalTasks: tasks.length,
       completedCount: tasks.filter((task) => task.status === 'completed')
         .length,
-      pendingCount: tasks.filter((task) => task.status === 'pending').length,
+      pendingCount: tasks.filter(
+        (task) =>
+          task.status === 'unassigned' ||
+          task.status === 'assigned' ||
+          task.status === 'reassignment_needed',
+      ).length,
       averageResponseTime: averageDurationLabel(responseDurations),
       averageCompletionTime: averageDurationLabel(completionDurations),
     },

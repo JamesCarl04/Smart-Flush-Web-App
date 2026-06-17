@@ -1,8 +1,8 @@
-# Smart Flush IoT System - Capstone Prototype
+# An IoT-Based Toilet Sanitation, Analytics, and Predictive Maintenance Management System
 
 ## Project Overview
 
-Welcome to the Smart Flush IoT System dashboard. This capstone prototype serves as the frontend management and analytics platform for the Smart Flush IoT ecosystem. It provides real-time monitoring of sensor readings, flush events, lid status, UV sterilization cycles, and system alerts.
+Welcome to An IoT-Based Toilet Sanitation, Analytics, and Predictive Maintenance Management System. This capstone prototype serves as the frontend management and analytics platform for the sanitation monitoring ecosystem. It provides real-time monitoring of sensor readings, flush events, lid status, UV sterilization cycles, and system alerts.
 
 ## Tech Stack
 

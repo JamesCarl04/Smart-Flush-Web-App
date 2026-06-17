@@ -19,12 +19,20 @@ service cloud.firestore {
       return currentUserRole() == 'admin';
     }
 
+    function isSupervisor() {
+      return currentUserRole() == 'supervisor';
+    }
+
     function isMaintenance() {
       return currentUserRole() == 'maintenance';
     }
 
+    function ownTask() {
+      return resource.data.assignedTo == request.auth.uid;
+    }
+
     match /users/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if isSelf(userId) || isAdmin() || isSupervisor();
       allow create: if isSelf(userId) || isAdmin();
       allow update: if isAdmin()
         || (
@@ -39,22 +47,53 @@ service cloud.firestore {
     }
 
     match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isMaintenance() || isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isAdmin() || isSupervisor() || (isMaintenance() && ownTask());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isMaintenance()
+          && ownTask()
+          && request.resource.data.assignedTo == resource.data.assignedTo
+        )
+        || (
+          isSupervisor()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['assignedTo', 'assignedToIds', 'status', 'supervisorUid'])
+        );
+    }
+
+    match /maintenancePersonnel/{userId} {
+      allow read: if isAdmin() || isSupervisor() || isSelf(userId);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || isSelf(userId)
+        || (
+          isSupervisor()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isAvailable'])
+        );
+    }
+
+    match /supervisorActions/{actionId} {
+      allow create: if isSupervisor()
+        && request.resource.data.supervisorUid == request.auth.uid;
+      allow read: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorUid == request.auth.uid);
+      allow update, delete: if false;
     }
 
     match /maintenanceNotes/{noteId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isSupervisor();
       allow create: if isAuthenticated() && currentUserRole() != 'viewer';
       allow update, delete: if false;
     }
 
     match /devices/{deviceId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
       match /maintenanceCounters/{counterId} {
-        allow read, write: if isAuthenticated();
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || isSupervisor();
       }
     }
 
@@ -64,11 +103,13 @@ service cloud.firestore {
     }
 
     match /alerts/{alertId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isSupervisor();
     }
 
     match /automationRules/{ruleId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isSupervisor();
     }
 
     match /reports/{reportId} {

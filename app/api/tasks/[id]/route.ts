@@ -31,7 +31,7 @@ function canManageTask(
   userId: string,
   task: ReturnType<typeof serializeTaskData>,
 ): boolean {
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'supervisor') {
     return true;
   }
 
@@ -59,7 +59,7 @@ export async function GET(
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance') {
+    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -158,11 +158,12 @@ export async function PATCH(
       );
       updates.assignedTo = assignment.assignedTo;
       updates.assignedToIds = assignment.assignedToIds;
-      updates.status = 'pending';
+      updates.status = assignment.assignedTo ? 'assigned' : 'unassigned';
       updates.acknowledgedAt = null;
       updates.completedAt = null;
       updates.acknowledgedBy = {};
-      updates.completedBy = {};
+      updates.completedBy = null;
+      updates.completedByMap = {};
     }
 
     if (Object.keys(updates).length === 0) {

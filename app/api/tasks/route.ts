@@ -54,7 +54,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance') {
+    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -67,7 +67,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: 'status must be pending, acknowledged, or completed',
+          error:
+            'status must be unassigned, assigned, acknowledged, completed, reassignment_needed, or flagged',
         },
         { status: 400 },
       );
@@ -155,7 +156,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         {
           success: false,
           error:
-            'triggerType must be manual, uv_complete, flush_count, or maintenance',
+            'triggerType must be manual, hardware_failure, or maintenance',
         },
         { status: 400 },
       );

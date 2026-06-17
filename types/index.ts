@@ -63,28 +63,47 @@ export interface Alert {
   timestamp: number;
 }
 
-export type TaskStatus = 'pending' | 'acknowledged' | 'completed';
+export type TaskStatus =
+  | 'unassigned'
+  | 'assigned'
+  | 'acknowledged'
+  | 'completed'
+  | 'reassignment_needed'
+  | 'flagged';
 
 export type TaskTriggerType =
   | 'manual'
-  | 'uv_complete'
-  | 'flush_count'
+  | 'hardware_failure'
   | 'maintenance';
 
 export interface Task {
   id: string;
   deviceId: string;
+  alertId?: string | null;
+  type?: 'maintenance' | 'cleaning';
+  component?: string;
+  location?: string;
+  floor?: string;
+  building?: string;
+  shift?: '1st' | '2nd';
   triggerType: TaskTriggerType;
   message: string;
   assignedTo?: string | null;
   assignedToIds?: string[];
   status: TaskStatus;
   createdAt: number;
+  assignedAt?: number | null;
   acknowledgedAt?: number | null;
   completedAt?: number | null;
+  responseTime?: number | null;
+  workDuration?: number | null;
+  totalTime?: number | null;
   acknowledgedBy?: Record<string, number>;
-  completedBy?: Record<string, number>;
+  completedBy?: string | null;
+  completedByMap?: Record<string, number>;
   createdBy: string;
+  reassignCount?: number;
+  supervisorUid?: string | null;
 }
 
 export interface AutomationRule {

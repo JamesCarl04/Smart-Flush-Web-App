@@ -17,8 +17,10 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Smart Flush',
-  description: 'IoT Smart Flush Management Dashboard',
+  title:
+    'An IoT-Based Toilet Sanitation, Analytics, and Predictive Maintenance Management System',
+  description:
+    'Toilet sanitation, analytics, and predictive maintenance management dashboard',
 };
 
 export default function RootLayout({

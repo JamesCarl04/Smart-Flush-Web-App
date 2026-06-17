@@ -66,7 +66,9 @@ export default function DashboardLayout({
               </svg>
             </label>
           </div>
-          <div className="flex-1 px-2 mx-2 text-xl font-bold">Smart Flush</div>
+          <div className="flex-1 px-2 mx-2 text-xl font-bold">
+            Toilet Sanitation Management System
+          </div>
           <div className="flex-none">
             <div className="dropdown dropdown-end">
               <div

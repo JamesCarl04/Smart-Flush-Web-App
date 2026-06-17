@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { sendTaskNotification } from '@/lib/fcm';
+import { DEFAULT_TASK_CHECKLIST } from '@/lib/task-service';
 import type {
   CreateMaintenanceNoteInput,
   MaintenanceNoteApiData,
@@ -52,18 +53,40 @@ export async function createMaintenanceNoteAndNotify(
 
   const task: TaskDoc = {
     id: taskRef.id,
+    alertId: null,
     deviceId: input.restroomId,
+    type: 'cleaning',
+    component: 'manual',
+    location: input.restroomId,
+    floor: 'Ground',
+    building: 'GB3',
+    shift: '1st',
     triggerType: 'manual',
     message: input.message,
-    status: 'pending',
+    status: input.assignedTo ? 'assigned' : 'unassigned',
     assignedTo: input.assignedTo,
     assignedToIds: input.assignedTo ? [input.assignedTo] : [],
     createdAt: now,
+    assignedAt: input.assignedTo ? now : null,
     acknowledgedAt: null,
     completedAt: null,
+    responseTime: null,
+    workDuration: null,
+    totalTime: null,
+    checklist: DEFAULT_TASK_CHECKLIST,
+    remarks: '',
+    beforePhotoUrl: null,
+    beforePhotoCapturedAt: null,
+    afterPhotoUrl: null,
+    afterPhotoCapturedAt: null,
+    biometricVerified: false,
+    offlineSynced: false,
     acknowledgedBy: {},
-    completedBy: {},
+    completedBy: null,
+    completedByMap: {},
     createdBy: input.createdBy,
+    reassignCount: 0,
+    supervisorUid: null,
   };
 
   const note: MaintenanceNoteDoc = {

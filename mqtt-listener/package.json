@@ -1,7 +1,7 @@
 {
   "name": "smartflush-mqtt-listener",
   "version": "1.0.0",
-  "description": "Standalone MQTT listener for SmartFlush IoT — deployed on Railway",
+  "description": "Standalone MQTT listener for the IoT-Based Toilet Sanitation, Analytics, and Predictive Maintenance Management System",
   "private": true,
   "scripts": {
     "start": "ts-node src/index.ts",

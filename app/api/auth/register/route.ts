@@ -45,8 +45,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     await adminDb.collection('users').doc(userRecord.uid).set({
       id: userRecord.uid,
       email,
+      name: displayName,
       displayName,
-      role: 'user' as const,
+      role: 'viewer' as const,
+      fcmToken: '',
+      shift: 'both' as const,
+      building: '',
+      floors: [],
+      supervisorUid: null,
       createdAt: FieldValue.serverTimestamp(),
     });
 

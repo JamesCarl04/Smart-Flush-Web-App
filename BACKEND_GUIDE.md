@@ -1,4 +1,4 @@
-# Smart Flush IoT System — Backend Guide
+# An IoT-Based Toilet Sanitation, Analytics, and Predictive Maintenance Management System - Backend Guide
 
 > Stack: **Next.js 14 App Router + TypeScript 5 + Firebase Firestore (Admin SDK) + Firebase Auth + MQTT (HiveMQ Cloud)**  
 > Deployment: **Vercel** (API routes + frontend), **Render/Railway** (MQTT worker, separate)
