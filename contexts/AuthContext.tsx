@@ -3,7 +3,6 @@
 import React, { createContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User, signOut, getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebase';
-import Cookies from 'js-cookie';
 
 interface AuthContextType {
   user: User | null;
@@ -19,20 +18,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const auth = getAuth(app);
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-
-      if (user) {
-        // We'll just set a dummy token for middleware routing since the actual token
-        // can expire and needs reliable refreshing strategies.
-        // For a simple middleware token check, any value works.
-        const token = await user.getIdToken();
-        Cookies.set('auth-token', token, { expires: 1 }); // Expires in 1 day
-      } else {
-        Cookies.remove('auth-token');
-      }
-
       setLoading(false);
+      
+      // SECURITY FIX: Do NOT store ID tokens in regular cookies (XSS vulnerability).
+      // Firebase SDK automatically manages authentication tokens internally using:
+      // - IndexedDB for secure token storage (not accessible to XSS)
+      // - Automatic token refresh via getIdToken(true)
+      // - Secure session management
+      //
+      // The apiFetch() helper in lib/api-client.ts calls user.getIdToken()
+      // to get the current token for API requests, ensuring we always have
+      // a fresh token (expired tokens are refreshed automatically).
     });
 
     return () => unsubscribe();
@@ -41,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     const auth = getAuth(app);
     await signOut(auth);
-    Cookies.remove('auth-token');
+    // Firebase automatically clears internal token storage on logout
   };
 
   return (
