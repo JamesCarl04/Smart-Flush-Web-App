@@ -90,19 +90,19 @@ export const taskUpdateSchema = z.object({
 // Actuator command schemas
 export const pumpCommandSchema = z.object({
   command: z.enum(['ON', 'OFF'], {
-    errorMap: () => ({ message: 'Command must be either "ON" or "OFF"' }),
+    message: 'Command must be either "ON" or "OFF"',
   }),
 });
 
 export const uvCommandSchema = z.object({
   command: z.enum(['ON', 'OFF'], {
-    errorMap: () => ({ message: 'Command must be either "ON" or "OFF"' }),
+    message: 'Command must be either "ON" or "OFF"',
   }),
 });
 
 export const lidCommandSchema = z.object({
   command: z.enum(['OPEN', 'CLOSE'], {
-    errorMap: () => ({ message: 'Command must be either "OPEN" or "CLOSE"' }),
+    message: 'Command must be either "OPEN" or "CLOSE"',
   }),
 });
 
