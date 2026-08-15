@@ -4,6 +4,8 @@
  * Prevents brute force attacks, DDoS, and account enumeration
  */
 
+import { NextResponse } from 'next/server';
+
 interface RateLimitConfig {
   maxRequests: number;
   windowMs: number; // milliseconds
@@ -81,16 +83,15 @@ export const RATE_LIMITS = {
 /**
  * Create rate limit response (429 Too Many Requests)
  */
-export function createRateLimitResponse(retryAfter: number): Response {
-  return new Response(
-    JSON.stringify({
+export function createRateLimitResponse(retryAfter: number): NextResponse {
+  return NextResponse.json(
+    {
       success: false,
       error: 'Too many requests. Please try again later.',
-    }),
+    },
     {
       status: 429,
       headers: {
-        'Content-Type': 'application/json',
         'Retry-After': retryAfter.toString(),
       },
     },

@@ -17,25 +17,29 @@ const ALLOWED_ORIGINS = [
 
 /**
  * Add CORS headers to response if origin is allowed
- * @param response - NextResponse to add headers to
+ * @param response - Response or NextResponse to add headers to
  * @param request - NextRequest with origin header
  * @returns Modified response with CORS headers if origin is whitelisted
  */
 export function addCorsHeaders(
-  response: NextResponse,
+  response: Response | NextResponse,
   request: any, // NextRequest doesn't export, use any
 ): NextResponse {
+  const nextResponse =
+    response instanceof NextResponse
+      ? response
+      : new NextResponse(response.body, response);
   const origin = request.headers?.get('origin');
 
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    nextResponse.headers.set('Access-Control-Allow-Origin', origin);
+    nextResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    nextResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    nextResponse.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
+    nextResponse.headers.set('Access-Control-Allow-Credentials', 'true');
   }
 
-  return response;
+  return nextResponse;
 }
 
 /**
@@ -67,23 +71,30 @@ export function handleCorsPreFlight(request: any): NextResponse {
  * Add security headers to all responses
  * Prevents clickjacking, MIME sniffing, and enables CSP
  */
-export function addSecurityHeaders(response: NextResponse): NextResponse {
+export function addSecurityHeaders(
+  response: Response | NextResponse,
+): NextResponse {
+  const nextResponse =
+    response instanceof NextResponse
+      ? response
+      : new NextResponse(response.body, response);
+
   // Prevent clickjacking attacks
-  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  nextResponse.headers.set('X-Frame-Options', 'SAMEORIGIN');
 
   // Prevent MIME type sniffing
-  response.headers.set('X-Content-Type-Options', 'nosniff');
+  nextResponse.headers.set('X-Content-Type-Options', 'nosniff');
 
   // Enable XSS protection (legacy, modern browsers use CSP)
-  response.headers.set('X-XSS-Protection', '1; mode=block');
+  nextResponse.headers.set('X-XSS-Protection', '1; mode=block');
 
   // Referrer policy for privacy
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  nextResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Content Security Policy (CRITICAL RECOMMENDATION)
   // This prevents inline scripts and restricts resource loading
   // Prevents XSS attacks effectively
-  response.headers.set(
+  nextResponse.headers.set(
     'Content-Security-Policy',
     [
       "default-src 'self'",
@@ -98,5 +109,5 @@ export function addSecurityHeaders(response: NextResponse): NextResponse {
     ].join('; '),
   );
 
-  return response;
+  return nextResponse;
 }
