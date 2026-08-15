@@ -143,7 +143,7 @@ export const automationRuleSchema = z.object({
 export function validateData<T>(
   data: unknown,
   schema: z.ZodSchema<T>,
-): { success: boolean; data?: T; error?: string } {
+): { success: true; data: T } | { success: false; error: string } {
   try {
     const validatedData = schema.parse(data);
     return { success: true, data: validatedData };
