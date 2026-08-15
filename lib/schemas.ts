@@ -138,17 +138,19 @@ export function validateData<T>(
   data: unknown,
   schema: z.ZodSchema<T>,
 ): { success: true; data: T } | { success: false; error: string } {
-  try {
-    const validatedData = schema.parse(data);
-    return { success: true, data: validatedData };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const firstError = error.errors[0];
-      const message = `${firstError.path.join('.')}: ${firstError.message}`;
-      return { success: false, error: message };
-    }
-    return { success: false, error: 'Validation failed' };
+  const result = schema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
   }
+
+  const firstIssue = result.error.issues?.[0];
+  if (firstIssue) {
+    const path = firstIssue.path?.join('.');
+    const message = path ? `${path}: ${firstIssue.message}` : firstIssue.message;
+    return { success: false, error: message };
+  }
+
+  return { success: false, error: 'Validation failed' };
 }
 
 /**
