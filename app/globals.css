@@ -2,16 +2,363 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Klir Telemetry & Slate Surface Design Tokens (Light Theme)
+   ========================================================================== */
+:root,
+[data-theme='light'] {
+  /* SDCA & Slate Surfaces */
+  --surface-ground: #f7f7f7;
+  --surface-card: #ffffff;
+  --surface-panel: #f1f5f9;
+  --surface-elevated: #ffffff;
+  --surface-overlay: rgba(255, 255, 255, 0.85);
+  --surface-hover: rgba(15, 23, 42, 0.04);
+  --surface-active: rgba(15, 23, 42, 0.08);
+
+  /* Typography */
+  --text-main: #222222;
+  --text-muted: #6b6b6b;
+
+  /* SDCA Institutional Brand Colors */
+  --color-sdca-red: #b5121b;
+  --color-sdca-darkred: #8f0d16;
+  --color-sdca-gold: #c9a227;
+  --color-primary-brand: #b5121b;
+  --color-primary-brand-glow: rgba(181, 18, 27, 0.15);
+
+  /* Crisp 1px Borders */
+  --precision-border: #e2e8f0;
+  --precision-border-subtle: #f1f5f9;
+  --precision-border-strong: #cbd5e1;
+  --precision-border-contrast: #94a3b8;
+  --precision-border-active: #b5121b;
+
+  /* Glassmorphism Tokens */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(226, 232, 240, 0.8);
+  --glass-blur: 12px;
+
+  /* Telemetry Status Colors */
+  --color-hydro: #0284c7;
+  --color-hydro-teal: #06b6d4;
+  --color-hydro-glow: rgba(2, 132, 199, 0.15);
+  --color-sanitize: #6366f1;
+  --color-sanitize-glow: rgba(99, 102, 241, 0.15);
+  --color-operational: #10b981;
+  --color-operational-glow: rgba(16, 185, 129, 0.15);
+  --color-advisory: #f59e0b;
+  --color-advisory-glow: rgba(245, 158, 11, 0.15);
+  --color-critical: #ef4444;
+  --color-critical-glow: rgba(239, 68, 68, 0.15);
+
+  /* Tactile Shadow Tokens */
+  --tactile-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --tactile-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --tactile-shadow-pressed: inset 0 2px 4px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* ==========================================================================
+   Klir Telemetry & Slate Surface Design Tokens (Dark Theme Overrides)
+   ========================================================================== */
+[data-theme='dark'],
+.dark {
+  /* Dark Slate Surfaces */
+  --surface-ground: #0b0f19;
+  --surface-card: #111827;
+  --surface-panel: #1e293b;
+  --surface-elevated: #1e293b;
+  --surface-overlay: rgba(17, 24, 39, 0.85);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.08);
+
+  /* Typography */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+
+  /* SDCA Brand Dark Tokens */
+  --color-sdca-red: #e46167;
+  --color-sdca-darkred: #b5121b;
+  --color-sdca-gold: #c9a227;
+  --color-primary-brand: #e46167;
+  --color-primary-brand-glow: rgba(228, 97, 103, 0.25);
+
+  /* Dark Crisp 1px Borders */
+  --precision-border: #1e293b;
+  --precision-border-subtle: rgba(255, 255, 255, 0.06);
+  --precision-border-strong: rgba(255, 255, 255, 0.15);
+  --precision-border-contrast: rgba(255, 255, 255, 0.25);
+  --precision-border-active: #e46167;
+
+  /* Dark Glassmorphism Tokens */
+  --glass-bg: rgba(15, 23, 42, 0.8);
+  --glass-border: rgba(30, 41, 59, 0.8);
+  --glass-blur: 12px;
+
+  /* Telemetry Status Colors */
+  --color-hydro: #38bdf8;
+  --color-hydro-teal: #22d3ee;
+  --color-hydro-glow: rgba(56, 189, 248, 0.25);
+  --color-sanitize: #818cf8;
+  --color-sanitize-glow: rgba(129, 140, 248, 0.25);
+  --color-operational: #34d399;
+  --color-operational-glow: rgba(52, 211, 153, 0.25);
+  --color-advisory: #fbbf24;
+  --color-advisory-glow: rgba(251, 191, 36, 0.25);
+  --color-critical: #f87171;
+  --color-critical-glow: rgba(248, 113, 113, 0.3);
+
+  /* Dark Tactile Shadows */
+  --tactile-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --tactile-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --tactile-shadow-pressed: inset 0 2px 5px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ==========================================================================
+   Base Elements & Form Overrides
+   ========================================================================== */
+@layer base {
+  /* Disable default browser password reveal & clear buttons (prevents duplicate eye icon in Edge/Chromium) */
+  input[type='password']::-ms-reveal,
+  input[type='password']::-ms-clear,
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* ==========================================================================
+   Utilities & Component Styles
+   ========================================================================== */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
 
+  /* Telemetry Tabular Numbers & Font Smoothing */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tactile Button Utility */
+  .tactile-btn {
+    position: relative;
+    user-select: none;
+    cursor: pointer;
+    transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--tactile-shadow-sm);
+  }
+
+  .tactile-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--tactile-shadow-md);
+  }
+
+  .tactile-btn:active:not(:disabled),
+  .tactile-btn[data-state='active'],
+  .tactile-btn.active {
+    transform: translateY(1px) scale(0.985);
+    box-shadow: var(--tactile-shadow-pressed);
+  }
+
+  .tactile-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--surface-ground), 0 0 0 4px var(--color-primary-brand);
+  }
+
+  /* Decoupled Disabled State: Only dim when visually disabled, NOT during loading */
+  .tactile-btn:disabled:not([data-loading='true']):not(.is-loading) {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .tactile-btn[data-loading='true'],
+  .tactile-btn.is-loading {
+    opacity: 1 !important;
+    cursor: wait !important;
+  }
+
+  /* Tier 3: Standardized Primary Action Button (Design 3's Compliant) */
+  .action-btn-primary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 48px;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff;
+    background-color: var(--color-primary-brand);
+    box-shadow: var(--tactile-shadow-sm);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .action-btn-primary:hover:not(:disabled) {
+    background-color: var(--color-sdca-darkred);
+    transform: translateY(-1px);
+    box-shadow: var(--tactile-shadow-md);
+  }
+
+  .action-btn-primary:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+    box-shadow: var(--tactile-shadow-pressed);
+  }
+
+  .action-btn-primary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--surface-ground), 0 0 0 4px var(--color-primary-brand);
+  }
+
+  .action-btn-primary:disabled:not([data-loading='true']):not(.is-loading) {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .action-btn-primary[data-loading='true'],
+  .action-btn-primary.is-loading {
+    opacity: 1 !important;
+    cursor: wait !important;
+  }
+
+  /* Live Telemetry Ring Indicator */
+  .active-state-ring {
+    position: relative;
+  }
+
+  .active-state-ring::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 1.5px solid currentColor;
+    opacity: 0.75;
+    animation: active-state-halo 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    pointer-events: none;
+  }
+
+  @keyframes active-state-halo {
+    0%,
+    100% {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.15;
+      transform: scale(1.08);
+    }
+  }
+
+  /* Crisp 1px Precision Border Utilities */
+  .precision-border {
+    border: 1px solid var(--precision-border);
+  }
+
+  .precision-border-t {
+    border-top: 1px solid var(--precision-border);
+  }
+
+  .precision-border-b {
+    border-bottom: 1px solid var(--precision-border);
+  }
+
+  .precision-border-l {
+    border-left: 1px solid var(--precision-border);
+  }
+
+  .precision-border-r {
+    border-right: 1px solid var(--precision-border);
+  }
+
+  .precision-border-strong {
+    border: 1px solid var(--precision-border-strong);
+  }
+
+  .precision-border-contrast {
+    border: 1px solid var(--precision-border-contrast);
+  }
+
+  /* Slate Surfaces */
+  .surface-ground {
+    background-color: var(--surface-ground);
+  }
+
+  .surface-card {
+    background-color: var(--surface-card);
+  }
+
+  .surface-panel {
+    background-color: var(--surface-panel);
+  }
+
+  .surface-elevated {
+    background-color: var(--surface-elevated);
+  }
+
+  /* Glassmorphism Panels */
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  /* Telemetry Badges */
+  .badge-hydro {
+    background-color: var(--color-hydro-glow);
+    color: var(--color-hydro);
+    border: 1px solid var(--color-hydro);
+  }
+
+  .badge-operational {
+    background-color: var(--color-operational-glow);
+    color: var(--color-operational);
+    border: 1px solid var(--color-operational);
+  }
+
+  .badge-advisory {
+    background-color: var(--color-advisory-glow);
+    color: var(--color-advisory);
+    border: 1px solid var(--color-advisory);
+  }
+
+  .badge-critical {
+    background-color: var(--color-critical-glow);
+    color: var(--color-critical);
+    border: 1px solid var(--color-critical);
+  }
+
+  .badge-sanitize {
+    background-color: var(--color-sanitize-glow);
+    color: var(--color-sanitize);
+    border: 1px solid var(--color-sanitize);
+  }
+
+  /* Animations */
   @keyframes fade-in {
     from {
       opacity: 0;
     }
-
     to {
       opacity: 1;
     }
@@ -22,7 +369,6 @@
       opacity: 0;
       transform: translateY(-0.5rem);
     }
-
     to {
       opacity: 1;
       transform: translateY(0);

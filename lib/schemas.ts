@@ -18,7 +18,7 @@ const emailSchema = z.string().email('Invalid email address');
 
 const passwordSchema = z
   .string()
-  .min(12, 'Password must be at least 12 characters (OWASP recommendation)');
+  .min(12, 'Password must be at least 12 characters');
 
 const displayNameSchema = z
   .string()

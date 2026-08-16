@@ -11,8 +11,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -20,29 +18,76 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { Calendar, Droplets, Activity, Percent, Clock } from 'lucide-react';
+import {
+  Activity,
+  Droplets,
+  Calendar,
+  Clock,
+  ShieldCheck,
+  BarChart3,
+  Waves,
+  Sparkles,
+  AlertCircle,
+} from 'lucide-react';
 
-const BRAND_PURPLE = '#7C3AED';
-const CYAN = '#06B6D4';
-const PINK = '#EC4899';
-const GREEN = '#10B981';
-const RED = '#EF4444';
-const GRID_COLOR = 'rgba(148, 163, 184, 0.22)';
-const TOOLTIP_STYLE = {
-  borderRadius: '12px',
-  border: '1px solid rgba(148, 163, 184, 0.14)',
-  boxShadow: '0 16px 40px -24px rgb(15 23 42 / 0.4)',
-  backgroundColor: 'rgba(255,255,255,0.96)',
-};
-const SKELETON_BAR_HEIGHTS = [
-  'h-[28%]',
-  'h-[61%]',
-  'h-[43%]',
-  'h-[77%]',
-  'h-[52%]',
-  'h-[68%]',
-  'h-[35%]',
-];
+const HYDRO_CYAN = '#0284C7';
+const TEAL_CYAN = '#06B6D4';
+const EMERALD = '#10B981';
+const CRIMSON = '#EF4444';
+const GRID_COLOR = 'rgba(148, 163, 184, 0.15)';
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value?: number | string;
+    name?: string;
+    dataKey?: string;
+    color?: string;
+  }>;
+  label?: string | number;
+  unit?: string;
+  valueFormatter?: (val: number) => string;
+}
+
+function ModernTooltip({
+  active,
+  payload,
+  label,
+  unit = '',
+  valueFormatter,
+}: CustomTooltipProps) {
+  if (!active || !payload || !payload.length) return null;
+
+  const rawVal = payload[0]?.value;
+  const numVal = typeof rawVal === 'number' ? rawVal : Number(rawVal ?? 0);
+  const formattedVal = valueFormatter
+    ? valueFormatter(Number.isFinite(numVal) ? numVal : 0)
+    : `${(Number.isFinite(numVal) ? numVal : 0).toLocaleString()}${unit ? ` ${unit}` : ''}`;
+
+  return (
+    <div className="min-w-[130px] rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/95">
+      {label !== undefined && (
+        <p className="mb-1 border-b border-slate-100 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          {String(label)}
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3 pt-0.5">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: payload[0]?.color ?? HYDRO_CYAN }}
+          />
+          <span className="text-xs text-slate-600 dark:text-slate-300">
+            {payload[0]?.name || 'Value'}
+          </span>
+        </div>
+        <span className="font-mono text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100">
+          {formattedVal}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -75,9 +120,13 @@ export default function AnalyticsPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-8">
-        <div className="alert alert-error">
-          <span>{error}</span>
+      <div className="container mx-auto max-w-7xl p-4 md:p-8">
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50/80 p-5 text-rose-800 backdrop-blur-md dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+          <AlertCircle className="h-5 w-5 shrink-0 text-rose-500" />
+          <div>
+            <h3 className="text-sm font-semibold">Failed to load analytics telemetry</h3>
+            <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">{error}</p>
+          </div>
         </div>
       </div>
     );
@@ -85,145 +134,126 @@ export default function AnalyticsPage() {
 
   return (
     <div className="container mx-auto max-w-7xl animate-fade-in p-4 md:p-8">
+      {/* Header & Segmented Pill Control */}
       <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h1 className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-3xl font-bold text-transparent">
-            Analytics
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+            Telemetry & Analytics
           </h1>
-          <p className="mt-1 text-base-content/60">
-            System performance and usage metrics
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Dispense cycles, water consumption patterns, and sterilization telemetry
           </p>
         </div>
 
-        <div className="join rounded-lg bg-base-200 p-1">
-          {[0, 7, 30].map((days) => (
-            <button
-              key={days}
-              className={`btn btn-sm join-item ${activePreset === days ? 'btn-primary text-primary-content' : 'btn-ghost'}`}
-              onClick={() => setPresetRange(days as 0 | 7 | 30)}
-            >
-              {days === 0 ? 'Today' : `${days} Days`}
-            </button>
-          ))}
+        {/* Timeframe Segmented Pill Control */}
+        <div className="inline-flex items-center rounded-xl border border-slate-200/80 bg-slate-100 p-1 shadow-inner dark:border-slate-800/80 dark:bg-slate-800/80">
+          {[
+            { label: 'Today', days: 0 as const },
+            { label: '7 Days', days: 7 as const },
+            { label: '30 Days', days: 30 as const },
+          ].map((preset) => {
+            const isActive = activePreset === preset.days;
+            return (
+              <button
+                key={preset.days}
+                type="button"
+                onClick={() => setPresetRange(preset.days)}
+                className={`tactile-btn relative rounded-lg px-4 py-1.5 text-xs font-semibold select-none ${
+                  isActive
+                    ? 'border border-slate-200/80 bg-white font-bold text-slate-900 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-white'
+                    : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-white'
+                }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* Summary KPI Ribbon (5 Clean Metric Cards) */}
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           title="Total Flushes"
-          icon={<Activity className="h-5 w-5 text-primary" />}
+          icon={<Activity className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
+          iconBg="bg-sky-500/10 dark:bg-sky-500/15"
           value={
             typeof totalFlushes === 'number'
               ? totalFlushes.toLocaleString()
               : '--'
           }
+          subtext="Dispense cycles"
           loading={loading}
         />
         <StatCard
-          title="Water Used (L)"
-          icon={<Droplets className="h-5 w-5 text-info" />}
+          title="Water Consumed"
+          icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
+          iconBg="bg-cyan-500/10 dark:bg-cyan-500/15"
           value={typeof totalWater === 'number' ? totalWater.toFixed(1) : '--'}
+          unit="L"
+          subtext="Volume metered"
           loading={loading}
         />
         <StatCard
           title="UV Completion"
-          icon={<Percent className="h-5 w-5 text-accent" />}
+          icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          iconBg="bg-emerald-500/10 dark:bg-emerald-500/15"
           value={
             typeof uvCompletion === 'number'
               ? `${uvCompletion.toFixed(1)}%`
               : '--'
           }
+          subtext="Sterilization rate"
           loading={loading}
         />
         <StatCard
           title="Avg Flushes/Day"
-          icon={<Calendar className="h-5 w-5 text-secondary" />}
+          icon={<Calendar className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
+          iconBg="bg-indigo-500/10 dark:bg-indigo-500/15"
           value={
             typeof avgFlushesPerDay === 'number'
               ? avgFlushesPerDay.toFixed(1)
               : '--'
           }
+          subtext="Daily baseline"
           loading={loading}
         />
         <StatCard
           title="System Uptime"
-          icon={<Clock className="h-5 w-5 text-success" />}
+          icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
+          iconBg="bg-teal-500/10 dark:bg-teal-500/15"
           value={formatUptime(systemUptime)}
+          subtext="Target SLA: 99.5%"
           loading={loading}
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <ChartCard title="Flush Count per Day">
+      {/* Chart Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* 1. Flush Count per Day (Hydro-Cyan Smooth Gradient Area Chart) */}
+        <ChartCard
+          title="Flush Count per Day"
+          subtitle="Daily dispensing volume across active sensors"
+          icon={Waves}
+        >
           {loading ? (
-            <SkeletonChart />
+            <ChartSkeleton />
           ) : !data?.charts.flushCounts.length ? (
-            <EmptyChart />
+            <EmptyChartState
+              title="No Flush Telemetry"
+              description="No flush cycles recorded for the selected timeframe."
+              icon={Waves}
+            />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart
                 data={data.charts.flushCounts}
                 margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
               >
-                <CartesianGrid
-                  stroke={GRID_COLOR}
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip
-                  cursor={{ fill: BRAND_PURPLE, opacity: 0.08 }}
-                  contentStyle={TOOLTIP_STYLE}
-                  labelFormatter={(label) => `Date: ${label}`}
-                  formatter={(value) => [
-                    `${getNumericTooltipValue(value)} flushes`,
-                    'Flush Count',
-                  ]}
-                />
-                <Bar
-                  dataKey="count"
-                  fill={BRAND_PURPLE}
-                  radius={[8, 8, 0, 0]}
-                  barSize={32}
-                  minPointSize={3}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-
-        <ChartCard title="Water Usage per Day (Liters)">
-          {loading ? (
-            <SkeletonChart />
-          ) : !data?.charts.waterVolume.length ? (
-            <EmptyChart />
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart
-                data={data.charts.waterVolume}
-                margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
-              >
                 <defs>
-                  <linearGradient
-                    id="waterGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="5%" stopColor={CYAN} stopOpacity={0.5} />
-                    <stop offset="95%" stopColor={CYAN} stopOpacity={0.02} />
+                  <linearGradient id="flushAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={HYDRO_CYAN} stopOpacity={0.45} />
+                    <stop offset="95%" stopColor={HYDRO_CYAN} stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -235,44 +265,121 @@ export default function AnalyticsPage() {
                   dataKey="date"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <YAxis
+                  allowDecimals={false}
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  labelFormatter={(label) => `Date: ${label}`}
-                  formatter={(value) => [
-                    `${getNumericTooltipValue(value).toFixed(1)} L`,
-                    'Water Usage',
-                  ]}
+                  content={
+                    <ModernTooltip
+                      unit="flushes"
+                      valueFormatter={(v) => `${v.toLocaleString()} flushes`}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"
-                  dataKey="liters"
-                  stroke={CYAN}
-                  strokeWidth={3}
-                  fill="url(#waterGradient)"
+                  dataKey="count"
+                  name="Flush Count"
+                  stroke={HYDRO_CYAN}
+                  strokeWidth={2.5}
+                  fill="url(#flushAreaGradient)"
+                  activeDot={{ r: 5, fill: HYDRO_CYAN, stroke: '#ffffff', strokeWidth: 2 }}
                 />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title="Usage by Hour of Day" className="lg:col-span-2">
+        {/* 2. Water Usage per Day (Clean Cyan/Teal Bar Chart with Rounded Corners) */}
+        <ChartCard
+          title="Water Usage per Day"
+          subtitle="Total metered volume in liters"
+          icon={Droplets}
+        >
           {loading ? (
-            <SkeletonChart />
-          ) : !data?.charts.hourlyUsage.length ? (
-            <EmptyChart />
+            <ChartSkeleton />
+          ) : !data?.charts.waterVolume.length ? (
+            <EmptyChartState
+              title="No Water Usage Data"
+              description="Water volume metrics are not yet available for this window."
+              icon={Droplets}
+            />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={data.charts.waterVolume}
+                margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid
+                  stroke={GRID_COLOR}
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(6, 182, 212, 0.08)' }}
+                  content={
+                    <ModernTooltip
+                      unit="L"
+                      valueFormatter={(v) => `${v.toFixed(1)} Liters`}
+                    />
+                  }
+                />
+                <Bar
+                  dataKey="liters"
+                  name="Water Volume"
+                  fill={TEAL_CYAN}
+                  radius={[6, 6, 0, 0]}
+                  barSize={28}
+                  minPointSize={3}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        {/* 3. Usage by Hour of Day (Smooth Hydro-Cyan Gradient Area Chart) */}
+        <ChartCard
+          title="Hourly Activity Distribution"
+          subtitle="24-hour cycle patterns to identify peak restroom traffic"
+          icon={Clock}
+          className="lg:col-span-2"
+        >
+          {loading ? (
+            <ChartSkeleton />
+          ) : !data?.charts.hourlyUsage.length ? (
+            <EmptyChartState
+              title="No Hourly Distribution"
+              description="Hourly telemetry patterns will populate as flushes are triggered."
+              icon={Clock}
+            />
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart
                 data={data.charts.hourlyUsage}
                 margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
               >
+                <defs>
+                  <linearGradient id="hourlyAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={HYDRO_CYAN} stopOpacity={0.4} />
+                    <stop offset="95%" stopColor={HYDRO_CYAN} stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid
                   stroke={GRID_COLOR}
                   strokeDasharray="3 3"
@@ -282,88 +389,139 @@ export default function AnalyticsPage() {
                   dataKey="hour"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <YAxis
                   allowDecimals={false}
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  labelFormatter={(label) => `Hour: ${label}`}
-                  formatter={(value) => [
-                    `${getNumericTooltipValue(value)} events`,
-                    'Usage',
-                  ]}
+                  content={
+                    <ModernTooltip
+                      unit="events"
+                      valueFormatter={(v) => `${v.toLocaleString()} flushes`}
+                    />
+                  }
                 />
-                <Line
+                <Area
                   type="monotone"
                   dataKey="count"
-                  stroke={PINK}
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: PINK }}
-                  activeDot={{ r: 6, fill: PINK }}
+                  name="Flush Traffic"
+                  stroke={HYDRO_CYAN}
+                  strokeWidth={2.5}
+                  fill="url(#hourlyAreaGradient)"
+                  activeDot={{ r: 5, fill: HYDRO_CYAN, stroke: '#ffffff', strokeWidth: 2 }}
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title="UV Cycles Completed vs Failed">
+        {/* 4. UV Cycles Completed vs Failed (Clean Donut Chart with Center Metric) */}
+        <ChartCard
+          title="UV Sterilization Efficiency"
+          subtitle="Completed 254nm cycles vs interrupted sequences"
+          icon={Sparkles}
+        >
           {loading ? (
-            <PieSkeleton />
+            <DonutSkeleton />
           ) : !data?.charts.uvStats.length ? (
-            <EmptyChart />
+            <EmptyChartState
+              title="No UV Sterilization Logs"
+              description="No UV sterilization cycles recorded in this interval."
+              icon={Sparkles}
+            />
           ) : (
-            <>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={data.charts.uvStats}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={72}
-                    outerRadius={106}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {data.charts.uvStats.map((entry, index) => (
-                      <Cell key={entry.name} fill={[GREEN, RED][index % 2]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    formatter={(value) => [
-                      `${getNumericTooltipValue(value).toFixed(1)}%`,
-                      'Cycle Share',
-                    ]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-2 flex justify-center gap-4">
-                {data.charts.uvStats.map((entry, index) => (
-                  <div key={entry.name} className="flex items-center gap-2">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: [GREEN, RED][index % 2] }}
-                    ></div>
-                    <span className="text-sm">{entry.name}</span>
-                  </div>
-                ))}
+            <div className="flex flex-col items-center">
+              <div className="relative flex h-[240px] w-full items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data.charts.uvStats}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={74}
+                      outerRadius={104}
+                      paddingAngle={4}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {data.charts.uvStats.map((entry, index) => (
+                        <Cell
+                          key={`cell-${entry.name}`}
+                          fill={index === 0 ? EMERALD : CRIMSON}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={
+                        <ModernTooltip
+                          unit="%"
+                          valueFormatter={(v) => `${v.toFixed(1)}%`}
+                        />
+                      }
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Center Metric Percentage */}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="font-mono text-3xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
+                    {typeof uvCompletion === 'number'
+                      ? `${uvCompletion.toFixed(1)}%`
+                      : '--'}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Success Rate
+                  </span>
+                </div>
               </div>
-            </>
+
+              {/* Status Legend */}
+              <div className="mt-4 flex justify-center gap-6 border-t border-slate-100 pt-3 dark:border-slate-800/60">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/40" />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Completed (
+                    {typeof uvCompletion === 'number'
+                      ? `${uvCompletion.toFixed(1)}%`
+                      : '0%'}
+                    )
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/40" />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Failed (
+                    {typeof uvCompletion === 'number'
+                      ? `${Math.max(0, 100 - uvCompletion).toFixed(1)}%`
+                      : '0%'}
+                    )
+                  </span>
+                </div>
+              </div>
+            </div>
           )}
         </ChartCard>
 
-        <ChartCard title="Daily Uptime %">
+        {/* 5. Daily Uptime % (Clean Bar Chart with 99.5% SLA Reference Line) */}
+        <ChartCard
+          title="Daily System Uptime"
+          subtitle="Device availability percentage against SLA target"
+          icon={BarChart3}
+        >
           {loading ? (
-            <SkeletonChart />
+            <ChartSkeleton />
           ) : !data?.charts.uptimeStats.length ? (
-            <EmptyChart />
+            <EmptyChartState
+              title="No Uptime Metrics"
+              description="Uptime telemetry is aggregating for the selected timeframe."
+              icon={BarChart3}
+            />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <BarChart
                 data={data.charts.uptimeStats}
                 margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
@@ -377,39 +535,41 @@ export default function AnalyticsPage() {
                   dataKey="date"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <YAxis
                   domain={[0, 100]}
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                 />
                 <Tooltip
-                  cursor={{ fill: BRAND_PURPLE, opacity: 0.08 }}
-                  contentStyle={TOOLTIP_STYLE}
-                  labelFormatter={(label) => `Date: ${label}`}
-                  formatter={(value) => [
-                    `${getNumericTooltipValue(value).toFixed(1)}%`,
-                    'Uptime',
-                  ]}
+                  cursor={{ fill: 'rgba(2, 132, 199, 0.08)' }}
+                  content={
+                    <ModernTooltip
+                      unit="%"
+                      valueFormatter={(v) => `${v.toFixed(1)}%`}
+                    />
+                  }
                 />
                 <ReferenceLine
                   y={99.5}
-                  stroke={RED}
+                  stroke={CRIMSON}
                   strokeDasharray="3 3"
                   label={{
                     position: 'insideTopLeft',
                     value: 'SLA (99.5%)',
-                    fill: RED,
-                    fontSize: 12,
+                    fill: CRIMSON,
+                    fontSize: 11,
+                    fontWeight: 600,
                   }}
                 />
                 <Bar
                   dataKey="uptime"
-                  fill={BRAND_PURPLE}
-                  radius={[8, 8, 0, 0]}
-                  barSize={32}
+                  name="Uptime"
+                  fill={HYDRO_CYAN}
+                  radius={[6, 6, 0, 0]}
+                  barSize={28}
                   minPointSize={3}
                 />
               </BarChart>
@@ -424,27 +584,57 @@ export default function AnalyticsPage() {
 function StatCard({
   title,
   icon,
+  iconBg,
   value,
+  unit,
+  subtext,
   loading,
 }: {
   title: string;
   icon: React.ReactNode;
+  iconBg: string;
   value: string | number;
+  unit?: string;
+  subtext?: string;
   loading: boolean;
 }) {
   return (
-    <div className="card border border-base-200 bg-base-100 shadow-sm">
-      <div className="card-body p-4">
-        <div className="mb-1 flex items-start justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-base-content/60">
+    <div className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-md transition-all duration-300 hover:border-slate-300 hover:shadow-md dark:border-slate-800/90 dark:bg-slate-900/80 dark:hover:border-slate-700 sm:p-5">
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {title}
-          </h3>
-          {icon}
+          </span>
+          <div
+            className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}
+          >
+            {icon}
+          </div>
         </div>
+
         {loading ? (
-          <div className="skeleton h-8 w-1/2"></div>
+          <div className="space-y-2 py-1">
+            <div className="h-8 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-4 w-16 animate-pulse rounded bg-slate-100 dark:bg-slate-800/60" />
+          </div>
         ) : (
-          <div className="truncate text-2xl font-bold">{value}</div>
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100 sm:text-3xl">
+                {value}
+              </span>
+              {unit && (
+                <span className="font-mono text-xs font-medium text-slate-500 dark:text-slate-400 sm:text-sm">
+                  {unit}
+                </span>
+              )}
+            </div>
+            {subtext && (
+              <p className="mt-1 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                {subtext}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -453,53 +643,89 @@ function StatCard({
 
 function ChartCard({
   title,
+  subtitle,
+  icon: Icon,
   children,
   className = '',
 }: {
   title: string;
+  subtitle?: string;
+  icon?: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <div
-      className={`card border border-base-200 bg-base-100 shadow-xl ${className}`}
+      className={`rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-md transition-all duration-300 hover:border-slate-300 hover:shadow-md dark:border-slate-800/90 dark:bg-slate-900/80 dark:hover:border-slate-700 sm:p-6 ${className}`}
     >
-      <div className="card-body">
-        <h2 className="card-title text-base font-bold">{title}</h2>
-        <div className="mt-4">{children}</div>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/60">
+        <div className="flex items-center gap-2.5">
+          {Icon && (
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400">
+              <Icon className="h-4 w-4" />
+            </div>
+          )}
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-base">
+              {title}
+            </h2>
+            {subtitle && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
+      <div>{children}</div>
     </div>
   );
 }
 
-function SkeletonChart() {
+function ChartSkeleton() {
+  const heights = [40, 75, 50, 90, 65, 80, 45];
   return (
-    <div className="flex h-[300px] w-full flex-col justify-end gap-2 rounded-xl bg-base-200/40 p-4">
-      <div className="flex h-full w-full items-end justify-between gap-2 opacity-30">
-        {SKELETON_BAR_HEIGHTS.map((heightClass, index) => (
+    <div className="flex h-[280px] w-full flex-col justify-end gap-3 rounded-xl bg-slate-100/50 p-6 dark:bg-slate-800/30">
+      <div className="flex h-full w-full items-end justify-between gap-3 opacity-40">
+        {heights.map((height, i) => (
           <div
-            key={index}
-            className={`w-full rounded-t-md bg-base-content ${heightClass}`}
-          ></div>
+            key={i}
+            className="w-full animate-pulse rounded-t-md bg-slate-300 dark:bg-slate-700"
+            style={{ height: `${height}%`, animationDelay: `${i * 100}ms` }}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function PieSkeleton() {
+function DonutSkeleton() {
   return (
-    <div className="flex h-[300px] items-center justify-center rounded-xl bg-base-200/40">
-      <div className="skeleton h-48 w-48 rounded-full"></div>
+    <div className="flex h-[280px] w-full items-center justify-center rounded-xl bg-slate-100/50 dark:bg-slate-800/30">
+      <div className="h-44 w-44 animate-pulse rounded-full border-8 border-slate-200 dark:border-slate-700/60" />
     </div>
   );
 }
 
-function EmptyChart() {
+function EmptyChartState({
+  title = 'No telemetry data',
+  description = 'No activity recorded for the selected timeframe.',
+  icon: Icon = BarChart3,
+}: {
+  title?: string;
+  description?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
   return (
-    <div className="flex h-[300px] w-full items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40">
-      <p className="font-medium text-base-content/50">
-        No data available for this period
+    <div className="flex h-[280px] w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center dark:border-slate-800 dark:bg-slate-900/30">
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+        {title}
+      </p>
+      <p className="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-400">
+        {description}
       </p>
     </div>
   );
@@ -509,16 +735,5 @@ function formatUptime(value: number | undefined) {
   if (typeof value !== 'number' || value <= 0) {
     return '--';
   }
-
   return `${value.toFixed(1)}%`;
-}
-
-function getNumericTooltipValue(
-  value: number | string | ReadonlyArray<number | string> | undefined,
-) {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  const numericValue =
-    typeof rawValue === 'number' ? rawValue : Number(rawValue ?? 0);
-
-  return Number.isFinite(numericValue) ? numericValue : 0;
 }

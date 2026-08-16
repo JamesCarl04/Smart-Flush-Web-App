@@ -1,59 +1,95 @@
 'use client';
 
 import { useActivityFeed, ActivityEvent } from '@/hooks/useActivityFeed';
-import { formatDistanceToNow } from 'date-fns';
-import { Droplets, Power, Sun } from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
+import { Droplets, Sparkles, UserCheck, Activity, ShieldCheck } from 'lucide-react';
+
+function getEventDetails(event: ActivityEvent) {
+  switch (event.type) {
+    case 'flushEvent':
+      return {
+        title: 'Flush Cycle Activated',
+        badgeLabel: 'Flush',
+        badgeStyle: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+        iconBg: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30',
+        icon: <Droplets className="w-4 h-4" />,
+      };
+    case 'uvCycle':
+      return {
+        title: 'UV-C Sterilization',
+        badgeLabel: 'Disinfection',
+        badgeStyle: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+        iconBg: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30',
+        icon: <Sparkles className="w-4 h-4" />,
+      };
+    case 'lidEvent':
+      return {
+        title: 'Occupancy / Lid Sensor',
+        badgeLabel: 'Sensor',
+        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        iconBg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30',
+        icon: <Activity className="w-4 h-4" />,
+      };
+    default:
+      return {
+        title: 'System Telemetry Event',
+        badgeLabel: 'Event',
+        badgeStyle: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+        iconBg: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30',
+        icon: <ShieldCheck className="w-4 h-4" />,
+      };
+  }
+}
+
+function formatRelativeTime(date: Date): string {
+  try {
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return 'Just now';
+  }
+}
+
+function formatExactTime(date: Date): string {
+  try {
+    return format(date, 'HH:mm:ss');
+  } catch {
+    return '';
+  }
+}
 
 export function ActivityFeed() {
   const { events, loading } = useActivityFeed();
 
-  const getEventIcon = (type: ActivityEvent['type']) => {
-    switch (type) {
-      case 'flushEvent':
-        return <Droplets className="w-4 h-4 text-info" />;
-      case 'uvCycle':
-        return <Sun className="w-4 h-4 text-accent" />;
-      case 'lidEvent':
-        return <Power className="w-4 h-4 text-secondary" />;
-      default:
-        return <div className="w-2 h-2 rounded-full bg-neutral"></div>;
-    }
-  };
-
-  const getEventBadgeColor = (type: ActivityEvent['type']) => {
-    switch (type) {
-      case 'flushEvent':
-        return 'badge-info badge-outline';
-      case 'uvCycle':
-        return 'badge-accent badge-outline';
-      case 'lidEvent':
-        return 'badge-secondary badge-outline';
-      default:
-        return 'badge-neutral outline';
-    }
-  };
-
   return (
-    <div className="card bg-base-100 shadow-xl mb-8">
-      <div className="card-body">
+    <div className="card bg-base-100 border border-base-200 shadow-xl mb-8">
+      <div className="card-body p-6">
         <div className="flex items-center justify-between border-b border-base-200 pb-4 mb-4">
-          <h2 className="card-title flex items-center gap-2">
-            Activity Feed
-            <span className="relative ml-2 flex h-3 w-3 items-center justify-center">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 animate-pulse rounded-full bg-success"></span>
+          <div className="flex items-center gap-2">
+            <h2 className="card-title text-xl font-bold tracking-tight">
+              Activity Feed
+            </h2>
+            <div className="flex items-center gap-1.5 ml-1">
+              <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
+              </span>
+              <span className="text-xs font-semibold text-success uppercase tracking-wider">
+                Live
+              </span>
+            </div>
+          </div>
+          {!loading && events.length > 0 && (
+            <span className="text-xs font-medium text-base-content/50 bg-base-200 px-2.5 py-1 rounded-full">
+              {events.length} events
             </span>
-            <span className="text-xs font-normal text-success uppercase tracking-wider ml-1">
-              Live
-            </span>
-          </h2>
+          )}
         </div>
 
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-4 py-2">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex gap-4 items-center">
-                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+                <div className="skeleton w-9 h-9 rounded-full shrink-0"></div>
                 <div className="flex flex-col gap-2 w-full">
                   <div className="skeleton h-4 w-1/3"></div>
                   <div className="skeleton h-3 w-2/3"></div>
@@ -62,42 +98,71 @@ export function ActivityFeed() {
             ))}
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-8 text-base-content/50">
-            <p>No recent events recorded in the system.</p>
+          <div className="text-center py-10 px-4 text-base-content/50">
+            <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-sm">No recent events recorded</p>
+            <p className="text-xs text-base-content/40 mt-0.5">
+              Live telemetry signals from connected units will appear here in real time.
+            </p>
           </div>
         ) : (
-          <div className="relative">
-            <div className="absolute left-5 top-2 bottom-2 w-px bg-base-200 -z-10"></div>
-            <ul className="space-y-6 animate-fade-in-down">
-              {events.map((event) => (
-                <li
-                  key={event.id}
-                  className="flex items-start gap-4 hover:bg-base-200/50 p-2 rounded-lg transition-colors overflow-hidden"
-                >
-                  <div className="bg-base-100 rounded-full p-2 border border-base-200 shadow-sm shrink-0 mt-0.5 z-10 block">
-                    {getEventIcon(event.type)}
-                  </div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex justify-between items-center sm:items-start flex-col sm:flex-row gap-1 sm:gap-4 mb-1">
-                      <span className="font-semibold text-sm truncate">
-                        {event.details}
-                      </span>
-                      <span className="text-xs text-base-content/50 whitespace-nowrap bg-base-200 px-2 py-0.5 rounded-full border border-base-300">
-                        {formatDistanceToNow(new Date(event.timestamp), {
-                          addSuffix: true,
-                        })}
-                      </span>
+          <div className="relative pl-2 sm:pl-3">
+            {/* Timeline vertical bar */}
+            <div className="absolute left-6 top-3 bottom-3 w-[2px] bg-base-200 dark:bg-base-300 -z-0"></div>
+
+            <ul className="space-y-4 animate-fade-in">
+              {events.map((event) => {
+                const config = getEventDetails(event);
+                const relTime = formatRelativeTime(new Date(event.timestamp));
+                const exactTime = formatExactTime(new Date(event.timestamp));
+
+                return (
+                  <li
+                    key={event.id}
+                    className="group relative flex items-start gap-3.5 p-2 rounded-xl transition-colors hover:bg-base-200/50"
+                  >
+                    {/* Event Icon Node */}
+                    <div
+                      className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 ${config.iconBg}`}
+                    >
+                      {config.icon}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span
-                        className={`badge badge-sm ${getEventBadgeColor(event.type)} text-[10px] uppercase font-bold tracking-wider`}
-                      >
-                        {event.type.replace(/Cycle|Event/g, '')}
-                      </span>
+
+                    {/* Event Details */}
+                    <div className="flex flex-col min-w-0 flex-1 pt-0.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-base-content group-hover:text-primary transition-colors">
+                            {config.title}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${config.badgeStyle}`}
+                          >
+                            {config.badgeLabel}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-xs text-base-content/50">
+                          <span className="font-medium whitespace-nowrap bg-base-200/70 dark:bg-base-300/60 px-2 py-0.5 rounded-md">
+                            {relTime}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-base-content/70">
+                        <span className="font-mono text-xs bg-base-200/50 px-2 py-0.5 rounded text-base-content/80 font-medium truncate">
+                          {event.details}
+                        </span>
+                        {exactTime && (
+                          <span className="text-[11px] text-base-content/40 font-mono shrink-0">
+                            {exactTime}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

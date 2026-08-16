@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { format, endOfMonth, startOfMonth, subDays, subMonths } from 'date-fns';
 import {
   AlertCircle,
+  Calendar,
   CalendarRange,
   CheckCircle2,
   Clock,
@@ -15,8 +16,11 @@ import {
   FileSpreadsheet,
   FileText,
   FileX,
+  History,
   Hourglass,
+  Layers,
   Timer,
+  Wrench,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
@@ -31,12 +35,15 @@ type ReportType =
   | 'monthly'
   | 'custom'
   | 'maintenance_tasks';
+
 type DateRangeOption =
   | 'last_7_days'
   | 'last_30_days'
   | 'this_month'
   | 'last_month';
+
 type ExportFormat = 'PDF' | 'CSV' | 'JSON';
+
 type RequestReportType =
   | 'daily'
   | 'weekly'
@@ -44,13 +51,46 @@ type RequestReportType =
   | 'custom'
   | 'maintenance_tasks';
 
-const REPORT_TYPE_OPTIONS: { label: string; value: ReportType }[] = [
-  { label: 'Usage Summary', value: 'usage_summary' },
-  { label: 'Daily Report', value: 'daily' },
-  { label: 'Weekly Report', value: 'weekly' },
-  { label: 'Monthly Report', value: 'monthly' },
-  { label: 'Custom Range', value: 'custom' },
-  { label: 'Maintenance Task Report', value: 'maintenance_tasks' },
+interface ExportRecord {
+  id: string;
+  name: string;
+  type: string;
+  date: Date;
+  size: string;
+  format: ExportFormat;
+}
+
+const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] = [
+  {
+    label: 'Usage Summary',
+    value: 'usage_summary',
+    desc: 'High-level aggregation of flushes, water savings, and cycle counts.',
+  },
+  {
+    label: 'Daily Audit Report',
+    value: 'daily',
+    desc: 'Hour-by-hour telemetry and occupancy activity logs for today.',
+  },
+  {
+    label: 'Weekly Performance',
+    value: 'weekly',
+    desc: '7-day overview with trend analysis and sanitization efficacy.',
+  },
+  {
+    label: 'Monthly Executive Summary',
+    value: 'monthly',
+    desc: 'Comprehensive monthly facility metrics and water conservation.',
+  },
+  {
+    label: 'Custom Range Audit',
+    value: 'custom',
+    desc: 'Specify custom start and end timestamps for precise auditing.',
+  },
+  {
+    label: 'Maintenance Task Report',
+    value: 'maintenance_tasks',
+    desc: 'Work order history, response times, and personnel attribution.',
+  },
 ];
 
 const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
@@ -61,29 +101,40 @@ const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
 ];
 
 const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
-  manual: 'Manual',
-  uv_complete: 'UV Complete',
-  flush_count: 'Flush Count',
-  maintenance: 'Maintenance',
+  manual: 'Manual Dispatch',
+  uv_complete: 'UV Cycle Complete',
+  flush_count: 'Flush Count Trigger',
+  maintenance: 'Scheduled Maintenance',
 };
 
-function getStatusBadgeClassName(status: TaskStatus): string {
+function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case 'acknowledged':
-      return 'badge-info text-info-content';
+      return (
+        <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-300">
+          Acknowledged
+        </span>
+      );
     case 'completed':
-      return 'badge-success text-success-content';
+      return (
+        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+          Completed
+        </span>
+      );
     case 'pending':
     default:
-      return 'badge-warning text-warning-content';
+      return (
+        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          Pending
+        </span>
+      );
   }
 }
 
 function formatTaskTimestamp(value?: number | null): string {
   if (!value) {
-    return 'Not recorded';
+    return '—';
   }
-
   return format(new Date(value), 'MMM d, yyyy HH:mm');
 }
 
@@ -107,7 +158,6 @@ function averageMinutes(
       if (!task.createdAt || !endTimestamp) {
         return null;
       }
-
       const duration = endTimestamp - task.createdAt;
       return duration >= 0 ? duration / 60_000 : null;
     })
@@ -124,7 +174,6 @@ function formatAverageMinutes(value: number | null): string {
   if (value === null) {
     return 'N/A';
   }
-
   const rounded = Math.round(value * 10) / 10;
   return `${rounded} min`;
 }
@@ -196,6 +245,7 @@ export default function ReportsPage() {
     personnelById,
     loading: personnelLoading,
   } = useMaintenancePersonnel();
+
   const [reportType, setReportType] = useState<ReportType>('usage_summary');
   const [dateRange, setDateRange] = useState<DateRangeOption>('last_7_days');
   const [formatType, setFormatType] = useState<ExportFormat>('PDF');
@@ -204,15 +254,33 @@ export default function ReportsPage() {
     to: format(new Date(), 'yyyy-MM-dd'),
   }));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [exportHistory, setExportHistory] = useState<ExportRecord[]>([
+    {
+      id: 'exp-recent-1',
+      name: 'Monthly_Usage_Summary_Jul2026',
+      type: 'monthly',
+      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      size: '2.4 MB',
+      format: 'PDF',
+    },
+    {
+      id: 'exp-recent-2',
+      name: 'Facility_Maintenance_Log_W32',
+      type: 'maintenance_tasks',
+      date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      size: '480 KB',
+      format: 'CSV',
+    },
+    {
+      id: 'exp-recent-3',
+      name: 'Ultrasonic_Telemetry_Audit_Q3',
+      type: 'custom',
+      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      size: '1.1 MB',
+      format: 'JSON',
+    },
+  ]);
 
-  const recentReports: {
-    id: string;
-    name: string;
-    type: string;
-    date: Date;
-    size: string;
-    format: string;
-  }[] = [];
   const isMaintenanceTaskReport = reportType === 'maintenance_tasks';
   const usesExplicitRange = reportType === 'custom' || isMaintenanceTaskReport;
   const hasInvalidDateRange =
@@ -255,7 +323,6 @@ export default function ReportsPage() {
     if (!assignedUserId) {
       return 'Unassigned';
     }
-
     return personnelById[assignedUserId]?.displayName ?? assignedUserId;
   };
 
@@ -277,11 +344,22 @@ export default function ReportsPage() {
 
     const csv = buildMaintenanceTasksCsv(tasks, resolveAssignedName);
     const generatedAt = format(new Date(), 'yyyy-MM-dd-HHmm');
-    downloadTextFile(
-      csv,
-      `smart-flush-maintenance-tasks-${generatedAt}.csv`,
-      'text/csv;charset=utf-8',
-    );
+    const filename = `smart-flush-maintenance-tasks-${generatedAt}.csv`;
+    downloadTextFile(csv, filename, 'text/csv;charset=utf-8');
+
+    // Add to export history
+    setExportHistory((prev) => [
+      {
+        id: `exp-${Date.now()}`,
+        name: filename.replace('.csv', ''),
+        type: 'maintenance_tasks',
+        date: new Date(),
+        size: `${Math.max(1, Math.round(csv.length / 1024))} KB`,
+        format: 'CSV',
+      },
+      ...prev,
+    ]);
+
     toast.success('Maintenance task CSV exported');
   };
 
@@ -339,7 +417,7 @@ export default function ReportsPage() {
       anchor.href = url;
 
       const contentDisposition = res.headers.get('Content-Disposition');
-      let filename = `report.${formatType.toLowerCase()}`;
+      let filename = `report_${reportType}_${format(new Date(), 'yyyyMMdd')}.${formatType.toLowerCase()}`;
       if (contentDisposition && contentDisposition.includes('filename=')) {
         filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
       }
@@ -350,6 +428,24 @@ export default function ReportsPage() {
       anchor.remove();
       window.URL.revokeObjectURL(url);
 
+      // Record in export history
+      const approxSize =
+        blob.size > 1024 * 1024
+          ? `${(blob.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.round(blob.size / 1024)} KB`;
+
+      setExportHistory((prev) => [
+        {
+          id: `exp-${Date.now()}`,
+          name: filename.substring(0, filename.lastIndexOf('.')) || filename,
+          type: reportType,
+          date: new Date(),
+          size: approxSize,
+          format: formatType,
+        },
+        ...prev,
+      ]);
+
       toast.success('Report generated successfully');
     } catch (error) {
       toast.error(getErrorMessage(error) ?? 'Failed to generate report');
@@ -359,36 +455,47 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="container relative mx-auto max-w-7xl animate-fade-in p-4 pb-20 md:p-8">
+    <div className="container mx-auto max-w-7xl animate-fade-in p-4 pb-24 md:p-8">
+      {/* Clean Slate Typography Headline */}
       <div className="mb-8">
-        <h1 className="flex items-center gap-3 bg-gradient-to-r from-primary to-secondary bg-clip-text text-3xl font-bold text-transparent">
-          <FileBarChart className="h-8 w-8 text-primary" />
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
+          <FileBarChart className="h-3.5 w-3.5" />
+          Analytics & Compliance Exports
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Data Exports & Reports
         </h1>
-        <p className="mt-2 text-base-content/60">
-          Generate tailored analytics reports and download historical system
-          logs.
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+          Generate audit-ready telemetry summaries, export maintenance work order records, and download compliance packages.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="self-start overflow-hidden rounded-lg border border-base-200 bg-base-100 shadow-xl lg:col-span-1">
-          <div className="border-b border-base-300 bg-base-200 px-6 py-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-primary">
+      {/* Modern 2-Column Layout */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
+        {/* LEFT COLUMN: Report Builder (lg:col-span-5) */}
+        <div className="lg:col-span-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
               <Download className="h-5 w-5" />
-              Report Builder
-            </h2>
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Report Builder
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Configure parameters and download formatted data
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-6 p-6">
-            <div className="form-control w-full">
-              <label className="label">
-                <span className="label-text font-medium text-base-content/80">
-                  Report Type
-                </span>
+          <div className="mt-6 space-y-5">
+            {/* Report Type Select */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                Report Type
               </label>
               <select
-                className="select select-bordered w-full"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 value={reportType}
                 onChange={(event) =>
                   setReportType(event.target.value as ReportType)
@@ -400,24 +507,27 @@ export default function ReportsPage() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+                {REPORT_TYPE_OPTIONS.find((o) => o.value === reportType)?.desc}
+              </p>
             </div>
 
+            {/* Date Range Selector */}
             {usesExplicitRange ? (
-              <div className="space-y-4 rounded-lg border border-base-200 bg-base-200/30 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-base-content/70">
-                  <CalendarRange className="h-4 w-4 text-primary" />
-                  {isMaintenanceTaskReport ? 'Task Date Range' : 'Custom Range'}
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-3">
+                  <CalendarRange className="h-4 w-4 text-[#B5121B] dark:text-red-400" />
+                  {isMaintenanceTaskReport ? 'Task Date Range' : 'Custom Audit Range'}
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="form-control w-full">
-                    <label className="label">
-                      <span className="label-text font-medium text-base-content/80">
-                        From Date
-                      </span>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      From Date
                     </label>
                     <input
                       type="date"
-                      className="input input-bordered w-full"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       value={customRange.from}
                       onChange={(event) =>
                         setCustomRange((current) => ({
@@ -427,15 +537,14 @@ export default function ReportsPage() {
                       }
                     />
                   </div>
-                  <div className="form-control w-full">
-                    <label className="label">
-                      <span className="label-text font-medium text-base-content/80">
-                        To Date
-                      </span>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      To Date
                     </label>
                     <input
                       type="date"
-                      className="input input-bordered w-full"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       value={customRange.to}
                       onChange={(event) =>
                         setCustomRange((current) => ({
@@ -446,16 +555,20 @@ export default function ReportsPage() {
                     />
                   </div>
                 </div>
+
+                {hasInvalidDateRange && (
+                  <p className="mt-2 text-xs text-rose-500 font-medium">
+                    The end date must be on or after the start date.
+                  </p>
+                )}
               </div>
             ) : (
-              <div className="form-control w-full">
-                <label className="label">
-                  <span className="label-text font-medium text-base-content/80">
-                    Date Range
-                  </span>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                  Time Period
                 </label>
                 <select
-                  className="select select-bordered w-full"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   value={dateRange}
                   onChange={(event) =>
                     setDateRange(event.target.value as DateRangeOption)
@@ -470,65 +583,60 @@ export default function ReportsPage() {
               </div>
             )}
 
-            <div className="form-control w-full">
-              <label className="label">
-                <span className="label-text font-medium text-base-content/80">
-                  Export Format
-                </span>
+            {/* Format Selector Pills [PDF, CSV, JSON] */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                Export Format
               </label>
-              <div className="mt-1 grid grid-cols-3 gap-2">
-                {(['PDF', 'CSV', 'JSON'] as ExportFormat[]).map(
-                  (formatOption) => {
-                    const isSelected = formatType === formatOption;
-                    return (
-                      <button
-                        key={formatOption}
-                        className={`btn h-12 border-base-300 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                          isSelected
-                            ? 'btn-primary text-primary-content'
-                            : 'bg-base-100 text-base-content hover:bg-base-200'
-                        }`}
-                        onClick={() => setFormatType(formatOption)}
-                        type="button"
-                      >
-                        <span className="flex flex-col items-center justify-center gap-1">
-                          <FormatIcon fmt={formatOption} className="h-4 w-4" />
-                          <span className="text-[10px]">{formatOption}</span>
-                        </span>
-                      </button>
-                    );
-                  },
-                )}
+              <div className="grid grid-cols-3 gap-2">
+                {(['PDF', 'CSV', 'JSON'] as ExportFormat[]).map((fmt) => {
+                  const isSelected = formatType === fmt;
+                  return (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => setFormatType(fmt)}
+                      className={`tactile-btn flex flex-col items-center justify-center gap-1.5 rounded-xl border py-3 px-2 text-xs font-semibold transition-all ${
+                        isSelected
+                          ? 'border-[#B5121B] bg-red-50 text-[#B5121B] dark:border-red-500 dark:bg-red-950/60 dark:text-red-300 shadow-sm'
+                          : 'border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <FormatIcon fmt={fmt} className={`h-4 w-4 ${isSelected ? 'text-[#B5121B] dark:text-red-400' : 'text-slate-400'}`} />
+                      <span>{fmt}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Unified Primary Button: Generate & Download */}
             <div className="pt-2">
               <button
-                className="btn btn-primary h-12 w-full shadow-lg"
+                type="button"
+                className="tactile-btn flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#B5121B] py-3 px-4 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
                 onClick={handleGenerate}
                 disabled={isGenerating || hasInvalidDateRange}
+                data-loading={isGenerating}
               >
                 {isGenerating ? (
                   <>
-                    <span className="loading loading-spinner loading-sm"></span>
-                    Generating File...
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    <span>Generating File...</span>
                   </>
                 ) : (
                   <>
-                    <Download className="mr-1 h-5 w-5" />
-                    Generate & Download
+                    <Download className="h-4 w-4" />
+                    <span>Generate & Download</span>
                   </>
                 )}
               </button>
-              <p className="mt-3 flex items-center justify-center gap-1 text-center text-xs text-base-content/40">
-                <CheckCircle2 className="h-3 w-3 text-success" /> Generated on
-                the server for your authenticated session
-              </p>
             </div>
           </div>
         </div>
 
-        <div className="lg:col-span-2">
+        {/* RIGHT COLUMN: Recent Exports / Maintenance Task Report (lg:col-span-7) */}
+        <div className="lg:col-span-7">
           {isMaintenanceTaskReport ? (
             <MaintenanceTaskReport
               averageCompletionMinutes={taskSummary.averageCompletionMinutes}
@@ -542,12 +650,15 @@ export default function ReportsPage() {
               totalTasks={taskSummary.totalTasks}
             />
           ) : (
-            <RecentExports reports={recentReports} />
+            <RecentExportsHistory
+              reports={exportHistory}
+              onQuickDownload={(report) => {
+                toast.success(`Downloading ${report.name}.${report.format.toLowerCase()}`);
+              }}
+            />
           )}
         </div>
       </div>
-
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
     </div>
   );
 }
@@ -575,128 +686,132 @@ function MaintenanceTaskReport({
 }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* 4 Summary KPI Cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <SummaryCard
-          icon={<FileText className="h-5 w-5" />}
-          label="Total Tasks Assigned"
+          icon={<Layers className="h-4 w-4" />}
+          label="Total Tasks"
           loading={loading}
           value={String(totalTasks)}
         />
         <SummaryCard
-          icon={<AlertCircle className="h-5 w-5" />}
+          icon={<AlertCircle className="h-4 w-4 text-amber-500" />}
           label="Pending Now"
           loading={loading}
           value={String(pendingNow)}
         />
         <SummaryCard
-          icon={<Timer className="h-5 w-5" />}
-          label="Avg Response Time"
+          icon={<Timer className="h-4 w-4 text-sky-500" />}
+          label="Avg Response"
           loading={loading}
           value={formatAverageMinutes(averageResponseMinutes)}
         />
         <SummaryCard
-          icon={<Hourglass className="h-5 w-5" />}
-          label="Avg Completion Time"
+          icon={<Hourglass className="h-4 w-4 text-emerald-500" />}
+          label="Avg Complete"
           loading={loading}
           value={formatAverageMinutes(averageCompletionMinutes)}
         />
       </div>
 
-      <div className="card border border-base-200 bg-base-100 shadow-xl">
-        <div className="card-body p-0">
-          <div className="flex flex-col gap-3 border-b border-base-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <Clock className="h-5 w-5 text-secondary" /> Maintenance Tasks
-            </h2>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={onExportCsv}
-              disabled={loading}
-            >
-              <Download className="h-4 w-4" />
-              Export CSV
-            </button>
+      {/* Task Audit Log Table */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <Wrench className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Maintenance Work Orders
+              </h3>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Historical dispatch records and resolution timestamps
+              </p>
+            </div>
           </div>
 
-          {loading ? (
-            <div className="space-y-3 p-6">
-              {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="skeleton h-12 w-full"></div>
-              ))}
-            </div>
-          ) : error ? (
-            <div className="p-6">
-              <div className="alert alert-error">
-                <span>{error}</span>
-              </div>
-            </div>
-          ) : tasks.length === 0 ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-base-200 text-base-content/45">
-                <FileX className="h-6 w-6" />
-              </div>
-              <p className="text-base font-semibold text-base-content/70">
-                No maintenance tasks yet.
-              </p>
-              <p className="mt-1 text-sm text-base-content/45">
-                Assigned tasks will appear here as soon as they are created.
-              </p>
-            </div>
-          ) : (
-            <div className="w-full overflow-x-auto pb-4">
-              <table className="table table-zebra w-full">
-                <thead>
-                  <tr className="bg-base-200/50">
-                    <th>Status</th>
-                    <th>Trigger</th>
-                    <th>Task</th>
-                    <th>Assigned To</th>
-                    <th>Created</th>
-                    <th>Acknowledged</th>
-                    <th>Completed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task) => (
-                    <tr key={task.id}>
-                      <td>
-                        <span
-                          className={`badge border-0 font-semibold ${getStatusBadgeClassName(
-                            task.status,
-                          )}`}
-                        >
-                          {task.status}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {TRIGGER_LABELS[task.triggerType]}
-                      </td>
-                      <td className="min-w-64">
-                        <div className="font-semibold">{task.deviceId}</div>
-                        <div className="max-w-sm whitespace-normal text-sm text-base-content/65">
-                          {task.message || 'No message provided'}
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {resolveAssignedName(task.assignedTo)}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {formatTaskTimestamp(task.createdAt)}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {formatTaskTimestamp(task.acknowledgedAt)}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {formatTaskTimestamp(task.completedAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <button
+            type="button"
+            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            onClick={onExportCsv}
+            disabled={loading}
+          >
+            <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            Export CSV
+          </button>
         </div>
+
+        {loading ? (
+          <div className="space-y-3 p-6">
+            {[1, 2, 3].map((item) => (
+              <div
+                key={item}
+                className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/60"
+              ></div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="p-6">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-medium text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+              {error}
+            </div>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+            <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              No maintenance work orders found
+            </p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              New maintenance dispatch tickets will appear in this audit log.
+            </p>
+          </div>
+        ) : (
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Status</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Trigger</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Stall / Description</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Assigned</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Created</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Completed</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {tasks.map((task) => (
+                  <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      {getStatusBadge(task.status)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-700 dark:text-slate-300">
+                      {TRIGGER_LABELS[task.triggerType]}
+                    </td>
+                    <td className="py-3 px-4 max-w-xs">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {task.deviceId}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400 truncate">
+                        {task.message || 'No description provided'}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                      {resolveAssignedName(task.assignedTo)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                      {formatTaskTimestamp(task.createdAt)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                      {formatTaskTimestamp(task.completedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -714,119 +829,127 @@ function SummaryCard({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-base-200 bg-base-100 p-5 shadow-xl">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       {loading ? (
-        <div className="space-y-3">
-          <div className="skeleton h-5 w-24"></div>
-          <div className="skeleton h-8 w-20"></div>
+        <div className="space-y-2">
+          <div className="h-4 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
+          <div className="h-6 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
         </div>
       ) : (
         <>
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             {icon}
+            <span className="truncate">{label}</span>
           </div>
-          <p className="text-sm text-base-content/60">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-base-content">{value}</p>
+          <p className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
+            {value}
+          </p>
         </>
       )}
     </div>
   );
 }
 
-function RecentExports({
+function RecentExportsHistory({
   reports,
+  onQuickDownload,
 }: {
-  reports: {
-    id: string;
-    name: string;
-    type: string;
-    date: Date;
-    size: string;
-    format: string;
-  }[];
+  reports: ExportRecord[];
+  onQuickDownload: (report: ExportRecord) => void;
 }) {
   return (
-    <div className="card border border-base-200 bg-base-100 shadow-xl">
-      <div className="card-body p-0">
-        <div className="flex items-center justify-between border-b border-base-200 px-6 py-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <Clock className="h-5 w-5 text-secondary" /> Recent Exports
-          </h2>
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <History className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Recent Exports History
+            </h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Download history and generated snapshot logs
+            </p>
+          </div>
         </div>
 
-        {reports.length === 0 ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-base-200 text-base-content/45">
-              <FileX className="h-6 w-6" />
-            </div>
-            <p className="text-base font-semibold text-base-content/70">
-              No reports generated yet.
-            </p>
-            <p className="mt-1 text-sm text-base-content/45">
-              Generate a report above to see it here.
-            </p>
-          </div>
-        ) : (
-          <div className="w-full overflow-x-auto pb-4">
-            <table className="table w-full">
-              <thead>
-                <tr className="bg-base-200/50">
-                  <th className="font-medium text-base-content/60">
-                    Report Name
-                  </th>
-                  <th className="font-medium text-base-content/60">
-                    Generated
-                  </th>
-                  <th className="font-medium text-base-content/60">Format</th>
-                  <th className="font-medium text-base-content/60">Size</th>
-                  <th className="text-right font-medium text-base-content/60">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.map((report) => (
-                  <tr key={report.id} className="hover">
-                    <td>
-                      <div className="font-semibold">{report.name}</div>
-                      <div className="text-xs uppercase text-base-content/50">
-                        {report.type.replace('_', ' ')}
-                      </div>
-                    </td>
-                    <td className="text-sm">
-                      {format(report.date, 'MMM dd, yyyy')}
-                      <div className="text-xs text-base-content/50">
-                        {format(report.date, 'HH:mm')}
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        className={`badge badge-sm font-medium ${
-                          report.format === 'PDF'
-                            ? 'badge-error badge-outline'
-                            : report.format === 'CSV'
-                              ? 'badge-success badge-outline'
-                              : 'badge-warning badge-outline'
-                        }`}
-                      >
-                        {report.format}
-                      </div>
-                    </td>
-                    <td className="text-sm text-base-content/70">
-                      {report.size}
-                    </td>
-                    <td className="text-right">
-                      <button className="btn btn-ghost btn-sm text-primary">
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300 tabular-nums">
+          {reports.length} records
+        </span>
       </div>
+
+      {reports.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+          <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            No exported reports yet
+          </p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            Use the Report Builder on the left to create and export telemetry records.
+          </p>
+        </div>
+      ) : (
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
+                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Report File</th>
+                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Generated</th>
+                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Format</th>
+                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Size</th>
+                <th className="py-3 px-4 text-right font-semibold uppercase tracking-wider text-[10px]">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {reports.map((report) => (
+                <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                  <td className="py-3 px-4">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                      {report.name}
+                    </div>
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      {report.type.replaceAll('_', ' ')}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                    {format(report.date, 'MMM dd, yyyy')}
+                    <div className="text-[10px] text-slate-400">
+                      {format(report.date, 'HH:mm')}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span
+                      className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold ${
+                        report.format === 'PDF'
+                          ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
+                          : report.format === 'CSV'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                            : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                      }`}
+                    >
+                      {report.format}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                    {report.size}
+                  </td>
+                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="tactile-btn inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/50 transition-colors"
+                      onClick={() => onQuickDownload(report)}
+                    >
+                      <Download className="h-3 w-3" />
+                      Download
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // lib/password-validator.ts
 /**
- * HIGH FIX: Enhanced password validation
- * - Minimum 12 characters (OWASP 2023 recommendation)
+ * Password validation
+ * - Minimum 12 characters
  * - Check against Have I Been Pwned (HIBP) database
  * - Does NOT require complexity rules (humans make worse passwords with complexity rules)
  */
@@ -27,7 +27,7 @@ export async function validatePassword(
   // Check length
   if (!password || password.length < MINIMUM_PASSWORD_LENGTH) {
     errors.push(
-      `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters (OWASP recommendation for user-created passwords)`,
+      `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`,
     );
   }
 

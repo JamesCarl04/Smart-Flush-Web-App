@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
+  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Droplets,
   Power,
   Settings,
+  ShieldAlert,
   Sun,
 } from 'lucide-react';
 import { getIdToken } from 'firebase/auth';
@@ -16,17 +19,37 @@ import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { getErrorMessage } from '@/lib/error-utils';
 import { auth } from '@/lib/firebase';
 
+type ActuatorKey = 'lid_open' | 'lid_close' | 'flush' | 'uv' | 'reset';
+type CycleState = 'idle' | 'sending' | 'acknowledged' | 'active';
+
 type ActionPayload = Record<string, unknown>;
-type ActionResponse = { error?: string } & Record<string, unknown>;
+type ActionResponse = {
+  success?: boolean;
+  error?: string;
+  data?: Record<string, unknown>;
+} & Record<string, unknown>;
 
 function getDialog(id: string): HTMLDialogElement | null {
-  return document.getElementById(id) as HTMLDialogElement | null;
+  return typeof document !== 'undefined'
+    ? (document.getElementById(id) as HTMLDialogElement | null)
+    : null;
 }
 
 export function ControlPanel() {
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [actuatorStates, setActuatorStates] = useState<
+    Record<ActuatorKey, CycleState>
+  >({
+    lid_open: 'idle',
+    lid_close: 'idle',
+    flush: 'idle',
+    uv: 'idle',
+    reset: 'idle',
+  });
+
   const [pumpOn, setPumpOn] = useState(false);
   const [uvOn, setUvOn] = useState(false);
+  const [resetConfirmed, setResetConfirmed] = useState(false);
+
   const presentationMode = usePresentationMode();
   const {
     connected,
@@ -34,21 +57,41 @@ export function ControlPanel() {
     reason: deviceReason,
     loading: deviceStatusLoading,
   } = useDeviceStatus();
-  const isBusy = loadingAction !== null;
-  const controlsDisabled = isBusy || deviceStatusLoading || !connected;
+
+  const isAnySending = Object.values(actuatorStates).some(
+    (state) => state === 'sending',
+  );
+
+  const controlsDisabled =
+    isAnySending || deviceStatusLoading || (!connected && !presentationMode);
+
   const controlsDisabledReason = deviceStatusLoading
-    ? 'Checking ESP32 connection...'
-    : deviceReason || 'ESP32 not connected';
+    ? 'Checking ESP32 link status...'
+    : deviceReason || 'ESP32 controller offline';
+
+  const updateActuatorState = useCallback(
+    (key: ActuatorKey, state: CycleState) => {
+      setActuatorStates((prev) => ({ ...prev, [key]: state }));
+    },
+    [],
+  );
 
   const handleAction = async (
-    actionId: string,
+    actionKey: ActuatorKey,
     endpoint: string,
     payload: ActionPayload = {},
-  ) => {
+  ): Promise<ActionResponse | null> => {
     if (presentationMode) {
-      setLoadingAction(actionId);
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-      setLoadingAction(null);
+      updateActuatorState(actionKey, 'sending');
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      updateActuatorState(actionKey, 'acknowledged');
+
+      // Revert momentary actions back to idle
+      if (actionKey === 'lid_open' || actionKey === 'lid_close') {
+        window.setTimeout(() => {
+          updateActuatorState(actionKey, 'idle');
+        }, 1200);
+      }
       return { success: true, endpoint, payload };
     }
 
@@ -57,11 +100,13 @@ export function ControlPanel() {
       return null;
     }
 
-    setLoadingAction(actionId);
+    updateActuatorState(actionKey, 'sending');
+
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error('You must be logged in to perform this action.');
+        toast.error('Authentication required to command actuators.');
+        updateActuatorState(actionKey, 'idle');
         return null;
       }
 
@@ -77,40 +122,82 @@ export function ControlPanel() {
 
       const data: ActionResponse = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Action failed');
+        throw new Error(data.error || 'Actuator command rejected by backend');
+      }
+
+      updateActuatorState(actionKey, 'acknowledged');
+
+      // If momentary action, transition to idle after brief ack display
+      if (
+        actionKey === 'lid_open' ||
+        actionKey === 'lid_close' ||
+        actionKey === 'reset'
+      ) {
+        window.setTimeout(() => {
+          updateActuatorState(actionKey, 'idle');
+        }, 1400);
       }
 
       return data;
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error) || 'Failed to execute action');
+      updateActuatorState(actionKey, 'idle');
+      toast.error(getErrorMessage(error) || 'Failed to dispatch command');
       throw error;
-    } finally {
-      setLoadingAction(null);
     }
   };
 
-  const handleFlush = () => {
+  // 1. OPEN LID
+  const handleOpenLid = async () => {
+    try {
+      const result = await handleAction(
+        'lid_open',
+        '/api/actuators/lid/open',
+      );
+      if (result) {
+        toast.success('ESP32: Lid open servo activated');
+      }
+    } catch {
+      // Error handled in handleAction
+    }
+  };
+
+  // 2. CLOSE LID
+  const handleCloseLid = async () => {
+    try {
+      const result = await handleAction(
+        'lid_close',
+        '/api/actuators/lid/close',
+      );
+      if (result) {
+        toast.success('ESP32: Lid close servo activated');
+      }
+    } catch {
+      // Error handled in handleAction
+    }
+  };
+
+  // 3. FLUSH HANDLERS (Poka-Yoke: Modal for initiation, instant kill-switch when active)
+  const handleFlushButtonClick = () => {
     if (pumpOn) {
       void handlePumpOff();
       return;
     }
-
     getDialog('flush_modal')?.showModal();
   };
 
   const executeFlush = async () => {
+    getDialog('flush_modal')?.close();
     try {
       const result = await handleAction('flush', '/api/actuators/pump', {
         command: 'ON',
       });
-      if (!result) {
-        return;
+      if (result) {
+        setPumpOn(true);
+        updateActuatorState('flush', 'active');
+        toast.success('Solenoid valve opened: Manual Flush started');
       }
-
-      setPumpOn(true);
-      toast.success('Pump activated');
     } catch {
-      // Error already handled in handleAction.
+      // Error handled in handleAction
     }
   };
 
@@ -119,326 +206,566 @@ export function ControlPanel() {
       const result = await handleAction('flush', '/api/actuators/pump', {
         command: 'OFF',
       });
-      if (!result) {
-        return;
+      if (result) {
+        setPumpOn(false);
+        updateActuatorState('flush', 'idle');
+        toast.success('Solenoid valve closed: Flush halted');
       }
-
-      setPumpOn(false);
-      toast.success('Pump deactivated');
     } catch {
-      // Error already handled in handleAction.
+      // Error handled in handleAction
     }
   };
 
+  // 4. UV STERILIZATION TOGGLE
   const handleUVToggle = async () => {
     const nextState = !uvOn;
-
     try {
       const result = await handleAction('uv', '/api/actuators/uv', {
         command: nextState ? 'ON' : 'OFF',
       });
-      if (!result) {
-        return;
+      if (result) {
+        setUvOn(nextState);
+        updateActuatorState('uv', nextState ? 'active' : 'idle');
+        toast.success(
+          nextState
+            ? 'UV-C Sterilization chamber engaged'
+            : 'UV-C Sterilization deactivated',
+        );
       }
-
-      setUvOn(nextState);
-      toast.success(nextState ? 'UV light activated' : 'UV light deactivated');
     } catch {
-      // Error already handled in handleAction.
+      // Error handled in handleAction
     }
   };
 
+  // 5. HARD RESET HANDLER
   const executeReset = async () => {
+    getDialog('reset_modal')?.close();
+    setResetConfirmed(false);
     try {
       const result = await handleAction('reset', '/api/actuators/reset');
-      if (!result) {
-        return;
+      if (result) {
+        setPumpOn(false);
+        setUvOn(false);
+        updateActuatorState('flush', 'idle');
+        updateActuatorState('uv', 'idle');
+        toast.success('ESP32 Reboot signal dispatched');
       }
-
-      setPumpOn(false);
-      setUvOn(false);
-      toast.success('System reset command sent');
     } catch {
-      // Error already handled in handleAction.
+      // Error handled in handleAction
     }
   };
 
   return (
     <>
-      <div className="card w-full bg-base-100 shadow-xl">
-        <div className="card-body p-6">
-          <div className="mb-6 flex items-center justify-between border-b border-base-200 pb-4">
-            <div>
-              <h2 className="card-title flex items-center gap-2">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
+        {/* Header */}
+        <div className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-slate-800 dark:text-slate-200 shadow-sm">
                 <Settings className="h-5 w-5" />
-                Manual Controls
-              </h2>
-              <div className="mt-2 flex items-center gap-2 text-xs text-base-content/60">
-                <span
-                  className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                    status === 'online'
-                      ? 'bg-success animate-pulse'
-                      : 'bg-error'
-                  }`}
-                ></span>
-                <span>
-                  {status === 'online'
-                    ? 'ESP32 Connected'
-                    : 'ESP32 Disconnected'}
-                </span>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className={`badge gap-2 border-0 px-3 py-3 font-semibold ${
-                  status === 'online'
-                    ? 'badge-success text-white'
-                    : 'badge-error bg-rose-500 text-white'
-                }`}
-                title={controlsDisabledReason}
-              >
-                {status === 'online' ? 'Connected' : 'Disconnected'}
-              </div>
-              {presentationMode && (
-                <div className="badge badge-info gap-1 border-0 font-semibold uppercase tracking-wide text-white shadow-sm">
-                  Presentation Mode
+              <div>
+                <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  Actuator Control Station
+                </h2>
+                <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
+                  <span className="relative flex h-2 w-2 items-center justify-center">
+                    {connected && (
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    )}
+                    <span
+                      className={`relative inline-flex h-2 w-2 rounded-full ${
+                        connected ? 'bg-emerald-500' : 'bg-rose-500'
+                      }`}
+                    />
+                  </span>
+                  <span className="tabular-nums">
+                    {connected
+                      ? 'ESP32 Direct Telemetry Sync'
+                      : 'ESP32 Disconnected'}
+                  </span>
                 </div>
-              )}
-              <div className="badge badge-error gap-1 border-0 bg-rose-500 font-semibold uppercase tracking-wide text-white shadow-sm">
-                Overrides Active
               </div>
             </div>
           </div>
 
-          {!connected && !deviceStatusLoading && (
-            <div className="alert alert-error mb-4 border border-error/30 bg-error/10 text-error-content">
-              <div className="text-sm text-error">
-                <div className="font-semibold">ESP32 not connected</div>
-                <div className="text-xs text-error/80">
-                  {controlsDisabledReason}
-                </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold tabular-nums ${
+                connected
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
+                }`}
+              />
+              {connected ? 'Hardware Connected' : 'Offline'}
+            </span>
+
+            {presentationMode && (
+              <span className="inline-flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                Presentation Mode
+              </span>
+            )}
+
+            <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+              Manual Override
+            </span>
+          </div>
+        </div>
+
+        {/* Offline Safety Lockout Banner */}
+        {!connected && !presentationMode && !deviceStatusLoading && (
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-rose-800 dark:text-rose-300">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+            <div className="text-sm">
+              <div className="font-bold">Actuator Interlock Active</div>
+              <div className="mt-0.5 text-xs text-rose-700 dark:text-rose-400/90">
+                Manual actuation controls are disabled while ESP32 connection is
+                lost. ({controlsDisabledReason})
               </div>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div
-              className={`w-full ${!connected && !deviceStatusLoading ? 'tooltip tooltip-bottom' : ''}`}
-              data-tip={
-                !connected && !deviceStatusLoading
-                  ? controlsDisabledReason
-                  : undefined
-              }
-            >
-              <button
-                className={`btn btn-lg h-24 w-full transition-all ${
-                  controlsDisabled
-                    ? 'btn-disabled border-base-300 bg-base-200 text-base-content/50 opacity-70'
-                    : 'btn-outline border-base-300 hover:border-primary hover:bg-base-200 hover:text-primary'
-                }`}
-                disabled={controlsDisabled}
-                onClick={() =>
-                  void handleAction('lid_open', '/api/actuators/lid/open')
-                    .then((result) => {
-                      if (result) {
-                        toast.success('Lid opened');
-                      }
-                    })
-                    .catch(() => {})
-                }
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {loadingAction === 'lid_open' ? (
-                    <span className="loading loading-spinner"></span>
-                  ) : (
-                    <ChevronUp className="h-6 w-6" />
-                  )}
-                  <span>Open Lid</span>
-                </div>
-              </button>
-            </div>
-
-            <div
-              className={`w-full ${!connected && !deviceStatusLoading ? 'tooltip tooltip-bottom' : ''}`}
-              data-tip={
-                !connected && !deviceStatusLoading
-                  ? controlsDisabledReason
-                  : undefined
-              }
-            >
-              <button
-                className={`btn btn-lg h-24 w-full transition-all ${
-                  controlsDisabled
-                    ? 'btn-disabled border-base-300 bg-base-200 text-base-content/50 opacity-70'
-                    : 'btn-outline border-base-300 hover:border-primary hover:bg-base-200 hover:text-primary'
-                }`}
-                disabled={controlsDisabled}
-                onClick={() =>
-                  void handleAction('lid_close', '/api/actuators/lid/close')
-                    .then((result) => {
-                      if (result) {
-                        toast.success('Lid closed');
-                      }
-                    })
-                    .catch(() => {})
-                }
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {loadingAction === 'lid_close' ? (
-                    <span className="loading loading-spinner"></span>
-                  ) : (
-                    <ChevronDown className="h-6 w-6" />
-                  )}
-                  <span>Close Lid</span>
-                </div>
-              </button>
-            </div>
-
-            <div
-              className={`w-full ${!connected && !deviceStatusLoading ? 'tooltip tooltip-bottom' : ''}`}
-              data-tip={
-                !connected && !deviceStatusLoading
-                  ? controlsDisabledReason
-                  : undefined
-              }
-            >
-              <button
-                className={`btn btn-lg h-24 w-full text-white shadow-sm transition-all ${
-                  controlsDisabled
-                    ? 'btn-disabled border-base-300 bg-base-200 text-base-content/50 opacity-70'
-                    : pumpOn
-                      ? 'btn-error hover:-translate-y-0.5 hover:shadow-md'
-                      : 'btn-info hover:-translate-y-0.5 hover:shadow-md'
-                }`}
-                disabled={controlsDisabled}
-                onClick={handleFlush}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {loadingAction === 'flush' ? (
-                    <span className="loading loading-spinner"></span>
-                  ) : (
-                    <Droplets className="h-6 w-6" />
-                  )}
-                  <span>{pumpOn ? 'Stop Pump' : 'Manual Flush'}</span>
-                </div>
-              </button>
-            </div>
-
-            <div
-              className={`w-full ${!connected && !deviceStatusLoading ? 'tooltip tooltip-bottom' : ''}`}
-              data-tip={
-                !connected && !deviceStatusLoading
-                  ? controlsDisabledReason
-                  : undefined
-              }
-            >
-              <button
-                className={`btn btn-lg h-24 w-full text-white shadow-sm transition-all ${
-                  controlsDisabled
-                    ? 'btn-disabled border-base-300 bg-base-200 text-base-content/50 opacity-70'
-                    : uvOn
-                      ? 'btn-warning hover:-translate-y-0.5 hover:shadow-md'
-                      : 'btn-accent hover:-translate-y-0.5 hover:shadow-md'
-                }`}
-                disabled={controlsDisabled}
-                onClick={() => void handleUVToggle()}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {loadingAction === 'uv' ? (
-                    <span className="loading loading-spinner"></span>
-                  ) : (
-                    <Sun className="h-6 w-6" />
-                  )}
-                  <span>{uvOn ? 'Deactivate UV' : 'Activate UV'}</span>
-                </div>
-              </button>
-            </div>
           </div>
+        )}
 
-          <div className="divider my-6">Danger Zone</div>
+        {/* Tactile Control Grid */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* 1. OPEN LID */}
+          <TactileActuatorButton
+            title="Open Lid"
+            subtitle="Engage Servo 01"
+            icon={ChevronUp}
+            state={actuatorStates.lid_open}
+            activeAccent="sky"
+            disabled={controlsDisabled}
+            disabledTooltip={controlsDisabledReason}
+            onClick={() => void handleOpenLid()}
+          />
+
+          {/* 2. CLOSE LID */}
+          <TactileActuatorButton
+            title="Close Lid"
+            subtitle="Reset Servo 01"
+            icon={ChevronDown}
+            state={actuatorStates.lid_close}
+            activeAccent="slate"
+            disabled={controlsDisabled}
+            disabledTooltip={controlsDisabledReason}
+            onClick={() => void handleCloseLid()}
+          />
+
+          {/* 3. MANUAL FLUSH / EMERGENCY HALT */}
+          <TactileActuatorButton
+            title={pumpOn ? 'Halt Flush Pump' : 'Manual Flush'}
+            subtitle={
+              pumpOn
+                ? 'EMERGENCY STOP (Valve Open)'
+                : 'Initiate 6s Discharge'
+            }
+            icon={Droplets}
+            state={actuatorStates.flush}
+            isActive={pumpOn}
+            activeAccent="cyan"
+            isDanger={pumpOn}
+            disabled={controlsDisabled && !pumpOn}
+            disabledTooltip={controlsDisabledReason}
+            onClick={handleFlushButtonClick}
+          />
+
+          {/* 4. UV STERILIZE */}
+          <TactileActuatorButton
+            title={uvOn ? 'Deactivate UV-C' : 'UV Sterilization'}
+            subtitle={
+              uvOn
+                ? 'Chamber Active (254nm)'
+                : 'Toggle Sanitization'
+            }
+            icon={Sun}
+            state={actuatorStates.uv}
+            isActive={uvOn}
+            activeAccent="amber"
+            disabled={controlsDisabled}
+            disabledTooltip={controlsDisabledReason}
+            onClick={() => void handleUVToggle()}
+          />
+        </div>
+
+        {/* Danger Zone: System Reset */}
+        <div className="mt-8 border-t border-slate-200/80 pt-5 dark:border-slate-800/80">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+              Emergency & Diagnostic Interlock
+            </span>
+            <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+              Poka-Yoke Guarded
+            </span>
+          </div>
 
           <div
-            className={`w-full ${!connected && !deviceStatusLoading ? 'tooltip tooltip-bottom' : ''}`}
-            data-tip={
-              !connected && !deviceStatusLoading
-                ? controlsDisabledReason
-                : undefined
-            }
+            className={`w-full ${
+              controlsDisabled ? 'tooltip tooltip-bottom' : ''
+            }`}
+            data-tip={controlsDisabled ? controlsDisabledReason : undefined}
           >
             <button
-              className={`btn btn-error btn-outline w-full ${
-                controlsDisabled ? 'btn-disabled opacity-70' : ''
+              type="button"
+              className={`flex w-full min-h-[48px] items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold tracking-wide transition-all ${
+                controlsDisabled
+                  ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600'
+                  : 'border-rose-500/40 bg-rose-500/5 text-rose-600 hover:border-rose-500 hover:bg-rose-500 hover:text-white shadow-sm active:translate-y-0.5 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white'
               }`}
               disabled={controlsDisabled}
-              onClick={() => getDialog('reset_modal')?.showModal()}
+              onClick={() => {
+                setResetConfirmed(false);
+                getDialog('reset_modal')?.showModal();
+              }}
             >
-              {loadingAction === 'reset' ? (
-                <span className="loading loading-spinner"></span>
+              {actuatorStates.reset === 'sending' ? (
+                <span className="loading loading-spinner loading-sm" />
+              ) : actuatorStates.reset === 'acknowledged' ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               ) : (
-                <Power className="mr-2 h-4 w-4" />
+                <Power className="h-4 w-4" />
               )}
-              System Reset
+              <span>System Hard Reset (ESP32)</span>
             </button>
           </div>
         </div>
       </div>
 
-      <dialog id="flush_modal" className="modal modal-bottom sm:modal-middle">
-        <div className="modal-box">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-info">
-            <Droplets className="h-5 w-5" />
-            Confirm Manual Flush
-          </h3>
-          <p className="py-4">
-            Are you sure you want to initiate a manual flush cycle? This will
-            override current automation schedules.
+      {/* CONFIRMATION MODAL 1: MANUAL FLUSH */}
+      <dialog
+        id="flush_modal"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+      >
+        <div className="modal-box border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+            <div className="flex flex-col">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                Confirm Manual Flush Cycle
+              </h3>
+              <p className="text-xs text-slate-500">
+                Direct Valve Override Protocol
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => getDialog('flush_modal')?.close()}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Are you sure you want to trigger a manual flush? This initiates a
+            high-pressure discharge cycle via the solenoid valve, temporarily
+            overriding automated proximity schedules.
           </p>
-          <div className="modal-action">
+
+          <div className="mt-4 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs font-mono dark:border-slate-800/80 dark:bg-slate-800/40">
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Target Actuator:</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-200">
+                Submersible Pump Relay (GPIO 26)
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Standard Duration:</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-200 tabular-nums">
+                6.0 seconds
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Estimated Flow Volume:</span>
+              <span className="font-semibold text-cyan-600 dark:text-cyan-400 tabular-nums">
+                ~4.2 Liters
+              </span>
+            </div>
+          </div>
+
+          <div className="modal-action mt-6 flex justify-end gap-3">
             <form method="dialog">
-              <button className="btn btn-ghost mr-2">Cancel</button>
-              <button
-                className="btn btn-info text-white"
-                disabled={controlsDisabled}
-                onClick={executeFlush}
-              >
-                Proceed
+              <button className="btn btn-ghost min-h-[48px] border border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                Cancel
               </button>
             </form>
+            <button
+              type="button"
+              className="btn btn-info min-h-[48px] px-5 text-white shadow-sm hover:shadow-md disabled:opacity-90"
+              disabled={controlsDisabled}
+              onClick={() => void executeFlush()}
+            >
+              <Droplets className="h-4 w-4 mr-1.5" />
+              Initiate Discharge
+            </button>
           </div>
         </div>
-        <form method="dialog" className="modal-backdrop">
+        <form method="dialog" className="modal-backdrop bg-slate-950/60">
           <button>close</button>
         </form>
       </dialog>
 
-      <dialog id="reset_modal" className="modal modal-bottom sm:modal-middle">
-        <div className="modal-box border-x-4 border-error">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-error">
-            <Power className="h-5 w-5" />
-            System Restart Required
-          </h3>
-          <p className="py-4">
-            Warning: This will reboot the ESP32 controller and temporarily sever
-            the connection. All actuators will be turned off. Are you sure you
-            wish to proceed?
-          </p>
-          <div className="modal-action">
+      {/* CONFIRMATION MODAL 2: SYSTEM RESET */}
+      <dialog
+        id="reset_modal"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+      >
+        <div className="modal-box border-2 border-rose-500/50 bg-white p-6 shadow-2xl dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+            <div className="flex flex-col">
+              <h3 className="text-lg font-bold text-rose-600 dark:text-rose-400">
+                Critical Hardware Reset
+              </h3>
+              <p className="text-xs text-slate-500">
+                ESP32 Watchdog Restart
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setResetConfirmed(false);
+                getDialog('reset_modal')?.close();
+              }}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+            <p className="font-semibold">
+              Warning: This command sends an emergency reboot signal to the
+              micro-controller.
+            </p>
+            <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] opacity-90">
+              <li>All active solenoid valves and UV lamps will be severed immediately.</li>
+              <li>MQTT connection will drop for 5-10 seconds while ESP32 boots.</li>
+              <li>Sensor calibration baselines will re-initialize.</li>
+            </ul>
+          </div>
+
+          {/* Safety Acknowledgment Checkbox (Poka-Yoke) */}
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-error checkbox-sm"
+              checked={resetConfirmed}
+              onChange={(e) => setResetConfirmed(e.target.checked)}
+            />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+              I understand all active cycles will stop and telemetry will reboot.
+            </span>
+          </label>
+
+          <div className="modal-action mt-6 flex justify-end gap-3">
             <form method="dialog">
-              <button className="btn btn-ghost mr-2">Cancel</button>
               <button
-                className="btn btn-error text-white"
-                disabled={controlsDisabled}
-                onClick={executeReset}
+                className="btn btn-ghost min-h-[48px] border border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                onClick={() => setResetConfirmed(false)}
               >
-                Execute Reset
+                Abort
               </button>
             </form>
+            <button
+              type="button"
+              className="btn btn-error min-h-[48px] px-5 text-white shadow-sm hover:shadow-md disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600 disabled:opacity-90"
+              disabled={!resetConfirmed || controlsDisabled}
+              onClick={() => void executeReset()}
+            >
+              <Power className="h-4 w-4 mr-1.5" />
+              Execute Hard Reset
+            </button>
           </div>
         </div>
-        <form method="dialog" className="modal-backdrop">
-          <button>close</button>
+        <form method="dialog" className="modal-backdrop bg-slate-950/60">
+          <button onClick={() => setResetConfirmed(false)}>close</button>
         </form>
       </dialog>
     </>
+  );
+}
+
+interface TactileButtonProps {
+  title: string;
+  subtitle: string;
+  icon: typeof ChevronUp;
+  state: CycleState;
+  isActive?: boolean;
+  activeAccent: 'sky' | 'slate' | 'cyan' | 'amber';
+  isDanger?: boolean;
+  disabled: boolean;
+  disabledTooltip?: string;
+  onClick: () => void;
+}
+
+function TactileActuatorButton({
+  title,
+  subtitle,
+  icon: Icon,
+  state,
+  isActive = false,
+  activeAccent,
+  isDanger = false,
+  disabled,
+  disabledTooltip,
+  onClick,
+}: TactileButtonProps) {
+  // Compute state badges & LEDs
+  const isSending = state === 'sending';
+  const isAcknowledged = state === 'acknowledged';
+
+  const getLedStyles = () => {
+    if (isDanger) {
+      return {
+        dot: 'bg-rose-500',
+        ping: 'bg-rose-400',
+        pulse: true,
+        label: 'EMERGENCY HALT',
+      };
+    }
+    if (isActive) {
+      return {
+        dot:
+          activeAccent === 'amber'
+            ? 'bg-amber-500'
+            : activeAccent === 'cyan'
+              ? 'bg-cyan-500'
+              : 'bg-sky-500',
+        ping:
+          activeAccent === 'amber'
+            ? 'bg-amber-400'
+            : activeAccent === 'cyan'
+              ? 'bg-cyan-400'
+              : 'bg-sky-400',
+        pulse: true,
+        label: 'ACTIVE CYCLE',
+      };
+    }
+    if (isSending) {
+      return {
+        dot: 'bg-amber-500',
+        ping: 'bg-amber-400',
+        pulse: true,
+        label: 'SENDING...',
+      };
+    }
+    if (isAcknowledged) {
+      return {
+        dot: 'bg-emerald-500',
+        ping: 'bg-emerald-400',
+        pulse: false,
+        label: 'ACKNOWLEDGED',
+      };
+    }
+    return {
+      dot: 'bg-slate-300 dark:bg-slate-600',
+      ping: '',
+      pulse: false,
+      label: 'STANDBY',
+    };
+  };
+
+  const led = getLedStyles();
+
+  // Accent container classes
+  const getContainerStyle = () => {
+    if (disabled) {
+      return 'cursor-not-allowed border-slate-200 bg-slate-100/70 text-slate-400 opacity-60 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-600';
+    }
+    if (isDanger) {
+      return 'border-rose-600 bg-rose-500 text-white shadow-lg shadow-rose-500/30 hover:bg-rose-600 active:translate-y-0.5';
+    }
+    if (isActive) {
+      if (activeAccent === 'amber') {
+        return 'border-amber-500 bg-amber-500 text-white shadow-lg shadow-amber-500/30 hover:bg-amber-600 active:translate-y-0.5';
+      }
+      return 'border-cyan-500 bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 hover:bg-cyan-600 active:translate-y-0.5';
+    }
+
+    // Idle styling
+    return 'border-slate-200/90 bg-slate-50/70 text-slate-800 hover:border-slate-300 hover:bg-slate-100/90 hover:shadow-md active:translate-y-0.5 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-slate-700 dark:hover:bg-slate-800/80';
+  };
+
+  return (
+    <div
+      className={`w-full ${disabled ? 'tooltip tooltip-bottom' : ''}`}
+      data-tip={disabled ? disabledTooltip : undefined}
+    >
+      <button
+        type="button"
+        className={`group relative flex h-24 w-full flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 ${getContainerStyle()}`}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {/* Top row: Icon + LED State Badge */}
+        <div className="flex items-center justify-between w-full">
+          <div
+            className={`flex h-7 w-7 items-center justify-center rounded-lg ${
+              isActive || isDanger
+                ? 'bg-white/20 text-white'
+                : 'bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}
+          >
+            {isSending ? (
+              <span className="loading loading-spinner loading-xs" />
+            ) : isAcknowledged ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            ) : (
+              <Icon className="h-4 w-4" />
+            )}
+          </div>
+
+          {/* LED Indicator & Status Label */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-[10px] font-mono font-semibold uppercase tracking-wider tabular-nums ${
+                isActive || isDanger
+                  ? 'text-white/90'
+                  : isSending
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : isAcknowledged
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-400 dark:text-slate-500'
+              }`}
+            >
+              {led.label}
+            </span>
+            <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+              {led.pulse && (
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full ${led.ping} opacity-75`}
+                />
+              )}
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${led.dot}`}
+              />
+            </span>
+          </div>
+        </div>
+
+        {/* Bottom row: Button Titles */}
+        <div>
+          <div className="font-bold text-sm tracking-tight leading-none">
+            {title}
+          </div>
+          <div
+            className={`mt-1 text-[11px] font-mono leading-none ${
+              isActive || isDanger
+                ? 'text-white/80'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            {subtitle}
+          </div>
+        </div>
+      </button>
+    </div>
   );
 }
