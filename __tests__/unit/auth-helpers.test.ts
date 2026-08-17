@@ -115,6 +115,11 @@ describe('auth-helpers', () => {
             data: jest.fn(() => ({})),
           }),
         })),
+        where: jest.fn(() => ({
+          limit: jest.fn(() => ({
+            get: jest.fn().mockResolvedValue({ docs: [] }),
+          })),
+        })),
       }
 
       ;(adminDb.collection as jest.Mock).mockReturnValue(mockCollectionRef)
@@ -132,6 +137,11 @@ describe('auth-helpers', () => {
             exists: true,
             data: jest.fn(() => ({ role: 'invalid-role' })),
           }),
+        })),
+        where: jest.fn(() => ({
+          limit: jest.fn(() => ({
+            get: jest.fn().mockResolvedValue({ docs: [] }),
+          })),
         })),
       }
 
@@ -190,6 +200,11 @@ describe('auth-helpers', () => {
             exists: false,
             data: jest.fn(() => ({})),
           }),
+        })),
+        where: jest.fn(() => ({
+          limit: jest.fn(() => ({
+            get: jest.fn().mockResolvedValue({ docs: [] }),
+          })),
         })),
       }
 

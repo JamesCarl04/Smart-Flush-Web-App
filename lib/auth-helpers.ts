@@ -3,7 +3,13 @@
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
-const USER_ROLES = ['admin', 'maintenance', 'viewer', 'user'] as const;
+const USER_ROLES = [
+  'admin',
+  'supervisor',
+  'maintenance',
+  'viewer',
+  'user',
+] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export interface UserProfile {

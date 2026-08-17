@@ -18,6 +18,7 @@ import {
   Trash2,
   UserCheck,
   Wrench,
+  X,
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
@@ -73,27 +74,31 @@ function getPriorityBadge(triggerType?: TaskTriggerType) {
     case 'maintenance':
       return {
         label: 'Critical PM',
-        className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
-        icon: <Wrench className="w-3 h-3" />,
+        className:
+          'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30',
+        icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'uv_complete':
       return {
         label: 'UV Cycle Done',
-        className: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20',
-        icon: <Sparkles className="w-3 h-3" />,
+        className:
+          'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30',
+        icon: <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'flush_count':
       return {
         label: 'Flush Threshold',
-        className: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20',
-        icon: <Droplets className="w-3 h-3" />,
+        className:
+          'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30',
+        icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'manual':
     default:
       return {
         label: 'Manual Dispatch',
-        className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20',
-        icon: <Clock className="w-3 h-3" />,
+        className:
+          'bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
   }
 }
@@ -103,21 +108,24 @@ function getStatusBadge(status: Task['status']) {
     case 'acknowledged':
       return {
         label: 'Acknowledged',
-        className: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30',
-        icon: <UserCheck className="w-3.5 h-3.5" />,
+        className:
+          'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/40',
+        icon: <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'completed':
       return {
         label: 'Completed',
-        className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30',
-        icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+        className:
+          'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40',
+        icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'pending':
     default:
       return {
         label: 'Pending',
-        className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30',
-        icon: <Clock className="w-3.5 h-3.5" />,
+        className:
+          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
   }
 }
@@ -194,7 +202,9 @@ export function MaintenanceTaskPanel() {
   const [roleLoading, setRoleLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [taskAction, setTaskAction] = useState<'edit' | 'delete' | 'create' | null>(null);
+  const [taskAction, setTaskAction] = useState<
+    'edit' | 'delete' | 'create' | null
+  >(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [editToiletId, setEditToiletId] = useState('');
@@ -203,7 +213,8 @@ export function MaintenanceTaskPanel() {
 
   // Modal Add Task State
   const [modalDeviceId, setModalDeviceId] = useState('');
-  const [modalTriggerType, setModalTriggerType] = useState<TaskTriggerType>('manual');
+  const [modalTriggerType, setModalTriggerType] =
+    useState<TaskTriggerType>('manual');
   const [modalMessage, setModalMessage] = useState('');
   const [modalAssignedToIds, setModalAssignedToIds] = useState<string[]>([]);
 
@@ -221,7 +232,6 @@ export function MaintenanceTaskPanel() {
   const showAssignmentForm = role === 'admin';
   const showAssignmentSkeleton = roleLoading;
   const canManageTasks = role === 'admin';
-  const isTechnicianOrAdmin = role === 'admin' || role === 'maintenance';
 
   const isForbiddenError = useMemo(() => {
     if (!tasksError) return false;
@@ -231,7 +241,8 @@ export function MaintenanceTaskPanel() {
       lower.includes('forbidden') ||
       lower.includes('unauthorized') ||
       lower.includes('permission') ||
-      (role === 'viewer' || role === 'user')
+      role === 'viewer' ||
+      role === 'user'
     );
   }, [tasksError, role]);
 
@@ -240,7 +251,9 @@ export function MaintenanceTaskPanel() {
     personnelById,
     loading: personnelLoading,
     error: personnelError,
-  } = useMaintenancePersonnel({ enabled: showAssignmentForm || canManageTasks });
+  } = useMaintenancePersonnel({
+    enabled: showAssignmentForm || canManageTasks,
+  });
 
   const resolveDeviceLabel = (deviceId: string) =>
     devices.find((device) => device.id === deviceId)?.name || deviceId;
@@ -384,10 +397,7 @@ export function MaintenanceTaskPanel() {
     previousDefaultMessageRef.current = defaultMessage;
 
     setMessage((currentMessage) => {
-      if (
-        !currentMessage.trim() ||
-        currentMessage === previousDefaultMessage
-      ) {
+      if (!currentMessage.trim() || currentMessage === previousDefaultMessage) {
         return defaultMessage;
       }
 
@@ -453,14 +463,11 @@ export function MaintenanceTaskPanel() {
 
     return {
       acknowledgedCount: acknowledgedUserIds.length,
-      totalCount: Math.max(requiredAssigneeIds.length, acknowledgedUserIds.length),
-      initials: acknowledgedUserIds.map((userId) =>
-        getInitials(
-          personnelById[userId]?.displayName ??
-            personnelById[userId]?.email ??
-            userId,
-        ),
-      ),
+      totalCount: requiredAssigneeIds.length,
+      initials: acknowledgedUserIds.map((userId) => {
+        const staff = personnelById[userId];
+        return getInitials(staff?.displayName || staff?.email || userId);
+      }),
     };
   };
 
@@ -470,24 +477,7 @@ export function MaintenanceTaskPanel() {
       return null;
     }
 
-    return `${summary.acknowledgedCount}/${summary.totalCount} acknowledged`;
-  };
-
-  const toggleAssignedToId = (userId: string) => {
-    const allPersonnelIds = personnel.map((person) => person.id);
-
-    setAssignedToIds((current) => {
-      const nextIds =
-        current.length === 0
-          ? [NO_ASSIGNEES_VALUE]
-          : current.includes(NO_ASSIGNEES_VALUE)
-            ? [userId]
-            : current.includes(userId)
-              ? current.filter((id) => id !== userId)
-              : [...current, userId];
-
-      return normalizeAssigneeSelection(nextIds, allPersonnelIds);
-    });
+    return `${summary.acknowledgedCount}/${summary.totalCount} staff ack`;
   };
 
   const toggleAllAssignedToIds = () => {
@@ -496,43 +486,22 @@ export function MaintenanceTaskPanel() {
     );
   };
 
-  const toggleModalAssignedToId = (userId: string) => {
-    const allPersonnelIds = personnel.map((person) => person.id);
+  const toggleAssignedToId = (userId: string) => {
+    setAssignedToIds((current) => {
+      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
+      const isSelected = activeIds.includes(userId);
+      const nextIds = isSelected
+        ? activeIds.filter((id) => id !== userId)
+        : [...activeIds, userId];
 
-    setModalAssignedToIds((current) => {
-      const nextIds =
-        current.length === 0
-          ? [NO_ASSIGNEES_VALUE]
-          : current.includes(NO_ASSIGNEES_VALUE)
-            ? [userId]
-            : current.includes(userId)
-              ? current.filter((id) => id !== userId)
-              : [...current, userId];
+      if (nextIds.length === 0) {
+        return [NO_ASSIGNEES_VALUE];
+      }
 
-      return normalizeAssigneeSelection(nextIds, allPersonnelIds);
-    });
-  };
-
-  const toggleAllModalAssignedToIds = () => {
-    setModalAssignedToIds((current) =>
-      current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
-    );
-  };
-
-  const toggleEditAssignedToId = (userId: string) => {
-    const allPersonnelIds = personnel.map((person) => person.id);
-
-    setEditAssignedToIds((current) => {
-      const nextIds =
-        current.length === 0
-          ? [NO_ASSIGNEES_VALUE]
-          : current.includes(NO_ASSIGNEES_VALUE)
-            ? [userId]
-            : current.includes(userId)
-              ? current.filter((id) => id !== userId)
-              : [...current, userId];
-
-      return normalizeAssigneeSelection(nextIds, allPersonnelIds);
+      return normalizeAssigneeSelection(
+        nextIds,
+        personnel.map((person) => person.id),
+      );
     });
   };
 
@@ -542,31 +511,70 @@ export function MaintenanceTaskPanel() {
     );
   };
 
+  const toggleEditAssignedToId = (userId: string) => {
+    setEditAssignedToIds((current) => {
+      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
+      const isSelected = activeIds.includes(userId);
+      const nextIds = isSelected
+        ? activeIds.filter((id) => id !== userId)
+        : [...activeIds, userId];
+
+      if (nextIds.length === 0) {
+        return [NO_ASSIGNEES_VALUE];
+      }
+
+      return normalizeAssigneeSelection(
+        nextIds,
+        personnel.map((person) => person.id),
+      );
+    });
+  };
+
+  const toggleAllModalAssignedToIds = () => {
+    setModalAssignedToIds((current) =>
+      current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
+    );
+  };
+
+  const toggleModalAssignedToId = (userId: string) => {
+    setModalAssignedToIds((current) => {
+      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
+      const isSelected = activeIds.includes(userId);
+      const nextIds = isSelected
+        ? activeIds.filter((id) => id !== userId)
+        : [...activeIds, userId];
+
+      if (nextIds.length === 0) {
+        return [NO_ASSIGNEES_VALUE];
+      }
+
+      return normalizeAssigneeSelection(
+        nextIds,
+        personnel.map((person) => person.id),
+      );
+    });
+  };
+
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshTasks();
+      setTaskToast({
+        kind: 'success',
+        message: 'Task feed updated',
+      });
+    } catch {
+      setTaskToast({
+        kind: 'error',
+        message: 'Failed to refresh tasks',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const openConfirmModal = () => {
-    if (!selectedToiletId) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Select a toilet unit before assigning a task.',
-      });
-      return;
-    }
-
-    if (!message.trim()) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Enter a task message before assigning a task.',
-      });
-      return;
-    }
-
-    if (assignedToIds.includes(NO_ASSIGNEES_VALUE)) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Select at least one maintenance person before assigning.',
-      });
-      return;
-    }
-
     confirmDialogRef.current?.showModal();
   };
 
@@ -575,11 +583,13 @@ export function MaintenanceTaskPanel() {
   };
 
   const openCreateTaskModal = () => {
-    const defaultDev = devices[0]?.id || '';
-    setModalDeviceId(defaultDev);
-    const devLabel = devices[0] ? formatDeviceLabel(devices[0]) : defaultDev;
-    setModalMessage(getDefaultMessage(devLabel || 'toilet unit'));
+    setModalDeviceId(selectedToiletId || devices[0]?.id || '');
     setModalTriggerType('manual');
+    setModalMessage(
+      getDefaultMessage(
+        resolveDeviceLabel(selectedToiletId || devices[0]?.id || ''),
+      ),
+    );
     setModalAssignedToIds([]);
     createDialogRef.current?.showModal();
   };
@@ -592,7 +602,7 @@ export function MaintenanceTaskPanel() {
     if (!user) {
       setTaskToast({
         kind: 'error',
-        message: 'You must be logged in to assign a task.',
+        message: 'You must be logged in to create a task.',
       });
       return;
     }
@@ -631,7 +641,8 @@ export function MaintenanceTaskPanel() {
           deviceId: modalDeviceId,
           triggerType: modalTriggerType,
           message: trimmedMsg,
-          assignedTo: modalAssignedToIds.length === 1 ? modalAssignedToIds[0] : null,
+          assignedTo:
+            modalAssignedToIds.length === 1 ? modalAssignedToIds[0] : null,
           assignedToIds: modalAssignedToIds.filter(
             (userId) => userId !== NO_ASSIGNEES_VALUE,
           ),
@@ -749,7 +760,7 @@ export function MaintenanceTaskPanel() {
     if (!editToiletId) {
       setTaskToast({
         kind: 'error',
-        message: 'Select a toilet unit before saving the task.',
+        message: 'Select a toilet unit before saving.',
       });
       return;
     }
@@ -757,7 +768,7 @@ export function MaintenanceTaskPanel() {
     if (!trimmedMessage) {
       setTaskToast({
         kind: 'error',
-        message: 'Enter a task message before saving.',
+        message: 'Task message cannot be empty.',
       });
       return;
     }
@@ -774,7 +785,7 @@ export function MaintenanceTaskPanel() {
 
     try {
       await apiFetch<UpdateTaskResponse>(`/api/tasks/${editingTask.id}`, user, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({
           deviceId: editToiletId,
           message: trimmedMessage,
@@ -787,7 +798,6 @@ export function MaintenanceTaskPanel() {
       });
 
       closeEditTaskModal();
-      setEditingTask(null);
       await refreshTasks();
       setTaskToast({
         kind: 'success',
@@ -820,12 +830,15 @@ export function MaintenanceTaskPanel() {
     setTaskAction('delete');
 
     try {
-      await apiFetch<DeleteTaskResponse>(`/api/tasks/${deletingTask.id}`, user, {
-        method: 'DELETE',
-      });
+      await apiFetch<DeleteTaskResponse>(
+        `/api/tasks/${deletingTask.id}`,
+        user,
+        {
+          method: 'DELETE',
+        },
+      );
 
       closeDeleteTaskModal();
-      setDeletingTask(null);
       await refreshTasks();
       setTaskToast({
         kind: 'success',
@@ -841,28 +854,20 @@ export function MaintenanceTaskPanel() {
     }
   };
 
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await refreshTasks();
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 500);
-    }
-  };
-
   return (
     <>
       <section
         id="maintenance-task-panel"
-        className={`grid scroll-mt-24 gap-8 ${
+        aria-label="Maintenance Dispatch & Task Feed"
+        className={`grid scroll-mt-24 gap-6 xl:gap-8 ${
           useTwoColumnLayout ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'
         }`}
       >
         {showAssignmentSkeleton ? (
-          <div className="card border border-base-200 bg-base-100 shadow-xl">
-            <div className="card-body space-y-5 p-6">
-              <div className="flex items-center gap-3 border-b border-base-200 pb-4">
-                <div className="skeleton h-10 w-10 rounded-xl"></div>
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95">
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4 dark:border-slate-800/80">
+                <div className="skeleton h-11 w-11 rounded-xl"></div>
                 <div className="space-y-2">
                   <div className="skeleton h-5 w-40"></div>
                   <div className="skeleton h-3 w-56 max-w-full"></div>
@@ -870,462 +875,542 @@ export function MaintenanceTaskPanel() {
               </div>
               <div className="space-y-4">
                 <div className="skeleton h-4 w-32"></div>
-                <div className="skeleton h-12 w-full"></div>
+                <div className="skeleton h-12 w-full rounded-xl"></div>
                 <div className="skeleton h-4 w-32"></div>
-                <div className="skeleton h-12 w-full"></div>
-                <div className="skeleton h-4 w-24"></div>
-                <div className="skeleton h-28 w-full"></div>
-                <div className="skeleton h-12 w-full"></div>
+                <div className="skeleton h-24 w-full rounded-xl"></div>
+                <div className="skeleton h-4 w-28"></div>
+                <div className="skeleton h-28 w-full rounded-xl"></div>
+                <div className="skeleton h-12 w-full rounded-xl"></div>
               </div>
             </div>
           </div>
         ) : showAssignmentForm ? (
-          <div className="card border border-base-200 bg-base-100 shadow-xl">
-            <div className="card-body p-6">
-              <div className="mb-6 flex items-center justify-between border-b border-base-200 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/15 text-warning">
-                    <BrushCleaning className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="card-title text-xl font-bold tracking-tight">Assign Task</h2>
-                    <p className="text-sm text-base-content/60">
-                      Send a task and mobile notification to technicians.
-                    </p>
-                  </div>
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95 transition-all">
+            {/* Top Amber Accent Glow */}
+            <div
+              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 via-rose-500 to-amber-600 opacity-90"
+              aria-hidden="true"
+            />
+
+            <div className="mb-6 flex items-center justify-between border-b border-slate-200/80 pb-4 dark:border-slate-800/80">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400">
+                  <BrushCleaning className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Assign Task
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Send real-time dispatch alerts and mobile push to
+                    technicians.
+                  </p>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-5">
-                <div className="form-control w-full">
-                  <label className="label" htmlFor="maintenance-toilet">
-                    <span className="label-text font-medium text-base-content/80">
-                      Toilet Unit
-                    </span>
+            <div className="space-y-5">
+              <div className="form-control w-full">
+                <label
+                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="maintenance-toilet"
+                >
+                  Toilet Unit Target
+                </label>
+                {devicesLoading ? (
+                  <div className="skeleton h-12 w-full rounded-xl"></div>
+                ) : (
+                  <select
+                    id="maintenance-toilet"
+                    className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[46px]"
+                    value={selectedToiletId}
+                    onChange={(event) => setSelectedToiletId(event.target.value)}
+                  >
+                    {devices.length === 0 ? (
+                      <option value="">No toilet units available</option>
+                    ) : (
+                      devices.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {formatDeviceLabel(device)} ({device.status})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+              </div>
+
+              <div className="form-control w-full">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                    htmlFor="maintenance-message"
+                  >
+                    Task Instructions
                   </label>
-                  {devicesLoading ? (
-                    <div className="skeleton h-12 w-full rounded-lg"></div>
-                  ) : (
-                    <select
-                      id="maintenance-toilet"
-                      className="select select-bordered w-full focus:border-warning focus:outline-none"
-                      value={selectedToiletId}
-                      onChange={(event) =>
-                        setSelectedToiletId(event.target.value)
-                      }
-                    >
-                      {devices.length === 0 ? (
-                        <option value="">No toilet units available</option>
-                      ) : (
-                        devices.map((device) => (
-                          <option key={device.id} value={device.id}>
-                            {formatDeviceLabel(device)} ({device.status})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  )}
+                  <span
+                    id="maintenance-msg-count"
+                    className="text-xs font-mono text-slate-500 dark:text-slate-400"
+                  >
+                    {message.length}/500
+                  </span>
                 </div>
+                <textarea
+                  id="maintenance-message"
+                  aria-describedby="maintenance-msg-count"
+                  className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
+                  maxLength={500}
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Describe maintenance or sanitation request..."
+                ></textarea>
+              </div>
 
-                <div className="form-control w-full">
-                  <label className="label" htmlFor="maintenance-message">
-                    <span className="label-text font-medium text-base-content/80">
-                      Task Description
-                    </span>
-                    <span className="label-text-alt text-base-content/50">
-                      {message.length}/500
-                    </span>
-                  </label>
-                  <textarea
-                    id="maintenance-message"
-                    className="textarea textarea-bordered min-h-28 w-full focus:border-warning focus:outline-none"
-                    maxLength={500}
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    placeholder="Describe maintenance or sanitation request..."
-                  ></textarea>
-                </div>
+              <div className="form-control w-full">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Assign To Personnel
+                </span>
+                {personnelLoading ? (
+                  <div className="skeleton h-12 w-full rounded-xl"></div>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/40">
+                      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-sm checkbox-warning rounded-md"
+                          checked={assignedToIds.length === 0}
+                          onChange={toggleAllAssignedToIds}
+                          aria-label="Broadcast task to all maintenance personnel"
+                        />
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          All Maintenance Team (Broadcast)
+                        </span>
+                      </label>
+                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                        {personnel.map((person) => {
+                          const initials = getInitials(
+                            person.displayName || person.email || person.id,
+                          );
+                          const isChecked =
+                            assignedToIds.length === 0 ||
+                            assignedToIds.includes(person.id);
 
-                <div className="form-control w-full">
-                  <label className="label">
-                    <span className="label-text font-medium text-base-content/80">
-                      Assign To Personnel
-                    </span>
-                  </label>
-                  {personnelLoading ? (
-                    <div className="skeleton h-12 w-full rounded-lg"></div>
-                  ) : (
-                    <>
-                      <div className="rounded-lg border border-base-300 bg-base-200/40 p-3">
-                        <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-base-200">
-                          <input
-                            type="checkbox"
-                            className="checkbox checkbox-sm checkbox-warning"
-                            checked={assignedToIds.length === 0}
-                            onChange={toggleAllAssignedToIds}
-                          />
-                          <span className="text-sm font-semibold">
-                            All Maintenance Team (Broadcast)
-                          </span>
-                        </label>
-                        <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                          {personnel.map((person) => (
+                          return (
                             <label
                               key={person.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-base-200"
+                              className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
                             >
                               <input
                                 type="checkbox"
-                                className="checkbox checkbox-sm checkbox-warning mt-0.5"
-                                checked={
-                                  assignedToIds.length === 0 ||
-                                  assignedToIds.includes(person.id)
-                                }
+                                className="checkbox checkbox-sm checkbox-warning mt-0.5 rounded-md"
+                                checked={isChecked}
                                 onChange={() => toggleAssignedToId(person.id)}
+                                aria-label={`Assign to ${person.displayName || person.email || person.id}`}
                               />
-                              <span className="min-w-0 text-sm">
-                                <span className="block font-medium">
-                                  {person.displayName}
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-700 dark:bg-amber-500/25 dark:text-amber-300"
+                                  aria-hidden="true"
+                                >
+                                  {initials}
                                 </span>
-                                {person.email ? (
-                                  <span className="block truncate text-xs text-base-content/55">
-                                    {person.email}
+                                <div className="min-w-0">
+                                  <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                                    {person.displayName}
                                   </span>
-                                ) : null}
-                              </span>
+                                  {person.email ? (
+                                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                                      {person.email}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
                             </label>
-                          ))}
-                        </div>
+                          );
+                        })}
                       </div>
-                      {personnelError && (
-                        <label className="label">
-                          <span className="label-text-alt text-error">
-                            {personnelError}
-                          </span>
-                        </label>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-warning h-12 min-h-[48px] w-full shadow-sm font-semibold disabled:opacity-90"
-                  disabled={
-                    isSubmitting ||
-                    devicesLoading ||
-                    personnelLoading ||
-                    devices.length === 0
-                  }
-                  onClick={openConfirmModal}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="loading loading-spinner loading-sm"></span>
-                      Assigning Task...
-                    </>
-                  ) : (
-                    <>
-                      <BrushCleaning className="h-4 w-4" />
-                      Dispatch Task
-                    </>
-                  )}
-                </button>
+                    </div>
+                    {personnelError && (
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>{personnelError}</span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
+
+              <button
+                type="button"
+                className="action-btn-primary w-full min-h-[48px] shadow-sm font-semibold tracking-wide"
+                disabled={
+                  isSubmitting ||
+                  devicesLoading ||
+                  personnelLoading ||
+                  devices.length === 0
+                }
+                onClick={openConfirmModal}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span
+                      className="loading loading-spinner loading-sm"
+                      aria-hidden="true"
+                    ></span>
+                    <span>Assigning Task...</span>
+                  </>
+                ) : (
+                  <>
+                    <BrushCleaning className="h-4 w-4" aria-hidden="true" />
+                    <span>Dispatch Task</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         ) : null}
 
-        <div className="card border border-base-200 bg-base-100 shadow-xl">
-          <div className="card-body p-6">
-            <div className="mb-6 flex flex-col gap-4 border-b border-base-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <ClipboardList className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="card-title text-xl font-bold tracking-tight">Maintenance Task Feed</h2>
-                    <span className="relative flex h-2.5 w-2.5 items-center justify-center">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75"></span>
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-success">
-                      Live
-                    </span>
-                  </div>
-                  <p className="text-sm text-base-content/60">
-                    Real-time status updates and technician acknowledgments.
-                  </p>
-                </div>
+        {/* ── RIGHT COLUMN: MAINTENANCE TASK FEED CARD ─────────────── */}
+        <div
+          className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95"
+          role="region"
+          aria-label="Maintenance Task Feed"
+        >
+          {/* Top Primary Accent Glow */}
+          <div
+            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-rose-500 to-amber-500 opacity-90"
+            aria-hidden="true"
+          />
+
+          <div className="mb-6 flex flex-col gap-3 border-b border-slate-200/80 pb-4 md:flex-row md:items-center md:justify-between dark:border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary dark:border-primary/30 dark:bg-primary/20 dark:text-rose-400">
+                <ClipboardList className="h-5 w-5" aria-hidden="true" />
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-circle btn-sm"
-                  onClick={() => void handleManualRefresh()}
-                  title="Refresh tasks"
-                  aria-label="Refresh tasks"
-                >
-                  <RotateCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                </button>
-
-                {canManageTasks ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm gap-1.5 shadow-sm"
-                    onClick={openCreateTaskModal}
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Add Task</span>
-                  </button>
-                ) : null}
-
-                {tasksLoading ? (
-                  <div className="skeleton h-8 w-24 rounded-full"></div>
-                ) : !isForbiddenError ? (
-                  <div className="badge badge-outline gap-1.5 px-3 py-3 text-xs font-semibold uppercase tracking-wide">
-                    Pending
-                    <span className="font-bold text-warning">{pendingCount}</span>
-                  </div>
-                ) : null}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Maintenance Task Feed
+                  </h2>
+                  <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Live
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Real-time status updates and technician acknowledgments.
+                </p>
               </div>
             </div>
 
-            {tasksLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-xl border border-base-200 bg-base-100 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="w-full space-y-3">
-                        <div className="skeleton h-4 w-32"></div>
-                        <div className="skeleton h-3 w-52 max-w-full"></div>
-                        <div className="skeleton h-3 w-40"></div>
-                      </div>
-                      <div className="skeleton h-7 w-24 rounded-full"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : isForbiddenError ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center animate-fade-in">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-base-300/60 text-base-content/70 mb-3 shadow-inner">
-                  <ShieldAlert className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="text-base font-bold text-base-content">
-                  Restricted Task Feed
-                </h3>
-                <p className="mt-1 max-w-md text-sm text-base-content/60">
-                  Maintenance task scheduling and live acknowledgments are accessible to authorized technicians and administrators.
-                </p>
-                <div className="mt-4 flex items-center gap-2 text-xs font-medium text-base-content/50">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/70"></span>
-                  Role: {role || 'Standard Viewer'}
-                </div>
-              </div>
-            ) : tasksError ? (
-              <div className="rounded-xl border border-error/30 bg-error/10 p-5 text-center space-y-3">
-                <div className="flex items-center justify-center gap-2 text-error font-semibold text-sm">
-                  <AlertCircle className="h-5 w-5" />
-                  <span>Unable to load maintenance tasks</span>
-                </div>
-                <p className="text-xs text-base-content/70 max-w-md mx-auto">{tasksError}</p>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => void handleManualRefresh()}
+                title="Refresh tasks"
+                aria-label="Refresh tasks"
+              >
+                <RotateCw
+                  className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+
+              {canManageTasks ? (
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline btn-error gap-1.5"
-                  onClick={() => void refreshTasks()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all active:translate-y-0.5 min-h-[36px] whitespace-nowrap"
+                  onClick={openCreateTaskModal}
                 >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Retry Connection
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span>Add Task</span>
                 </button>
+              ) : null}
+
+              {tasksLoading ? (
+                <div className="skeleton h-8 w-24 rounded-full"></div>
+              ) : !isForbiddenError ? (
+                <div
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300 whitespace-nowrap"
+                  aria-live="polite"
+                >
+                  <span>Pending</span>
+                  <span className="font-bold tabular-nums">{pendingCount}</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {tasksLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-xl border border-slate-200/80 bg-slate-50/40 p-4 dark:border-slate-800/80 dark:bg-slate-850/40"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="w-full space-y-3">
+                      <div className="skeleton h-4 w-32 rounded"></div>
+                      <div className="skeleton h-3 w-52 max-w-full rounded"></div>
+                      <div className="skeleton h-3 w-40 rounded"></div>
+                    </div>
+                    <div className="skeleton h-7 w-24 rounded-full"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : isForbiddenError ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-850/40">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary dark:bg-primary/20 dark:text-rose-400 shadow-inner">
+                <ShieldAlert className="h-6 w-6" aria-hidden="true" />
               </div>
-            ) : tasks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-base-300 bg-base-200/30 px-6 py-14 text-center text-base-content/60">
-                <ClipboardList className="mx-auto h-10 w-10 opacity-30 mb-3" />
-                <p className="font-semibold text-base">No tasks assigned yet</p>
-                <p className="text-xs text-base-content/50 mt-1 max-w-sm mx-auto">
-                  All toilet units are operating smoothly. Create a manual request or wait for automated maintenance triggers.
-                </p>
-                {canManageTasks && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary mt-4 gap-1.5"
-                    onClick={openCreateTaskModal}
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Restricted Task Feed
+              </h3>
+              <p className="mt-1 max-w-md text-sm text-slate-600 dark:text-slate-400">
+                Maintenance task scheduling and live acknowledgments are
+                accessible to authorized technicians and administrators.
+              </p>
+              <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full bg-primary"
+                  aria-hidden="true"
+                ></span>
+                Role: {role || 'Standard Viewer'}
+              </div>
+            </div>
+          ) : tasksError ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-center space-y-3">
+              <div className="flex items-center justify-center gap-2 text-rose-700 dark:text-rose-300 font-semibold text-sm">
+                <AlertCircle className="h-5 w-5" aria-hidden="true" />
+                <span>Unable to load maintenance tasks</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                {tasksError}
+              </p>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline border-rose-500 text-rose-600 hover:bg-rose-500 hover:text-white dark:text-rose-400 gap-1.5"
+                onClick={() => void refreshTasks()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Retry Connection</span>
+              </button>
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 px-6 py-14 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-850/40 dark:text-slate-400">
+              <ClipboardList
+                className="mx-auto h-10 w-10 opacity-40 mb-3"
+                aria-hidden="true"
+              />
+              <p className="font-semibold text-base text-slate-800 dark:text-slate-200">
+                No tasks assigned yet
+              </p>
+              <p className="text-xs mt-1 max-w-sm mx-auto">
+                All toilet units are operating smoothly. Create a manual request
+                or wait for automated maintenance triggers.
+              </p>
+              {canManageTasks && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 mt-4 text-xs font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all min-h-[36px]"
+                  onClick={openCreateTaskModal}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span>Create First Task</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div
+              className="max-h-[34rem] space-y-3 overflow-y-auto pr-1"
+              aria-live="polite"
+            >
+              {tasks.map((task) => {
+                const acknowledgementSummary = getAcknowledgementSummary(task);
+                const priority = getPriorityBadge(task.triggerType);
+                const statusInfo = getStatusBadge(task.status);
+
+                return (
+                  <div
+                    key={task.id}
+                    className="group rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-850/60 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                   >
-                    <Plus className="h-4 w-4" />
-                    Create First Task
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-1">
-                {tasks.map((task) => {
-                  const acknowledgementSummary = getAcknowledgementSummary(task);
-                  const priority = getPriorityBadge(task.triggerType);
-                  const statusInfo = getStatusBadge(task.status);
+                    {/* Header Row: Location, Priority, and Status Badge */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/80">
+                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span className="font-bold text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-md whitespace-nowrap">
+                          {resolveDeviceLabel(task.deviceId)}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold whitespace-nowrap ${priority.className}`}
+                        >
+                          {priority.icon}
+                          <span>{priority.label}</span>
+                        </span>
+                      </div>
 
-                  return (
-                    <div
-                      key={task.id}
-                      className="group rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm transition-all hover:border-base-300 hover:bg-base-200/20 hover:shadow"
-                    >
-                      <div className="flex flex-col gap-3.5 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-xs text-base-content/80 bg-base-200 px-2 py-0.5 rounded-md">
-                              {resolveDeviceLabel(task.deviceId)}
-                            </span>
-                            <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${priority.className}`}>
-                              {priority.icon}
-                              {priority.label}
-                            </span>
-                          </div>
-
-                          <p className="mt-2.5 break-words text-sm font-medium text-base-content leading-relaxed">
-                            {task.message || 'No message provided'}
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/60">
-                            <span className="flex items-center gap-1">
-                              Assigned to{' '}
-                              <span className="font-semibold text-base-content/80">
-                                {resolveAssignedName(
-                                  task.assignedTo,
-                                  task.assignedToIds,
-                                )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
+                        >
+                          {statusInfo.icon}
+                          <span>{statusInfo.label}</span>
+                          {acknowledgementSummary ? (
+                            <span className="ml-1 flex items-center gap-1">
+                              <span className="text-[11px] font-bold tabular-nums">
+                                ({acknowledgementSummary.acknowledgedCount})
+                              </span>
+                              <span
+                                className="flex -space-x-1"
+                                aria-hidden="true"
+                              >
+                                {acknowledgementSummary.initials
+                                  .slice(0, 3)
+                                  .map((initials, index) => (
+                                    <span
+                                      key={`${task.id}-${initials}-${index}`}
+                                      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-0.5 text-[9px] font-black leading-none text-slate-800 shadow-xs ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
+                                      title={initials}
+                                    >
+                                      {initials}
+                                    </span>
+                                  ))}
                               </span>
                             </span>
-                            <span>·</span>
-                            <span>{formatRelativeTimestamp(task.createdAt)}</span>
-
-                            {task.acknowledgedAt ? (
-                              <>
-                                <span>·</span>
-                                <span className="text-sky-600 dark:text-sky-400">
-                                  Ack {formatTimestamp(task.acknowledgedAt)}
-                                </span>
-                              </>
-                            ) : null}
-
-                            {getAcknowledgementProgress(task) ? (
-                              <>
-                                <span>·</span>
-                                <span className="font-medium text-warning">
-                                  {getAcknowledgementProgress(task)}
-                                </span>
-                              </>
-                            ) : null}
-
-                            {task.completedAt ? (
-                              <>
-                                <span>·</span>
-                                <span className="text-emerald-600 dark:text-emerald-400">
-                                  Done {formatTimestamp(task.completedAt)}
-                                </span>
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                          <div
-                            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${statusInfo.className}`}
-                          >
-                            {statusInfo.icon}
-                            <span>{statusInfo.label}</span>
-                            {acknowledgementSummary ? (
-                              <span className="ml-1 flex items-center gap-1">
-                                <span className="text-[11px] font-bold">
-                                  ({acknowledgementSummary.acknowledgedCount})
-                                </span>
-                                <span className="flex -space-x-1">
-                                  {acknowledgementSummary.initials
-                                    .slice(0, 3)
-                                    .map((initials, index) => (
-                                      <span
-                                        key={`${task.id}-${initials}-${index}`}
-                                        className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-base-100 px-0.5 text-[9px] font-black leading-none text-base-content shadow-xs ring-1 ring-base-300"
-                                        title={initials}
-                                      >
-                                        {initials}
-                                      </span>
-                                    ))}
-                                </span>
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {canManageTasks ? (
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs text-base-content/70 hover:text-base-content"
-                                onClick={() => openEditTaskModal(task)}
-                                title="Edit task"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs text-error/80 hover:bg-error/10 hover:text-error"
-                                onClick={() => openDeleteTaskModal(task)}
-                                title="Delete task"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </button>
-                            </div>
                           ) : null}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+
+                    {/* Body: Message text with proper full width flow */}
+                    <p className="my-3 break-words text-sm font-medium text-slate-900 dark:text-slate-100 leading-relaxed">
+                      {task.message || 'No message provided'}
+                    </p>
+
+                    {/* Footer Row: Meta details + Action Buttons */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2.5 border-t border-slate-100 text-xs text-slate-500 dark:border-slate-800/80 dark:text-slate-400">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="whitespace-nowrap">
+                          Assigned to{' '}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {resolveAssignedName(
+                              task.assignedTo,
+                              task.assignedToIds,
+                            )}
+                          </span>
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="whitespace-nowrap">
+                          {formatRelativeTimestamp(task.createdAt)}
+                        </span>
+
+                        {task.acknowledgedAt ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="whitespace-nowrap text-sky-700 dark:text-sky-400 font-medium">
+                              Ack {formatTimestamp(task.acknowledgedAt)}
+                            </span>
+                          </>
+                        ) : null}
+
+                        {getAcknowledgementProgress(task) ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+                              {getAcknowledgementProgress(task)}
+                            </span>
+                          </>
+                        ) : null}
+
+                        {task.completedAt ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="whitespace-nowrap text-emerald-700 dark:text-emerald-400 font-medium">
+                              Done {formatTimestamp(task.completedAt)}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+
+                      {canManageTasks ? (
+                        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:ring-2 focus-visible:ring-primary min-h-[30px]"
+                            onClick={() => openEditTaskModal(task)}
+                            title="Edit task"
+                            aria-label={`Edit task for ${resolveDeviceLabel(task.deviceId)}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors focus-visible:ring-2 focus-visible:ring-rose-500 min-h-[30px]"
+                            onClick={() => openDeleteTaskModal(task)}
+                            title="Delete task"
+                            aria-label={`Delete task for ${resolveDeviceLabel(task.deviceId)}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
       {/* ── CREATE TASK MODAL ────────────────────────────────────── */}
       <dialog
         ref={createDialogRef}
-        className="modal modal-bottom sm:modal-middle"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+        aria-labelledby="create-task-title"
       >
-        <div className="modal-box max-w-xl">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-            <div className="flex flex-col">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+        <div className="modal-box max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
+            <div>
+              <h3
+                id="create-task-title"
+                className="text-lg font-bold text-slate-900 dark:text-slate-100"
+              >
                 Create Maintenance Task
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Dispatch a new task to technicians with custom priority
               </p>
             </div>
             <button
               type="button"
               onClick={closeCreateTaskModal}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+              aria-label="Close create task dialog"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
             >
-              ✕
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="form-control">
-                <label className="label" htmlFor="modal-toilet">
-                  <span className="label-text font-medium">Toilet Unit</span>
+                <label
+                  className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="modal-toilet"
+                >
+                  Toilet Unit
                 </label>
                 <select
                   id="modal-toilet"
-                  className="select select-bordered w-full focus:border-primary focus:outline-none"
+                  className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                   value={modalDeviceId}
                   onChange={(e) => setModalDeviceId(e.target.value)}
                 >
@@ -1342,14 +1427,19 @@ export function MaintenanceTaskPanel() {
               </div>
 
               <div className="form-control">
-                <label className="label" htmlFor="modal-trigger">
-                  <span className="label-text font-medium">Task Type / Priority</span>
+                <label
+                  className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="modal-trigger"
+                >
+                  Task Type / Priority
                 </label>
                 <select
                   id="modal-trigger"
-                  className="select select-bordered w-full focus:border-primary focus:outline-none"
+                  className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                   value={modalTriggerType}
-                  onChange={(e) => setModalTriggerType(e.target.value as TaskTriggerType)}
+                  onChange={(e) =>
+                    setModalTriggerType(e.target.value as TaskTriggerType)
+                  }
                 >
                   <option value="manual">Manual Dispatch (Standard)</option>
                   <option value="maintenance">Scheduled PM (Critical)</option>
@@ -1360,13 +1450,20 @@ export function MaintenanceTaskPanel() {
             </div>
 
             <div className="form-control">
-              <label className="label" htmlFor="modal-message">
-                <span className="label-text font-medium">Task Message</span>
-                <span className="label-text-alt text-base-content/50">{modalMessage.length}/500</span>
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="modal-message"
+                >
+                  Task Message
+                </label>
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                  {modalMessage.length}/500
+                </span>
+              </div>
               <textarea
                 id="modal-message"
-                className="textarea textarea-bordered min-h-24 w-full focus:border-primary focus:outline-none"
+                className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
                 maxLength={500}
                 value={modalMessage}
                 onChange={(e) => setModalMessage(e.target.value)}
@@ -1375,42 +1472,44 @@ export function MaintenanceTaskPanel() {
             </div>
 
             <div className="form-control">
-              <label className="label">
-                <span className="label-text font-medium">Assign To</span>
-              </label>
-              <div className="rounded-lg border border-base-300 bg-base-200/40 p-3 max-h-48 overflow-y-auto">
-                <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-base-200">
+              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Assign To
+              </span>
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 dark:border-slate-800/80 dark:bg-slate-850/40">
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
                   <input
                     type="checkbox"
-                    className="checkbox checkbox-sm checkbox-primary"
+                    className="checkbox checkbox-sm checkbox-primary rounded-md"
                     checked={modalAssignedToIds.length === 0}
                     onChange={toggleAllModalAssignedToIds}
+                    aria-label="Broadcast task to all maintenance personnel"
                   />
-                  <span className="text-sm font-semibold">
-                    All maintenance team (Broadcast)
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    All Maintenance Team (Broadcast)
                   </span>
                 </label>
                 <div className="mt-2 grid gap-1 sm:grid-cols-2">
                   {personnel.map((person) => (
                     <label
                       key={person.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-1.5 hover:bg-base-200"
+                      className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
                     >
                       <input
                         type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary mt-0.5"
+                        className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
                         checked={
                           modalAssignedToIds.length === 0 ||
                           modalAssignedToIds.includes(person.id)
                         }
                         onChange={() => toggleModalAssignedToId(person.id)}
+                        aria-label={`Assign to ${person.displayName || person.email || person.id}`}
                       />
                       <span className="min-w-0 text-sm">
-                        <span className="block font-medium">
+                        <span className="block font-medium text-slate-800 dark:text-slate-200">
                           {person.displayName}
                         </span>
                         {person.email ? (
-                          <span className="block truncate text-xs text-base-content/55">
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                             {person.email}
                           </span>
                         ) : null}
@@ -1422,10 +1521,10 @@ export function MaintenanceTaskPanel() {
             </div>
           </div>
 
-          <div className="modal-action">
+          <div className="modal-action mt-6 gap-2">
             <button
               type="button"
-              className="btn btn-ghost min-h-[48px]"
+              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
               onClick={closeCreateTaskModal}
               disabled={taskAction === 'create'}
             >
@@ -1433,14 +1532,21 @@ export function MaintenanceTaskPanel() {
             </button>
             <button
               type="button"
-              className="btn btn-primary min-h-[48px] px-6 shadow-sm disabled:opacity-90"
+              className="action-btn-primary min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-50"
               onClick={() => void handleCreateTaskFromModal()}
-              disabled={taskAction === 'create' || !modalDeviceId || !modalMessage.trim()}
+              disabled={
+                taskAction === 'create' ||
+                !modalDeviceId ||
+                !modalMessage.trim()
+              }
             >
               {taskAction === 'create' ? (
                 <>
-                  <span className="loading loading-spinner loading-sm"></span>
-                  Creating...
+                  <span
+                    className="loading loading-spinner loading-sm"
+                    aria-hidden="true"
+                  ></span>
+                  <span>Creating...</span>
                 </>
               ) : (
                 'Create & Dispatch'
@@ -1456,44 +1562,56 @@ export function MaintenanceTaskPanel() {
       {/* ── CONFIRM TASK MODAL ────────────────────────────────────── */}
       <dialog
         ref={confirmDialogRef}
-        className="modal modal-bottom sm:modal-middle"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+        aria-labelledby="confirm-task-title"
       >
-        <div className="modal-box">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-            <div className="flex flex-col">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+        <div className="modal-box rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
+            <div>
+              <h3
+                id="confirm-task-title"
+                className="text-lg font-bold text-slate-900 dark:text-slate-100"
+              >
                 Confirm Task Assignment
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Review task details before dispatching to maintenance personnel
               </p>
             </div>
             <button
               type="button"
               onClick={closeConfirmModal}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+              aria-label="Close confirm dialog"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
             >
-              ✕
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
           <div className="space-y-3 py-2 text-sm">
             <p className="text-slate-600 dark:text-slate-300">
               Send this task for{' '}
-              <span className="font-semibold text-slate-900 dark:text-slate-100">{selectedDeviceLabel}</span>?
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {selectedDeviceLabel}
+              </span>
+              ?
             </p>
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-4 border border-slate-200 dark:border-slate-800">
-              <p className="text-slate-800 dark:text-slate-200 font-medium">{message}</p>
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800/80 dark:bg-slate-850/60">
+              <p className="font-medium text-slate-800 dark:text-slate-200">
+                {message}
+              </p>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Assigned to: <span className="font-semibold text-slate-700 dark:text-slate-300">{resolveAssignedName(null, assignedToIds)}</span>
+                Assigned to:{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {resolveAssignedName(null, assignedToIds)}
+                </span>
               </p>
             </div>
           </div>
-          <div className="modal-action">
+          <div className="modal-action mt-6 gap-2">
             <button
               type="button"
-              className="btn btn-ghost min-h-[48px]"
+              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
               onClick={closeConfirmModal}
               disabled={isSubmitting}
             >
@@ -1501,14 +1619,17 @@ export function MaintenanceTaskPanel() {
             </button>
             <button
               type="button"
-              className="btn btn-warning min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-90"
+              className="action-btn-primary min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-50"
               onClick={() => void handleAssignTask()}
               disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <>
-                  <span className="loading loading-spinner loading-sm"></span>
-                  Assigning...
+                  <span
+                    className="loading loading-spinner loading-sm"
+                    aria-hidden="true"
+                  ></span>
+                  <span>Assigning...</span>
                 </>
               ) : (
                 'Confirm & Send'
@@ -1524,35 +1645,42 @@ export function MaintenanceTaskPanel() {
       {/* ── EDIT TASK MODAL ────────────────────────────────────────── */}
       <dialog
         ref={editDialogRef}
-        className="modal modal-bottom sm:modal-middle"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+        aria-labelledby="edit-task-title"
       >
-        <div className="modal-box max-w-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-            <div className="flex flex-col">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+        <div className="modal-box max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
+            <div>
+              <h3
+                id="edit-task-title"
+                className="text-lg font-bold text-slate-900 dark:text-slate-100"
+              >
                 Edit Task
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Update task description, target unit, or assignees
               </p>
             </div>
             <button
               type="button"
               onClick={closeEditTaskModal}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+              aria-label="Close edit dialog"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
             >
-              ✕
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-3">
             <div className="form-control">
-              <label className="label" htmlFor="edit-maintenance-toilet">
-                <span className="label-text font-medium">Toilet Unit</span>
+              <label
+                className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                htmlFor="edit-maintenance-toilet"
+              >
+                Toilet Unit
               </label>
               <select
                 id="edit-maintenance-toilet"
-                className="select select-bordered w-full focus:border-primary focus:outline-none"
+                className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                 value={editToiletId}
                 onChange={(event) => setEditToiletId(event.target.value)}
               >
@@ -1569,15 +1697,20 @@ export function MaintenanceTaskPanel() {
             </div>
 
             <div className="form-control">
-              <label className="label" htmlFor="edit-maintenance-message">
-                <span className="label-text font-medium">Message</span>
-                <span className="label-text-alt text-base-content/50">
+              <div className="mb-1 flex items-center justify-between">
+                <label
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="edit-maintenance-message"
+                >
+                  Message
+                </label>
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
                   {editMessage.length}/500
                 </span>
-              </label>
+              </div>
               <textarea
                 id="edit-maintenance-message"
-                className="textarea textarea-bordered min-h-28 w-full focus:border-primary focus:outline-none"
+                className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
                 maxLength={500}
                 value={editMessage}
                 onChange={(event) => setEditMessage(event.target.value)}
@@ -1585,19 +1718,20 @@ export function MaintenanceTaskPanel() {
             </div>
 
             <div className="form-control">
-              <label className="label">
-                <span className="label-text font-medium">Assign To</span>
-              </label>
-              <div className="rounded-lg border border-base-300 bg-base-200/40 p-3 max-h-48 overflow-y-auto">
-                <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-base-200">
+              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Assign To
+              </span>
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 dark:border-slate-800/80 dark:bg-slate-850/40">
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
                   <input
                     type="checkbox"
-                    className="checkbox checkbox-sm checkbox-primary"
+                    className="checkbox checkbox-sm checkbox-primary rounded-md"
                     checked={editAssignedToIds.length === 0}
                     onChange={toggleAllEditAssignedToIds}
+                    aria-label="Broadcast task to all maintenance personnel"
                   />
-                  <span className="text-sm font-semibold">
-                    All maintenance team (Broadcast)
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    All Maintenance Team (Broadcast)
                   </span>
                 </label>
                 <div className="mt-2 grid gap-1 sm:grid-cols-2">
@@ -1610,15 +1744,16 @@ export function MaintenanceTaskPanel() {
                     .map((userId) => (
                       <label
                         key={userId}
-                        className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-base-200"
+                        className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
                       >
                         <input
                           type="checkbox"
-                          className="checkbox checkbox-sm checkbox-primary"
+                          className="checkbox checkbox-sm checkbox-primary rounded-md"
                           checked
                           onChange={() => toggleEditAssignedToId(userId)}
+                          aria-label={`Assign to ${resolveAssignedName(userId)}`}
                         />
-                        <span className="text-sm font-medium">
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                           {resolveAssignedName(userId)}
                         </span>
                       </label>
@@ -1626,23 +1761,24 @@ export function MaintenanceTaskPanel() {
                   {personnel.map((person) => (
                     <label
                       key={person.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-base-200"
+                      className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
                     >
                       <input
                         type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary mt-0.5"
+                        className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
                         checked={
                           editAssignedToIds.length === 0 ||
                           editAssignedToIds.includes(person.id)
                         }
                         onChange={() => toggleEditAssignedToId(person.id)}
+                        aria-label={`Assign to ${person.displayName || person.email || person.id}`}
                       />
                       <span className="min-w-0 text-sm">
-                        <span className="block font-medium">
+                        <span className="block font-medium text-slate-800 dark:text-slate-200">
                           {person.displayName}
                         </span>
                         {person.email ? (
-                          <span className="block truncate text-xs text-base-content/55">
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                             {person.email}
                           </span>
                         ) : null}
@@ -1653,10 +1789,10 @@ export function MaintenanceTaskPanel() {
               </div>
             </div>
           </div>
-          <div className="modal-action">
+          <div className="modal-action mt-6 gap-2">
             <button
               type="button"
-              className="btn btn-ghost min-h-[48px]"
+              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
               onClick={closeEditTaskModal}
               disabled={taskAction === 'edit'}
             >
@@ -1664,14 +1800,17 @@ export function MaintenanceTaskPanel() {
             </button>
             <button
               type="button"
-              className="btn btn-primary min-h-[48px] px-6 shadow-sm disabled:opacity-90"
+              className="action-btn-primary min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-50"
               onClick={() => void handleUpdateTask()}
               disabled={taskAction === 'edit'}
             >
               {taskAction === 'edit' ? (
                 <>
-                  <span className="loading loading-spinner loading-sm"></span>
-                  Saving...
+                  <span
+                    className="loading loading-spinner loading-sm"
+                    aria-hidden="true"
+                  ></span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 'Save Changes'
@@ -1687,25 +1826,29 @@ export function MaintenanceTaskPanel() {
       {/* ── DELETE TASK MODAL ──────────────────────────────────────── */}
       <dialog
         ref={deleteDialogRef}
-        className="modal modal-bottom sm:modal-middle"
+        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
+        aria-labelledby="delete-task-title"
       >
-        <div className="modal-box">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-            <div className="flex flex-col">
-              <h3 className="text-lg font-bold text-rose-600 dark:text-rose-400">
+        <div className="modal-box rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
+            <div>
+              <h3
+                id="delete-task-title"
+                className="text-lg font-bold text-rose-600 dark:text-rose-400"
+              >
                 Delete Task
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Remove task from maintenance dispatch queue
               </p>
             </div>
             <button
               type="button"
               onClick={closeDeleteTaskModal}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:hover:text-slate-200 transition-colors"
+              aria-label="Close delete dialog"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
             >
-              ✕
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
@@ -1714,20 +1857,20 @@ export function MaintenanceTaskPanel() {
               Are you sure you want to remove this task from the queue?
             </p>
             {deletingTask ? (
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3.5 border border-slate-200 dark:border-slate-800">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/60">
                 <div className="font-semibold text-slate-900 dark:text-slate-100">
                   {resolveDeviceLabel(deletingTask.deviceId)}
                 </div>
-                <p className="mt-1 text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
+                <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                   {deletingTask.message}
                 </p>
               </div>
             ) : null}
           </div>
-          <div className="modal-action">
+          <div className="modal-action mt-6 gap-2">
             <button
               type="button"
-              className="btn btn-ghost min-h-[48px]"
+              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
               onClick={closeDeleteTaskModal}
               disabled={taskAction === 'delete'}
             >
@@ -1735,14 +1878,17 @@ export function MaintenanceTaskPanel() {
             </button>
             <button
               type="button"
-              className="btn btn-error min-h-[48px] px-6 text-white font-semibold shadow-sm disabled:opacity-90"
+              className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-rose-600 px-6 font-semibold text-white shadow-sm hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 active:translate-y-0.5 disabled:opacity-50"
               onClick={() => void handleDeleteTask()}
               disabled={taskAction === 'delete'}
             >
               {taskAction === 'delete' ? (
                 <>
-                  <span className="loading loading-spinner loading-sm"></span>
-                  Deleting...
+                  <span
+                    className="loading loading-spinner loading-sm"
+                    aria-hidden="true"
+                  ></span>
+                  <span>Deleting...</span>
                 </>
               ) : (
                 'Delete Task'
