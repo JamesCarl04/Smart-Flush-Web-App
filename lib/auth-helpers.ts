@@ -20,11 +20,11 @@ export interface UserProfile {
 }
 
 function normalizeUserRole(value: unknown): UserRole | null {
-  if (
-    typeof value === 'string' &&
-    (USER_ROLES as readonly string[]).includes(value)
-  ) {
-    return value as UserRole;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if ((USER_ROLES as readonly string[]).includes(normalized)) {
+      return normalized as UserRole;
+    }
   }
 
   return null;

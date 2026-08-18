@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { verifyAuthToken, getUserRole } from '@/lib/auth-helpers';
 import { createTaskAndNotify } from '@/lib/task-service';
 import { normalizeTaskAssignment } from '@/lib/task-assignment';
 import { taskCreateSchema, validateData } from '@/lib/schemas';
@@ -9,7 +9,14 @@ import { addCorsHeaders } from '@/lib/cors';
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireAdmin(user);
+    const role = await getUserRole(user);
+    if (role !== 'admin' && role !== 'supervisor') {
+      let response = NextResponse.json(
+        { success: false, error: 'Forbidden: admin or supervisor only' },
+        { status: 403 },
+      );
+      return addCorsHeaders(response, request as any);
+    }
 
     // HIGH FIX: Rate limiting on task creation (prevents DOS)
     const rateLimitCheck = checkRateLimit(user.uid, RATE_LIMITS.tasks);

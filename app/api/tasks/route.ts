@@ -54,7 +54,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'maintenance') {
+    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -134,7 +134,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireAdmin(user);
+    const role = await getUserRole(user);
+
+    if (role !== 'admin' && role !== 'supervisor') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: admin or supervisor only' },
+        { status: 403 },
+      );
+    }
 
     const body = (await request.json()) as CreateTaskBody;
     const deviceId = trimmedString(body.deviceId);

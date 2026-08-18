@@ -25,6 +25,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { useTasks } from '@/hooks/useTasks';
 import { DashboardToast } from '@/components/dashboard/DashboardToast';
+import { ToiletUnitSelect } from '@/components/dashboard/ToiletUnitSelect';
 import { apiFetch } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/error-utils';
 import { db } from '@/lib/firebase';
@@ -917,26 +918,15 @@ export function MaintenanceTaskPanel() {
                 >
                   Toilet Unit Target
                 </label>
-                {devicesLoading ? (
-                  <div className="skeleton h-12 w-full rounded-xl"></div>
-                ) : (
-                  <select
-                    id="maintenance-toilet"
-                    className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[46px]"
-                    value={selectedToiletId}
-                    onChange={(event) => setSelectedToiletId(event.target.value)}
-                  >
-                    {devices.length === 0 ? (
-                      <option value="">No toilet units available</option>
-                    ) : (
-                      devices.map((device) => (
-                        <option key={device.id} value={device.id}>
-                          {formatDeviceLabel(device)} ({device.status})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                )}
+                <ToiletUnitSelect
+                  id="maintenance-toilet"
+                  value={selectedToiletId}
+                  onChange={setSelectedToiletId}
+                  devices={devices}
+                  loading={devicesLoading}
+                  accentColor="amber"
+                  ariaLabel="Select Toilet Unit Target"
+                />
               </div>
 
               <div className="form-control w-full">
@@ -1408,22 +1398,15 @@ export function MaintenanceTaskPanel() {
                 >
                   Toilet Unit
                 </label>
-                <select
+                <ToiletUnitSelect
                   id="modal-toilet"
-                  className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                   value={modalDeviceId}
-                  onChange={(e) => setModalDeviceId(e.target.value)}
-                >
-                  {devices.length === 0 ? (
-                    <option value="">No toilet units available</option>
-                  ) : (
-                    devices.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {formatDeviceLabel(device)}
-                      </option>
-                    ))
-                  )}
-                </select>
+                  onChange={setModalDeviceId}
+                  devices={devices}
+                  loading={devicesLoading}
+                  accentColor="primary"
+                  ariaLabel="Select Toilet Unit"
+                />
               </div>
 
               <div className="form-control">
@@ -1678,22 +1661,15 @@ export function MaintenanceTaskPanel() {
               >
                 Toilet Unit
               </label>
-              <select
+              <ToiletUnitSelect
                 id="edit-maintenance-toilet"
-                className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                 value={editToiletId}
-                onChange={(event) => setEditToiletId(event.target.value)}
-              >
-                {editToiletId &&
-                !devices.some((device) => device.id === editToiletId) ? (
-                  <option value={editToiletId}>{editToiletId}</option>
-                ) : null}
-                {devices.map((device) => (
-                  <option key={device.id} value={device.id}>
-                    {formatDeviceLabel(device)}
-                  </option>
-                ))}
-              </select>
+                onChange={setEditToiletId}
+                devices={devices}
+                loading={devicesLoading}
+                accentColor="primary"
+                ariaLabel="Select Toilet Unit"
+              />
             </div>
 
             <div className="form-control">

@@ -14,6 +14,10 @@ export type TaskTriggerType = (typeof TASK_TRIGGER_TYPES)[number];
 export interface TaskDoc {
   id: string;
   deviceId: string;
+  restroomName?: string | null;
+  floor?: string | null;
+  building?: string | null;
+  location?: string | null;
   triggerType: TaskTriggerType;
   message: string;
   status: TaskStatus;
@@ -30,6 +34,10 @@ export interface TaskDoc {
 export interface TaskApiData {
   id: string;
   deviceId: string;
+  restroomName?: string | null;
+  floor?: string | null;
+  building?: string | null;
+  location?: string | null;
   triggerType: TaskTriggerType;
   message: string;
   status: TaskStatus;

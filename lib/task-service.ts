@@ -96,6 +96,10 @@ export function serializeTaskData(
   return {
     id: stringOrFallback(data.id, docId),
     deviceId: stringOrFallback(data.deviceId, 'unknown'),
+    restroomName: nullableString(data.restroomName),
+    floor: nullableString(data.floor),
+    building: nullableString(data.building),
+    location: nullableString(data.location),
     triggerType: triggerTypeOrManual(data.triggerType),
     message: stringOrFallback(data.message, ''),
     status: statusOrPending(data.status),
@@ -121,9 +125,32 @@ export async function createTaskDocument(
 ): Promise<TaskDoc> {
   const docRef = adminDb.collection('tasks').doc();
   const now = Timestamp.now();
+
+  let restroomName: string | null = null;
+  let floor: string | null = null;
+  let building: string = 'SDCA Annex Building';
+  let location: string | null = null;
+
+  try {
+    const deviceSnap = await adminDb.collection('devices').doc(input.deviceId).get();
+    if (deviceSnap.exists) {
+      const devData = deviceSnap.data();
+      restroomName = typeof devData?.name === 'string' ? devData.name : null;
+      floor = typeof devData?.floor === 'string' ? devData.floor : null;
+      building = typeof devData?.building === 'string' ? devData.building : 'SDCA Annex Building';
+      location = typeof devData?.location === 'string' ? devData.location : null;
+    }
+  } catch (err) {
+    console.warn('[task-service] Could not fetch device doc for metadata:', err);
+  }
+
   const task: TaskDoc = {
     id: docRef.id,
     deviceId: input.deviceId,
+    restroomName,
+    floor: floor ?? 'Ground',
+    building,
+    location: location ?? restroomName ?? input.deviceId,
     triggerType: input.triggerType,
     message: input.message,
     status: 'pending',

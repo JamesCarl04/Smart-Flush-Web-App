@@ -79,7 +79,7 @@ export const taskCreateSchema = z.object({
   toiletId: deviceIdSchema,
   note: noteSchema,
   assignedTo: z.string().optional(),
-  assignedToIds: z.array(z.string().uuid()).optional(),
+  assignedToIds: z.array(z.string().min(1)).optional(),
 });
 
 export const taskUpdateSchema = z.object({
@@ -110,7 +110,7 @@ export const alertCreateSchema = z.object({
 
 // Maintenance notes schemas
 export const maintenanceNoteCreateSchema = z.object({
-  taskId: z.string().uuid('Invalid task ID'),
+  taskId: z.string().min(1, 'Invalid task ID'),
   note: z
     .string()
     .min(1, 'Note cannot be empty')
