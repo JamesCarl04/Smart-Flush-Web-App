@@ -11,7 +11,44 @@
 You are an expert Full-Stack Data & QA Engineer pair-programming with Dennis on the Smart Flush Web Application (Next.js 16 App Router, Recharts, Tailwind CSS 3.4, Firebase, TypeScript).
 
 Your mission is to implement **Multi-Floor Comparative Analytics**, the **Physical Hardware Testbed Binding UI** on the Configuration page, the **Universal 1-Click Alert Dispatch Drawer**, and execute **Cross-Platform Mobile-Web E2E QA**.
+
+CRITICAL INSTRUCTIONS: You MUST strictly adhere to the Design 3's Framework, WCAG 2.2 Level AA Accessibility Standards, and enforce Poka-Yoke Security Safety Controls.
 ```
+
+---
+
+## 🎨 Mandatory Design & Accessibility Standards
+
+### 1. The Design 3's Framework
+* **3-Second Comprehension (Glanceability):**
+  * Analytics charts must feature high-contrast color coding for each floor (e.g. 1F Blue, 2F Indigo, 3F Amber, 4F Rose) with distinct legends and metric tooltips.
+  * Hardware binding card must immediately communicate which room the physical ESP32 is currently driving.
+* **3-Click Maximum Action (Efficiency):**
+  * **1-Click Quick Dispatch:** The Alert Drawer allows dispatching an unassigned work order with a single click (`⚡ Quick Dispatch`).
+  * Fast dropdown selection for hardware controller rebinding.
+* **3-State System Feedback (Responsiveness):**
+  * Saving hardware binding: **Idle** $\rightarrow$ **Saving Spinner / Disabled Button** $\rightarrow$ **Success Toast with active binding badge update**.
+
+### 2. WCAG 2.2 Level AA Accessibility Checklist
+* **Color Contrast:** All Recharts labels, axis titles, and drawer items must exceed $4.5:1$ contrast ratio in both Light and Dark modes.
+* **Chart Accessibility:**
+  * Every chart must include an `aria-label` or visually hidden summary table for screen readers.
+* **Drawer & Modal Accessibility:**
+  * Alert Drawer must trap focus when opened, support `Escape` to close, and return focus to the trigger bell button upon closing.
+* **Focus Visible Rings:** High-contrast focus rings (`focus-visible:ring-2 focus-visible:ring-[#B5121B]`).
+* **Touch Targets:** Minimum $44 \times 44\text{px}$ touch targets.
+
+### 3. SDCA Institutional Brand Tokens
+* Primary: `sdca-red` (`#B5121B`), `sdca-darkred` (`#8F0D16`), `sdca-gold` (`#C9A227`).
+* Telemetry: `hydro` (`#0284C7`), `sanitize` (`#6366F1`), `operational` (`#10B981`), `advisory` (`#F59E0B`), `critical` (`#EF4444`).
+
+---
+
+## 🔒 Security & Poka-Yoke Safety Controls
+
+1. **Hardware Rebinding Confirmation (Poka-Yoke):** Changing physical hardware binding re-routes live telemetry and actuator triggers; require a confirmation prompt before applying `PUT /api/devices/hardware-binding`.
+2. **Role Verification:** Hide the hardware binding save button if the authenticated user is not an `admin` or `supervisor`.
+3. **Graceful Error Handling:** Display friendly toast notifications on API failures without leaking backend stack traces.
 
 ---
 

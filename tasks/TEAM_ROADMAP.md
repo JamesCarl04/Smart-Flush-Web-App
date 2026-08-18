@@ -17,9 +17,56 @@ Instead of duplicating dashboard pages, the platform uses a **single unified int
 
 ---
 
-## 👥 Team Ownership & File Boundary Matrix
+## 🎨 Unified Design Standards: Design 3's Framework & WCAG 2.2 AA
 
-To prevent git merge conflicts across separate developer machines, each developer has strictly segregated file ownership:
+All team members' AI models MUST adhere to the shared design system and accessibility guidelines:
+
+### 1. The Design 3's Framework
+* **3-Second Comprehension (Glanceability):**
+  * Immediate visual hierarchy: facility health is immediately clear via standardized status colors (🟢 Green, 🟡 Yellow, 🔴 Red).
+  * No visual clutter; all cards feature crisp subtitles denoting their scope (*"Campus-wide"*, *"Floor 2"*, or *"2F PWD"*).
+* **3-Click Maximum Action (Efficiency):**
+  * 1-click alert dispatch directly from the header bell drawer.
+  * Direct 1-click room filtering via the 4-floor bird's-eye status matrix.
+  * Fast dropdown cascades (`Building` $\rightarrow$ `Floor` $\rightarrow$ `Room`) with instant reset.
+* **3-State System Feedback (Responsiveness):**
+  * Every asynchronous operation must display **Idle** $\rightarrow$ **Loading / In-Flight** (spinners, skeletons, disabled buttons) $\rightarrow$ **Resolved** (Toast notifications + smooth status transitions).
+
+### 2. WCAG 2.2 Level AA Standards
+* **Color Contrast:** All text and critical UI elements must exceed the $4.5:1$ contrast ratio against light (`#F7F7F7` / `#FFFFFF`) and dark (`#0B0F19` / `#111827`) backgrounds.
+* **Keyboard Navigation:** Full `Tab`, `Arrow Up/Down`, `Enter`, `Escape`, and `Space` keyboard control.
+* **Focus Visible Rings:** High-contrast focus rings (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`).
+* **Semantic ARIA:** Explicit `role="combobox"`, `role="listbox"`, `role="option"`, `role="region"`, `aria-expanded`, and `aria-live="polite"` for dynamic counters.
+* **Touch Target Size:** Minimum $44 \times 44\text{px}$ touch targets for all buttons and interactive elements.
+
+### 3. SDCA Institutional Brand Palette
+
+| Color Token | Hex Code | Purpose |
+| :--- | :--- | :--- |
+| **`sdca-red`** | `#B5121B` | Primary action buttons, active navigation indicators, key brand accents |
+| **`sdca-darkred`** | `#8F0D16` | Hover states, secondary brand accents, card top glows |
+| **`sdca-gold`** | `#C9A227` | Accent badges, focus rings, warning callouts |
+| **`hydro-cyan`** | `#0284C7` | Water volume & flow rate telemetry |
+| **`sanitize-indigo`** | `#6366F1` | UV-C germicidal disinfection status |
+| **`operational-green`**| `#10B981` | Online status, completed work orders, normal health (🟢) |
+| **`advisory-amber`** | `#F59E0B` | Pending tasks, high traffic warnings (🟡) |
+| **`critical-crimson`** | `#EF4444` | Sensor anomalies, threshold breaches, active leaks (🔴) |
+
+---
+
+## 🔒 Security & Authorization Audit Rules
+
+1. **Server-Side Token Verification:** Every API endpoint must authenticate requests via `verifyAuthToken(request)` before processing data.
+2. **Strict Role-Based Access Control (RBAC):** Check user roles via `getUserRole(user)` (`admin`, `supervisor`, `maintenance`, `viewer`).
+   * Only `admin` and `supervisor` can dispatch work orders, trigger actuators, or update hardware bindings.
+   * `viewer` accounts have read-only access.
+3. **Zod Input Validation:** All request payloads must be strictly validated with `safeParse()` in `lib/schemas.ts` to prevent malicious payloads or invalid data.
+4. **Poka-Yoke Safety Confirmation:** Destructive or physical hardware operations (actuators, rule resets, hardware rebinding) must feature confirmation dialogs.
+5. **No Data Leakage:** API error responses must return generic error messages without leaking internal stack traces or database IDs.
+
+---
+
+## 👥 Team Ownership & File Boundary Matrix
 
 ```mermaid
 graph TD

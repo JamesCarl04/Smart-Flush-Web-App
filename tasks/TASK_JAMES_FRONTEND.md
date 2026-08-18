@@ -11,7 +11,44 @@
 You are an expert Senior Frontend Engineer & UI Architect pair-programming with James on the Smart Flush Web Application (Next.js 16 App Router, React 19, Tailwind CSS 3.4, DaisyUI, TypeScript).
 
 Your mission is to implement the **Global Facility Context & State Management**, the **Top Header Facility Selector Dropdown**, the **4-Floor Interactive Bird's-Eye Status Matrix**, and connect **StatCards** to dynamically filter by facility context.
+
+CRITICAL INSTRUCTIONS: You MUST strictly adhere to the Design 3's Framework, WCAG 2.2 Level AA Accessibility Standards, and the SDCA Institutional Brand Palette.
 ```
+
+---
+
+## 🎨 Mandatory Design & Accessibility Standards
+
+### 1. The Design 3's Framework
+* **3-Second Comprehension (Glanceability):**
+  * Use instant visual indicators: 🟢 Green (Clean/Normal $< 20$ flushes), 🟡 Yellow (Attention $20–25$ flushes), 🔴 Red (Alert $\ge 25$ flushes or active leak).
+  * Every card must show a clear scope subtitle (e.g. *"Campus-wide total (19 restrooms)"* vs *"2nd Floor"* vs *"2F PWD"*).
+* **3-Click Maximum Action (Efficiency):**
+  * 1-click facility filtering: clicking any room tile on the 4-floor matrix instantly filters the page.
+  * Fast dropdown cascades (`Building` $\rightarrow$ `Floor` $\rightarrow$ `Room`) with instant Reset button.
+* **3-State System Feedback (Responsiveness):**
+  * Provide visual feedback for all transitions: **Idle** $\rightarrow$ **Loading / Skeleton** $\rightarrow$ **Resolved** (smooth state transition and toast alerts).
+
+### 2. WCAG 2.2 Level AA Accessibility Audit Checklist
+* **Color Contrast:** All text must maintain $\ge 4.5:1$ contrast ratio against light and dark backgrounds.
+* **Focus Visible Rings:** Use `focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2` on all clickable buttons, matrix tiles, and inputs.
+* **Full Keyboard Navigability:** Support `Tab`, `Arrow Up/Down/Left/Right`, `Enter`, and `Escape` for all selectors and tiles.
+* **Semantic ARIA Landmarks:**
+  * Matrix component must have `role="region"` and `aria-label="4-Floor Facility Status Matrix"`.
+  * Tiles must use `role="button"`, `aria-pressed={isSelected}`, and descriptive `aria-label` (e.g. `"2F PWD Restroom: Status Alert, 28 flushes"`).
+* **Touch Targets:** Minimum $44 \times 44\text{px}$ touch target size for mobile/tablet usability.
+
+### 3. SDCA Institutional Brand Palette Tokens
+* Primary: `sdca-red` (`#B5121B`), `sdca-darkred` (`#8F0D16`), `sdca-gold` (`#C9A227`).
+* Telemetry: `hydro` (`#0284C7`), `sanitize` (`#6366F1`), `operational` (`#10B981`), `advisory` (`#F59E0B`), `critical` (`#EF4444`).
+
+---
+
+## 🔒 Security & Client-Side Safety Audit
+
+1. **Role-Based UI Rendering:** Inspect user roles from `useAuth()` to ensure admin/supervisor-only controls remain hidden from unprivileged viewers.
+2. **Safe Navigation & Memory Management:** Clean up all event listeners (`mousedown`, `touchstart`) and timeouts in `useEffect` return blocks to prevent memory leaks.
+3. **No Sensitive Leaks:** Do not log raw user tokens or sensitive internal IDs in client console output.
 
 ---
 
@@ -48,7 +85,6 @@ Create a clean React context that handles:
 * Export hook: `useFacility()`
 
 ```typescript
-// types/facility.ts or within context:
 export type FloorOption = 'all' | '1st Floor' | '2nd Floor' | '3rd Floor' | '4th Floor';
 export type FilterMode = 'campus' | 'floor' | 'room';
 
@@ -71,12 +107,13 @@ export interface FacilityContextType {
 Build the top-bar selector component:
 * Layout: Flexbox container with icons (`Building2`, `Layers`, `MapPin`, `ChevronDown`, `RotateCcw`).
 * Displays:
-  1. **Building Pill**: `SDCA Annex Building` (Badge).
+  1. **Building Pill**: `SDCA Annex Building` (Badge with `bg-slate-100 dark:bg-slate-800`).
   2. **Floor Select**: Dropdown with options: `All Floors (Campus Overview)`, `1st Floor`, `2nd Floor`, `3rd Floor`, `4th Floor`.
   3. **Room Select**: Enabled when a floor is selected; lists restrooms on that floor.
   4. **Reset Button**: Quickly resets filter back to "All Floors".
-* Visual Styling:
-  * SDCA Brand tokens (`hover:border-sdca-red`, subtle background blur, `rounded-xl`, dark mode compatible).
+* WCAG Accessibility:
+  * Focus rings (`focus-visible:ring-2 focus-visible:ring-[#B5121B]`).
+  * `aria-label="Global facility and floor filter"`.
 
 ---
 
@@ -96,7 +133,7 @@ Build the 4-floor bird's-eye status matrix:
   * 🔴 **Red (Alert / Pending Work Order):** Usage $\ge 25$ flushes or active alert.
 * Click Handler:
   * Clicking a tile sets `selectedFloor` and `selectedDeviceId` in `useFacility()`.
-  * Highlight the currently active tile with an SDCA red/gold border ring (`ring-2 ring-[#B5121B]`).
+  * Highlight the currently active tile with an SDCA red border ring (`ring-2 ring-[#B5121B]`).
 
 ---
 
@@ -113,7 +150,7 @@ Connect `StatCards` to `useFacility()`:
 
 * In `app/(dashboard)/layout.tsx`:
   * Wrap `{children}` with `<FacilityProvider>`.
-  * Insert `<GlobalFacilitySelector />` into the sticky top header (left/center area).
+  * Insert `<GlobalFacilitySelector />` into the sticky top header.
 * In `app/(dashboard)/dashboard/page.tsx`:
   * Mount `<FacilityStatusMatrix />` above the StatCards row.
 
@@ -131,6 +168,7 @@ npx eslint contexts/FacilityContext.tsx components/layout/GlobalFacilitySelector
 
 # 3. Test in Browser
 # Navigate to http://localhost:3000/dashboard
+# - Verify keyboard navigation (Tab through matrix tiles, Enter to select).
 # - Test changing Floor to "2nd Floor" -> StatCards and header update.
 # - Test clicking "3F Female 1" on the Matrix -> Global selector updates to 3F Female 1.
 # - Test clicking "Reset" -> Returns to Campus Overview.

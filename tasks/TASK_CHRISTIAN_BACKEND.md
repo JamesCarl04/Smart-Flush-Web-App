@@ -11,7 +11,37 @@
 You are an expert Backend & Cloud Systems Engineer pair-programming with Christian on the Smart Flush Web Application (Next.js 16 App Router, Firebase Admin SDK, Firestore, Zod v4, TypeScript).
 
 Your mission is to implement the **Dynamic Hardware Binding API**, support **Universal 1-Click Unassigned Work Orders (`assignedTo: null`)**, update **Zod Schemas and Task Serialization**, and ensure **Dynamic Actuator Routing** in backend routes.
+
+CRITICAL INSTRUCTIONS: You MUST strictly enforce Enterprise Security, Authentication (Firebase Token Verification), Role-Based Access Control (RBAC), and Zod Schema Data Validation on all endpoints.
 ```
+
+---
+
+## 🔒 Mandatory Security & Authorization Audit Rules
+
+### 1. Authentication & Identity Verification
+* Every single API handler MUST authenticate incoming requests with `verifyAuthToken(request)` before processing any request body or querying Firestore.
+* Unauthenticated requests must immediately return `401 Unauthorized`.
+
+### 2. Role-Based Access Control (RBAC) Enforcement
+* Resolve user roles via `getUserRole(user)` (`admin`, `supervisor`, `maintenance`, `viewer`).
+* **Route Restrictions:**
+  * `PUT /api/devices/hardware-binding`: `admin` and `supervisor` only.
+  * `POST /api/tasks/create`: `admin` and `supervisor` only.
+  * `POST /api/actuators/*`: `admin` and `supervisor` only.
+  * `POST /api/tasks/[id]/complete`: `maintenance` only.
+  * Attempted unauthorized actions must return `403 Forbidden: admin or supervisor only`.
+
+### 3. Zod Runtime Schema Validation & Sanitization
+* All incoming JSON bodies must be validated using `zod` schemas via `safeParse()` in `lib/schemas.ts`.
+* Validate string lengths, trim whitespace, and reject unexpected extra parameters to prevent parameter pollution.
+* For Firestore document IDs, avoid strict RFC `.uuid()` validations; use `.string().min(1)` to support Firestore auto-generated document keys.
+
+### 4. Zero Data Leakage & Standardized Response Structure
+* Never return raw exception traces, database internals, or private keys to the client.
+* Consistent JSON response structure:
+  * Success: `{ success: true, data: { ... }, message?: string }`
+  * Error: `{ success: false, error: "Human-readable error description" }` with appropriate HTTP status code (400, 401, 403, 404, 500).
 
 ---
 
@@ -36,7 +66,8 @@ You are strictly responsible for creating and modifying the following files:
 
 Implement the dynamic hardware controller binding endpoint:
 * **GET `/api/devices/hardware-binding`**:
-  * Returns the current binding from Firestore `system_config/hardware_binding` (or default fallback).
+  * Authenticates request with `verifyAuthToken`.
+  * Reads Firestore `system_config/hardware_binding` document.
   * Response:
     ```json
     {
@@ -53,9 +84,9 @@ Implement the dynamic hardware controller binding endpoint:
     }
     ```
 * **PUT `/api/devices/hardware-binding`**:
-  * Requires `admin` or `supervisor` auth token.
-  * Validates request body with Zod: `{ boundDeviceId: string, boundRoomName: string, floor: string }`.
-  * Writes to Firestore `system_config/hardware_binding` document with `serverTimestamp()`.
+  * Enforces `admin` or `supervisor` role.
+  * Validates body with Zod: `{ boundDeviceId: string, boundRoomName: string, floor: string }`.
+  * Writes to Firestore `system_config/hardware_binding` with `serverTimestamp()`.
 
 ---
 
@@ -75,7 +106,7 @@ Ensure Zod schemas and TypeScript interfaces support:
 
 ### Step 3: Update `lib/task-service.ts` & `app/api/tasks/create/route.ts`
 
-Update `createTaskDocument()` and the `POST /api/tasks/create` endpoint:
+Update `createTaskDocument()` and `POST /api/tasks/create`:
 * When a task is created with no assigned personnel:
   * Set `status: 'pending'`.
   * Set `assignedTo: null`, `assignedToIds: []`.
@@ -89,9 +120,8 @@ Update `createTaskDocument()` and the `POST /api/tasks/create` endpoint:
 ### Step 4: Update Actuator Routes (`app/api/actuators/`)
 
 In `app/api/actuators/pump/route.ts`, `uv/route.ts`, `lid/open/route.ts`, `lid/close/route.ts`:
-* Check if a specific target `deviceId` is provided in the request body.
-* If target is specified or defaults to bound device, fetch active hardware binding from `system_config/hardware_binding`.
-* Publish MQTT command with audit payload logging the target restroom and operator UID.
+* Check if target `deviceId` is specified or defaults to active hardware binding.
+* Route MQTT command to `toilet-01` topic with audit log logging operator UID.
 
 ---
 
@@ -109,4 +139,5 @@ npx eslint app/api/devices/hardware-binding/route.ts app/api/tasks/create/route.
 # - Test GET /api/devices/hardware-binding -> Returns 200 with binding object
 # - Test PUT /api/devices/hardware-binding -> Updates binding in Firestore
 # - Test POST /api/tasks/create with assignedTo: null -> Creates unassigned pending task
+# - Test unauthenticated request -> Returns 401 Unauthorized
 ```
