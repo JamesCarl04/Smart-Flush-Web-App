@@ -14,11 +14,18 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/opengraph-image',
+        url: '/opengraph-image.jpg',
         width: 1200,
         height: 630,
         alt: 'Klir IoT Smart Flush & Disinfection Platform',
-        type: 'image/png',
+        type: 'image/jpeg',
+      },
+      {
+        url: '/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Klir IoT Smart Flush & Disinfection Platform',
+        type: 'image/jpeg',
       },
       {
         url: '/og-image.png',
@@ -34,7 +41,7 @@ export const metadata: Metadata = {
     title: 'Authentication | Klir Smart Flush Console',
     description:
       'Access real-time IoT sanitation controls, telemetry feeds, and facility automation rules.',
-    images: ['/opengraph-image', '/og-image.png'],
+    images: ['/opengraph-image.jpg', '/og-image.jpg', '/og-image.png'],
     creator: '@KlirSmartFlush',
   },
 };

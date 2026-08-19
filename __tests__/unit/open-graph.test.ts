@@ -4,8 +4,6 @@ import { metadata } from '@/app/layout';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import manifest from '@/app/manifest';
-import * as ogImage from '@/app/opengraph-image';
-import * as twitterImage from '@/app/twitter-image';
 import { generateOgImagePng } from '@/lib/generate-og-png';
 
 describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
@@ -121,27 +119,21 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
   });
 
-  describe('app/opengraph-image.tsx & app/twitter-image.tsx Generators', () => {
-    it('should export expected OpenGraph image properties and handler', async () => {
-      expect(ogImage.alt).toContain('Klir');
-      expect(ogImage.size).toEqual({ width: 1200, height: 630 });
-      expect(ogImage.contentType).toBe('image/png');
-      expect(typeof ogImage.default).toBe('function');
-
-      const response = await ogImage.default();
-      expect(response).toBeDefined();
-      expect(response.headers.get('content-type')).toBe('image/png');
+  describe('Static OpenGraph & Twitter Image Assets', () => {
+    it('should verify app/opengraph-image.jpg and app/twitter-image.jpg exist', () => {
+      const ogPath = path.join(process.cwd(), 'app', 'opengraph-image.jpg');
+      const twitterPath = path.join(process.cwd(), 'app', 'twitter-image.jpg');
+      expect(fs.existsSync(ogPath)).toBe(true);
+      expect(fs.existsSync(twitterPath)).toBe(true);
+      expect(fs.statSync(ogPath).size).toBeGreaterThan(1000);
+      expect(fs.statSync(twitterPath).size).toBeGreaterThan(1000);
     });
 
-    it('should export expected Twitter image properties and handler', async () => {
-      expect(twitterImage.alt).toContain('Klir');
-      expect(twitterImage.size).toEqual({ width: 1200, height: 630 });
-      expect(twitterImage.contentType).toBe('image/png');
-      expect(typeof twitterImage.default).toBe('function');
-
-      const response = await twitterImage.default();
-      expect(response).toBeDefined();
-      expect(response.headers.get('content-type')).toBe('image/png');
+    it('should verify auth route static image assets exist', () => {
+      const authOgPath = path.join(process.cwd(), 'app', 'auth', 'opengraph-image.jpg');
+      const authTwitterPath = path.join(process.cwd(), 'app', 'auth', 'twitter-image.jpg');
+      expect(fs.existsSync(authOgPath)).toBe(true);
+      expect(fs.existsSync(authTwitterPath)).toBe(true);
     });
   });
 
