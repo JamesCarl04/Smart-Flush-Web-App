@@ -1,5 +1,19 @@
-// jest.setup.js
-import '@testing-library/jest-dom'
+// Mock Next fonts
+jest.mock('next/font/local', () => () => ({
+  variable: '--font-geist-sans',
+  className: 'mock-font-class',
+}))
+
+// Mock next/og ImageResponse for Node.js test environment
+jest.mock('next/og', () => ({
+  ImageResponse: jest.fn().mockImplementation((element, options) => ({
+    element,
+    options,
+    headers: {
+      get: (header) => (header.toLowerCase() === 'content-type' ? 'image/png' : null),
+    },
+  })),
+}))
 
 // Mock Next.js router
 jest.mock('next/router', () => ({

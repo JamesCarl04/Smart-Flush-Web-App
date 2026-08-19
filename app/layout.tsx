@@ -16,8 +16,74 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Smart Flush',
-  description: 'IoT Smart Flush Management Dashboard',
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || 'https://smart-flush.railway.app'
+  ),
+  title: {
+    default: 'Klir | IoT Smart Flush & Disinfection Management',
+    template: '%s | Klir',
+  },
+  description:
+    'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
+  keywords: [
+    'IoT',
+    'Smart Flush',
+    'Sanitation Management',
+    'UV Disinfection',
+    'Water Conservation',
+    'Ultrasonic Telemetry',
+    'Facility Automation',
+    'HiveMQ',
+    'Restroom Analytics',
+    'Klir',
+  ],
+  authors: [{ name: 'Klir Engineering Team' }],
+  creator: 'Klir',
+  publisher: 'Klir',
+  openGraph: {
+    title: 'Klir | IoT Smart Flush & Disinfection Management',
+    description:
+      'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
+    url: '/',
+    siteName: 'Klir',
+    locale: 'en_US',
+    type: 'website',
+    images: [
+      {
+        url: '/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: 'Klir IoT Smart Flush & Disinfection Platform',
+        type: 'image/png',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Klir | IoT Smart Flush & Disinfection Management',
+    description:
+      'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
+    images: ['/opengraph-image'],
+    creator: '@KlirSmartFlush',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  alternates: {
+    canonical: '/',
+  },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
