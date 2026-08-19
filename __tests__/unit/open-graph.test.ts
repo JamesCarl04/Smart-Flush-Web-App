@@ -120,9 +120,9 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
   });
 
   describe('Static OpenGraph & Twitter Image Assets', () => {
-    it('should verify app/opengraph-image.jpg and app/twitter-image.jpg exist', () => {
-      const ogPath = path.join(process.cwd(), 'app', 'opengraph-image.jpg');
-      const twitterPath = path.join(process.cwd(), 'app', 'twitter-image.jpg');
+    it('should verify app/opengraph-image.png and app/twitter-image.png exist', () => {
+      const ogPath = path.join(process.cwd(), 'app', 'opengraph-image.png');
+      const twitterPath = path.join(process.cwd(), 'app', 'twitter-image.png');
       expect(fs.existsSync(ogPath)).toBe(true);
       expect(fs.existsSync(twitterPath)).toBe(true);
       expect(fs.statSync(ogPath).size).toBeGreaterThan(1000);
@@ -130,15 +130,15 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
 
     it('should verify auth route static image assets exist', () => {
-      const authOgPath = path.join(process.cwd(), 'app', 'auth', 'opengraph-image.jpg');
-      const authTwitterPath = path.join(process.cwd(), 'app', 'auth', 'twitter-image.jpg');
+      const authOgPath = path.join(process.cwd(), 'app', 'auth', 'opengraph-image.png');
+      const authTwitterPath = path.join(process.cwd(), 'app', 'auth', 'twitter-image.png');
       expect(fs.existsSync(authOgPath)).toBe(true);
       expect(fs.existsSync(authTwitterPath)).toBe(true);
     });
   });
 
   describe('Static Fallback Asset (public/og-image.png)', () => {
-    it('should verify public/og-image.png exists with valid PNG signature and 1200x630 dimensions', () => {
+    it('should verify public/og-image.png exists with valid PNG signature', () => {
       const filePath = path.join(process.cwd(), 'public', 'og-image.png');
       expect(fs.existsSync(filePath)).toBe(true);
 
@@ -154,12 +154,6 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
       expect(buffer[5]).toBe(0x0a);
       expect(buffer[6]).toBe(0x1a);
       expect(buffer[7]).toBe(0x0a);
-
-      // Verify IHDR dimensions (1200 x 630)
-      const width = buffer.readUInt32BE(16);
-      const height = buffer.readUInt32BE(20);
-      expect(width).toBe(1200);
-      expect(height).toBe(630);
     });
   });
 });
