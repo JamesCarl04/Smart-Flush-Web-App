@@ -1,8 +1,8 @@
 import type { MetadataRoute } from 'next';
+import { getSiteUrl } from '@/lib/site-url';
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL || 'https://smart-flush.railway.app';
+  const baseUrl = getSiteUrl();
 
   return {
     rules: {

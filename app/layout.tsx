@@ -3,6 +3,7 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { getSiteUrl } from '@/lib/site-url';
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
@@ -16,9 +17,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || 'https://smart-flush.railway.app'
-  ),
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: 'Klir | IoT Smart Flush & Disinfection Management',
     template: '%s | Klir',
@@ -56,6 +55,13 @@ export const metadata: Metadata = {
         alt: 'Klir IoT Smart Flush & Disinfection Platform',
         type: 'image/png',
       },
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Klir IoT Smart Flush & Disinfection Platform',
+        type: 'image/png',
+      },
     ],
   },
   twitter: {
@@ -63,7 +69,7 @@ export const metadata: Metadata = {
     title: 'Klir | IoT Smart Flush & Disinfection Management',
     description:
       'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
-    images: ['/opengraph-image'],
+    images: ['/opengraph-image', '/og-image.png'],
     creator: '@KlirSmartFlush',
   },
   robots: {

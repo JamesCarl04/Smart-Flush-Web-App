@@ -103,9 +103,26 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
   });
 
+  describe('app/auth/layout.tsx Metadata Configuration', () => {
+    it('should define OpenGraph and Twitter images on auth layout', async () => {
+      const { metadata: authMetadata } = await import('@/app/auth/layout');
+      expect(authMetadata).toBeDefined();
+      expect(authMetadata.openGraph).toBeDefined();
+      expect(authMetadata.openGraph?.images).toBeDefined();
+
+      const images = Array.isArray(authMetadata.openGraph?.images)
+        ? authMetadata.openGraph?.images
+        : [authMetadata.openGraph?.images];
+
+      expect(images.length).toBeGreaterThan(0);
+      expect(authMetadata.twitter).toBeDefined();
+      expect(authMetadata.twitter?.card).toBe('summary_large_image');
+      expect(authMetadata.twitter?.images).toBeDefined();
+    });
+  });
+
   describe('app/opengraph-image.tsx & app/twitter-image.tsx Generators', () => {
     it('should export expected OpenGraph image properties and handler', async () => {
-      expect(ogImage.runtime).toBe('edge');
       expect(ogImage.alt).toContain('Klir');
       expect(ogImage.size).toEqual({ width: 1200, height: 630 });
       expect(ogImage.contentType).toBe('image/png');
@@ -117,7 +134,6 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
 
     it('should export expected Twitter image properties and handler', async () => {
-      expect(twitterImage.runtime).toBe('edge');
       expect(twitterImage.alt).toContain('Klir');
       expect(twitterImage.size).toEqual({ width: 1200, height: 630 });
       expect(twitterImage.contentType).toBe('image/png');

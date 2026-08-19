@@ -1,6 +1,5 @@
 import { ImageResponse } from 'next/og';
 
-export const runtime = 'edge';
 export const alt = 'Klir IoT Smart Flush & Disinfection Management System';
 export const size = {
   width: 1200,
