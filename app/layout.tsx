@@ -49,25 +49,12 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/opengraph-image.jpg',
+        url: `${getSiteUrl()}/og-image.jpg`,
+        secureUrl: `${getSiteUrl()}/og-image.jpg`,
         width: 1200,
         height: 630,
         alt: 'Klir IoT Smart Flush & Disinfection Platform',
         type: 'image/jpeg',
-      },
-      {
-        url: '/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Klir IoT Smart Flush & Disinfection Platform',
-        type: 'image/jpeg',
-      },
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'Klir IoT Smart Flush & Disinfection Platform',
-        type: 'image/png',
       },
     ],
   },
@@ -76,7 +63,7 @@ export const metadata: Metadata = {
     title: 'Klir | IoT Smart Flush & Disinfection Management',
     description:
       'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
-    images: ['/opengraph-image.jpg', '/og-image.jpg', '/og-image.png'],
+    images: [`${getSiteUrl()}/og-image.jpg`],
     creator: '@KlirSmartFlush',
   },
   robots: {
