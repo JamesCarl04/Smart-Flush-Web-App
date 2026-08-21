@@ -49,10 +49,18 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: `${getSiteUrl()}/og-image.png`,
-        secureUrl: `${getSiteUrl()}/og-image.png`,
-        width: 1024,
-        height: 346,
+        url: `${getSiteUrl()}/og-banner.jpg`,
+        secureUrl: `${getSiteUrl()}/og-banner.jpg`,
+        width: 1200,
+        height: 630,
+        alt: 'Klir IoT Smart Flush & Disinfection Platform',
+        type: 'image/jpeg',
+      },
+      {
+        url: `${getSiteUrl()}/og-banner.png`,
+        secureUrl: `${getSiteUrl()}/og-banner.png`,
+        width: 1200,
+        height: 630,
         alt: 'Klir IoT Smart Flush & Disinfection Platform',
         type: 'image/png',
       },
@@ -63,7 +71,7 @@ export const metadata: Metadata = {
     title: 'Klir | IoT Smart Flush & Disinfection Management',
     description:
       'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
-    images: [`${getSiteUrl()}/og-image.png`],
+    images: [`${getSiteUrl()}/og-banner.jpg`],
     creator: '@KlirSmartFlush',
   },
   robots: {
@@ -91,14 +99,47 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const siteUrl = getSiteUrl();
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteUrl}/#organization`,
+        name: 'Klir',
+        url: siteUrl,
+        logo: `${siteUrl}/og-banner.jpg`,
+        description:
+          'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}/#website`,
+        url: siteUrl,
+        name: 'Klir Smart Flush & Disinfection Platform',
+        publisher: {
+          '@id': `${siteUrl}/#organization`,
+        },
+        description:
+          'Next-generation IoT sanitation dashboard providing real-time flush monitoring, automated UV disinfection cycles, water conservation analytics, and proactive hardware telemetry.',
+      },
+    ],
+  };
+
   return (
     <html
       lang="en"
       suppressHydrationWarning
       className="bg-base-100 transition-colors duration-300"
     >
-      {/* Inline script runs synchronously before React hydrates, preventing flash-of-wrong-theme */}
       <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+        {/* Inline script runs synchronously before React hydrates, preventing flash-of-wrong-theme */}
         <script
           dangerouslySetInnerHTML={{
             __html: `

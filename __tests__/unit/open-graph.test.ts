@@ -137,7 +137,7 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
   });
 
-  describe('Static Fallback Asset (public/og-image.png)', () => {
+  describe('Static Fallback Asset (public/og-image.png and public/og-banner.jpg)', () => {
     it('should verify public/og-image.png exists with valid PNG signature', () => {
       const filePath = path.join(process.cwd(), 'public', 'og-image.png');
       expect(fs.existsSync(filePath)).toBe(true);
@@ -154,6 +154,33 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
       expect(buffer[5]).toBe(0x0a);
       expect(buffer[6]).toBe(0x1a);
       expect(buffer[7]).toBe(0x0a);
+    });
+
+    it('should verify public/og-banner.jpg exists with valid JPEG signature', () => {
+      const filePath = path.join(process.cwd(), 'public', 'og-banner.jpg');
+      expect(fs.existsSync(filePath)).toBe(true);
+
+      const buffer = fs.readFileSync(filePath);
+      expect(buffer.length).toBeGreaterThan(100);
+      expect(buffer[0]).toBe(0xff);
+      expect(buffer[1]).toBe(0xd8);
+    });
+  });
+
+  describe('lib/social-share.ts Utilities', () => {
+    it('should generate pre-filled share URLs for major social networks', async () => {
+      const { getShareUrls } = await import('@/lib/social-share');
+      const urls = getShareUrls({
+        title: 'Klir Platform',
+        text: 'IoT Sanitation',
+        url: 'https://kliradmin.vercel.app',
+      });
+
+      expect(urls.facebook).toContain('facebook.com');
+      expect(urls.twitter).toContain('twitter.com');
+      expect(urls.linkedin).toContain('linkedin.com');
+      expect(urls.whatsapp).toContain('whatsapp.com');
+      expect(urls.telegram).toContain('t.me');
     });
   });
 });
