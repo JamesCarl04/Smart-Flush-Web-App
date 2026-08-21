@@ -119,21 +119,18 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
   });
 
-  describe('Static OpenGraph & Twitter Image Assets', () => {
-    it('should verify app/opengraph-image.png and app/twitter-image.png exist', () => {
-      const ogPath = path.join(process.cwd(), 'app', 'opengraph-image.png');
-      const twitterPath = path.join(process.cwd(), 'app', 'twitter-image.png');
-      expect(fs.existsSync(ogPath)).toBe(true);
-      expect(fs.existsSync(twitterPath)).toBe(true);
-      expect(fs.statSync(ogPath).size).toBeGreaterThan(1000);
-      expect(fs.statSync(twitterPath).size).toBeGreaterThan(1000);
+  describe('Public OpenGraph & Twitter Image Assets', () => {
+    it('should verify public/og-banner.jpg exists with valid size', () => {
+      const bannerPath = path.join(process.cwd(), 'public', 'og-banner.jpg');
+      expect(fs.existsSync(bannerPath)).toBe(true);
+      expect(fs.statSync(bannerPath).size).toBeGreaterThan(1000);
     });
 
-    it('should verify auth route static image assets exist', () => {
-      const authOgPath = path.join(process.cwd(), 'app', 'auth', 'opengraph-image.png');
-      const authTwitterPath = path.join(process.cwd(), 'app', 'auth', 'twitter-image.png');
-      expect(fs.existsSync(authOgPath)).toBe(true);
-      expect(fs.existsSync(authTwitterPath)).toBe(true);
+    it('should verify public/og-image.jpg and public/og-image.png exist', () => {
+      const ogJpgPath = path.join(process.cwd(), 'public', 'og-image.jpg');
+      const ogPngPath = path.join(process.cwd(), 'public', 'og-image.png');
+      expect(fs.existsSync(ogJpgPath)).toBe(true);
+      expect(fs.existsSync(ogPngPath)).toBe(true);
     });
   });
 
