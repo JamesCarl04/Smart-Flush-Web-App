@@ -533,6 +533,25 @@ export default function ConfigurationPage() {
     }
   };
 
+  const handleResetCounter = async (ruleId: string) => {
+    if (!user) {
+      toast.error('You must be logged in to reset counters.');
+      return;
+    }
+
+    setRuleMutationId(ruleId);
+    try {
+      await apiFetch(`/api/automation-rules/${ruleId}/reset-counter`, user, {
+        method: 'POST',
+      });
+      toast.success('Maintenance counter reset to 0.');
+    } catch (error) {
+      toast.error(getErrorMessage(error) ?? 'Failed to reset counter.');
+    } finally {
+      setRuleMutationId(null);
+    }
+  };
+
   const isLiveInRange =
     ultrasonicDistance !== undefined &&
     ultrasonicDistance > 0 &&
@@ -1082,8 +1101,13 @@ export default function ConfigurationPage() {
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800 transition-colors"
                           title="Reset Trigger Counter"
                           disabled={isMutatingRule}
+                          onClick={() => void handleResetCounter(rule.id)}
                         >
-                          <RefreshCw className="h-4 w-4" />
+                          {isMutatingRule ? (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-500 border-t-transparent inline-block" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
                         </button>
                       )}
 

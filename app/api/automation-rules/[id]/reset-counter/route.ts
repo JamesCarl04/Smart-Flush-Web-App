@@ -12,6 +12,8 @@ interface RouteParams {
 // Maps automation rule triggers to the maintenanceCounter field they govern
 const TRIGGER_TO_COUNTER: Record<string, string> = {
   uv_cycle_failed: 'uvOnTimeSeconds',
+  maintenance_due: 'flushCycleCount',
+  flush_count_exceeded: 'flushCycleCount',
   maintenance_uvOnTimeSeconds: 'uvOnTimeSeconds',
   maintenance_lidCycleCount: 'lidCycleCount',
   maintenance_flowSensorTotalLiters: 'flowSensorTotalLiters',
