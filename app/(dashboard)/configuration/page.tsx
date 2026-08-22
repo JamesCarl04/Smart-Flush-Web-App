@@ -577,19 +577,19 @@ export default function ConfigurationPage() {
       </div>
 
       <div className="flex flex-col gap-8">
-        {/* CARD 1: Device Profile */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        {/* CARD 1: Unit Identity & Hardware Specs */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-rose-400 border border-primary/20 shadow-xs">
                 <Cpu className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Device Profile
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  Unit Identity &amp; Hardware Specs
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Hardware identifier and network telemetry status
+                  Custom display name, facility location, and controller hardware specifications.
                 </p>
               </div>
             </div>
@@ -597,94 +597,115 @@ export default function ConfigurationPage() {
             {/* Device ID Badge */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">Device ID:</span>
-              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1 font-mono text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                 {DEFAULT_DEVICE_ID}
               </span>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Device Display Name
-              </label>
-              <input
-                type="text"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:focus:border-red-500 dark:focus:bg-slate-900"
-                value={deviceName}
-                disabled={loadingConfiguration}
-                placeholder="e.g. Men's Restroom - Stall 1"
-                onChange={(event) => {
-                  setDeviceName(event.target.value);
-                  markDirty();
-                }}
-              />
-              <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                Friendly name displayed in alerts, logs, and telemetry dashboards.
-              </p>
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Left Column: Editable Identity */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+                  Unit Display Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-primary"
+                  value={deviceName}
+                  disabled={loadingConfiguration}
+                  placeholder="e.g. 4F Men's Restroom - Stall 1"
+                  onChange={(event) => {
+                    setDeviceName(event.target.value);
+                    markDirty();
+                  }}
+                />
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Friendly name displayed across live telemetry, alerts, and technician dispatch queues.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+                  Assigned Facility Location
+                </label>
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-700 dark:border-slate-800/80 dark:bg-slate-800/40 dark:text-slate-300">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    SDCA Annex Building
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span>4th Floor Restroom Zone</span>
+                </div>
+              </div>
             </div>
 
-            {/* Status Chips & Heartbeat */}
-            <div className="flex flex-col justify-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800/60 dark:bg-slate-800/40">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Telemetry Link:
+            {/* Right Column: Hardware & Telemetry Specs */}
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4.5 dark:border-slate-800/80 dark:bg-slate-800/40 space-y-3">
+              <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
+                <span className="font-medium text-slate-500 dark:text-slate-400">
+                  Cloud Connection:
                 </span>
                 {deviceLoading ? (
-                  <span className="h-5 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700"></span>
+                  <span className="h-5 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
                 ) : connected ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Online & Active
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Cloud Connected (HiveMQ TLS)
                   </span>
                 ) : (
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-400"
-                    title={deviceReason}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                    Disconnected
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                    Connection Lost
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 dark:text-slate-400 font-medium">
-                  Last Heartbeat:
+              <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
+                <span className="font-medium text-slate-500 dark:text-slate-400">
+                  Last Active Signal:
                 </span>
-                <span className="font-mono text-slate-700 dark:text-slate-300">
-                  {deviceLoading ? (
-                    'Checking...'
-                  ) : lastSeen ? (
-                    formatDistanceToNow(new Date(lastSeen), { addSuffix: true })
-                  ) : (
-                    'Never'
-                  )}
+                <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">
+                  {deviceLoading
+                    ? 'Checking...'
+                    : lastSeen
+                      ? formatDistanceToNow(new Date(lastSeen), { addSuffix: true })
+                      : 'Never'}
                 </span>
               </div>
 
-              {!deviceLoading && (
-                <div className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 border-t border-slate-200/50 dark:border-slate-700/50 pt-2 mt-0.5">
-                  <span className="font-mono">ESP32:</span>
-                  <span>{deviceStatus === 'online' ? 'Real-time MQTT telemetry active' : (deviceReason || 'Controller link offline')}</span>
-                </div>
-              )}
+              <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
+                <span className="font-medium text-slate-500 dark:text-slate-400">
+                  Microcontroller Model:
+                </span>
+                <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                  ESP32-WROOM-32D (Dual-Core)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-slate-500 dark:text-slate-400">
+                  Integrated Sensors:
+                </span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium">
+                  HC-SR04 Proximity &amp; YF-S201 Flow
+                </span>
+              </div>
             </div>
           </div>
 
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
-              className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/40 active:translate-y-0.5"
               disabled={loadingConfiguration || savingSection !== null}
-              data-loading={savingSection === 'device'}
               onClick={handleDeviceSave}
             >
               {savingSection === 'device' ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Save Profile
+              <span>Save Unit Profile</span>
             </button>
           </div>
         </div>
