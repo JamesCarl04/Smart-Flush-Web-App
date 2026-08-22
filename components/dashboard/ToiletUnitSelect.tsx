@@ -275,7 +275,7 @@ export function ToiletUnitSelect({
         aria-label={ariaLabel}
         onClick={() => (isOpen ? handleClose() : handleOpen())}
         onKeyDown={handleTriggerKeyDown}
-        className={`group flex min-h-[46px] w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-left text-sm shadow-sm transition-all dark:border-slate-700 dark:bg-slate-850 disabled:cursor-not-allowed disabled:opacity-60 ${triggerRingClass} ${
+        className={`group flex min-h-[46px] w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-left text-sm shadow-sm transition-all dark:border-slate-700 dark:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${triggerRingClass} ${
           isOpen ? 'border-amber-500 ring-2 ring-amber-500/20 dark:border-amber-500' : ''
         }`}
       >
@@ -340,7 +340,7 @@ export function ToiletUnitSelect({
                 }}
                 placeholder="Search floor, restroom, or stall..."
                 aria-label="Filter toilet units"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-1.5 pl-9 pr-8 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-500 dark:focus:bg-slate-850"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-1.5 pl-9 pr-8 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-500 dark:focus:bg-slate-800"
               />
               {searchQuery ? (
                 <button
@@ -437,7 +437,7 @@ export function ToiletUnitSelect({
           </div>
 
           {/* Quick Footer hint */}
-          <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 px-3 py-1.5 text-[11px] text-slate-500 dark:border-slate-800/80 dark:bg-slate-850/50 dark:text-slate-400">
+          <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 px-3 py-1.5 text-[11px] text-slate-500 dark:border-slate-800/80 dark:bg-slate-800/50 dark:text-slate-400">
             <span>{devices.length} total units</span>
             <span className="font-mono text-[10px]">Use ↑↓ to navigate</span>
           </div>
