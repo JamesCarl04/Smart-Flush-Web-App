@@ -50,6 +50,7 @@ export default function DashboardLayout({
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -57,10 +58,10 @@ export default function DashboardLayout({
   const recentAlerts = alerts.slice(0, 5);
 
   useEffect(() => {
-    if (!loading && !user && !presentationMode) {
+    if (!loading && !user && !presentationMode && !isLoggingOut) {
       router.replace('/auth/login');
     }
-  }, [loading, presentationMode, router, user]);
+  }, [loading, presentationMode, router, user, isLoggingOut]);
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -86,8 +87,12 @@ export default function DashboardLayout({
   }, []);
 
   const handleLogout = async () => {
-    await logout();
-    router.push('/auth/login');
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      window.location.href = '/auth/login';
+    }
   };
 
   const navSections: NavSection[] = [
@@ -137,6 +142,22 @@ export default function DashboardLayout({
   const isAdmin =
     user?.email?.toLowerCase().includes('admin') ||
     user?.displayName?.toLowerCase().includes('admin');
+
+  if (loading || isLoggingOut || (!user && !presentationMode)) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 transition-colors">
+        <div className="flex flex-col items-center gap-4 animate-fade-in">
+          <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Klir<span className="text-[#B5121B]">.</span>
+          </span>
+          <div className="loading loading-spinner loading-md text-[#B5121B]"></div>
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {isLoggingOut ? 'Signing out...' : 'Loading session...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-[#0b0f19] dark:text-slate-100 flex flex-col">
