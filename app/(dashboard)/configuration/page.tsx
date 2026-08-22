@@ -534,7 +534,9 @@ export default function ConfigurationPage() {
   };
 
   const isLiveInRange =
-    ultrasonicDistance !== undefined && ultrasonicDistance <= threshold;
+    ultrasonicDistance !== undefined &&
+    ultrasonicDistance > 0 &&
+    ultrasonicDistance <= threshold;
 
   const currentGroupRules = rules.filter(
     (rule) => rule.group === activeRuleTab,

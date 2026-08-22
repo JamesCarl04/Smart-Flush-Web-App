@@ -142,23 +142,26 @@ export function StatCards() {
     ultrasonicDistance !== undefined && !isNaN(ultrasonicDistance)
       ? Number(ultrasonicDistance)
       : null;
-  const isPersonPresent = distanceVal !== null && distanceVal < 30;
+  // Ultrasonic sensors have a 2-3cm blind zone; 0 indicates timeout/no-echo/uninitialized
+  const isSensorValid = distanceVal !== null && distanceVal > 0;
+  const isPersonPresent = connected && isSensorValid && distanceVal <= 30;
   const distanceMeterPercent = useMemo(() => {
-    if (distanceVal === null) return 0;
+    if (distanceVal === null || !connected || !isSensorValid) return 0;
     // Clamped 0-100cm percentage
     return Math.min(100, Math.max(0, Math.round(distanceVal)));
-  }, [distanceVal]);
+  }, [connected, distanceVal, isSensorValid]);
 
   // Flow Rate Calculations (0 - 10.0 L/min range)
   const flowVal =
     waterFlowRate !== undefined && !isNaN(waterFlowRate)
       ? Number(waterFlowRate)
       : 0;
-  const isFlowActive = flowVal > 0.05;
+  const isFlowActive = connected && flowVal > 0.05;
   const flowMeterPercent = useMemo(() => {
+    if (!connected) return 0;
     // 0 - 10 L/min scale mapped to 0-100%
     return Math.min(100, Math.max(0, Math.round((flowVal / 10) * 100)));
-  }, [flowVal]);
+  }, [connected, flowVal]);
 
   // System Operating State Config
   const safeSystemState = (systemState || 'standby') as SystemStateKey;
@@ -208,7 +211,11 @@ export function StatCards() {
               <div className="space-y-2">
                 <div className="flex items-baseline gap-1.5">
                   <span className="font-mono text-3xl font-bold tracking-tight text-slate-900 tabular-nums dark:text-slate-100">
-                    {distanceVal !== null ? distanceVal.toFixed(0) : '--'}
+                    {!connected
+                      ? '--'
+                      : isSensorValid && distanceVal !== null
+                        ? distanceVal.toFixed(0)
+                        : '--'}
                   </span>
                   <span className="font-mono text-sm font-medium text-slate-500 dark:text-slate-400">
                     cm
@@ -218,17 +225,27 @@ export function StatCards() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                      isPersonPresent
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                        : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300'
+                      !connected
+                        ? 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400'
+                        : isPersonPresent
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                     }`}
                   >
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        isPersonPresent ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                        !connected
+                          ? 'bg-slate-400'
+                          : isPersonPresent
+                            ? 'bg-emerald-500 animate-pulse'
+                            : 'bg-slate-400'
                       }`}
                     />
-                    {isPersonPresent ? 'Stall Occupied' : 'Stall Vacant'}
+                    {!connected
+                      ? 'Offline'
+                      : isPersonPresent
+                        ? 'Stall Occupied'
+                        : 'Stall Vacant'}
                   </span>
                 </div>
               </div>
@@ -300,7 +317,7 @@ export function StatCards() {
               <div className="space-y-2">
                 <div className="flex items-baseline gap-1.5">
                   <span className="font-mono text-3xl font-bold tracking-tight text-slate-900 tabular-nums dark:text-slate-100">
-                    {flowVal.toFixed(1)}
+                    {!connected ? '--' : flowVal.toFixed(1)}
                   </span>
                   <span className="font-mono text-sm font-medium text-slate-500 dark:text-slate-400">
                     L/min
@@ -310,17 +327,27 @@ export function StatCards() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                      isFlowActive
-                        ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
-                        : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300'
+                      !connected
+                        ? 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400'
+                        : isFlowActive
+                          ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                     }`}
                   >
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        isFlowActive ? 'bg-cyan-500 animate-pulse' : 'bg-slate-400'
+                        !connected
+                          ? 'bg-slate-400'
+                          : isFlowActive
+                            ? 'bg-cyan-500 animate-pulse'
+                            : 'bg-slate-400'
                       }`}
                     />
-                    {isFlowActive ? 'Water Flowing' : 'Idle (No Flow)'}
+                    {!connected
+                      ? 'Offline'
+                      : isFlowActive
+                        ? 'Water Flowing'
+                        : 'Idle (No Flow)'}
                   </span>
                 </div>
               </div>
