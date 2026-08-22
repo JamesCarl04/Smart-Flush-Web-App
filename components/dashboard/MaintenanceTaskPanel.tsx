@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   AlertCircle,
@@ -369,7 +370,13 @@ export function MaintenanceTaskPanel() {
     };
   }, [authLoading, roleLoading, user]);
 
-  // Close drawer on Escape key
+  // Mounted state for portal rendering
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Close drawer on Escape key & manage body scroll
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isCreateDrawerOpen && taskAction !== 'create') {
@@ -377,8 +384,17 @@ export function MaintenanceTaskPanel() {
       }
     };
 
+    if (isCreateDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isCreateDrawerOpen, taskAction]);
 
   const resolveAssignedName = (
@@ -1165,240 +1181,244 @@ export function MaintenanceTaskPanel() {
       </section>
 
       {/* ── SLIDE-OVER CREATE / DISPATCH TASK DRAWER ──────────────── */}
-      <div
-        className={`fixed inset-0 z-50 transition-all duration-300 ${
-          isCreateDrawerOpen
-            ? 'visible pointer-events-auto'
-            : 'invisible pointer-events-none'
-        }`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="slideover-task-title"
-      >
-        {/* Backdrop */}
-        <div
-          className={`fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${
-            isCreateDrawerOpen ? 'opacity-100' : 'opacity-0'
-          }`}
-          onClick={() => {
-            if (taskAction !== 'create') closeCreateDrawer();
-          }}
-          aria-hidden="true"
-        />
-
-        {/* Drawer Container */}
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+      {mounted &&
+        createPortal(
           <div
-            className={`w-screen max-w-lg transform bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
-              isCreateDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+            className={`fixed inset-0 z-[100] transition-all duration-300 ${
+              isCreateDrawerOpen
+                ? 'visible pointer-events-auto'
+                : 'invisible pointer-events-none'
             }`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="slideover-task-title"
           >
-            {/* Drawer Header */}
-            <div className="p-6 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/60 dark:bg-slate-850/50">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-rose-400 border border-primary/20">
-                  <BrushCleaning className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div>
-                  <h3
-                    id="slideover-task-title"
-                    className="text-lg font-bold text-slate-900 dark:text-slate-100"
-                  >
-                    Dispatch Maintenance Task
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Send real-time alerts and mobile push to technicians
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closeCreateDrawer}
-                disabled={taskAction === 'create'}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                aria-label="Close drawer"
+            {/* Backdrop */}
+            <div
+              className={`fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${
+                isCreateDrawerOpen ? 'opacity-100' : 'opacity-0'
+              }`}
+              onClick={() => {
+                if (taskAction !== 'create') closeCreateDrawer();
+              }}
+              aria-hidden="true"
+            />
+
+            {/* Drawer Container */}
+            <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10 z-[101]">
+              <div
+                className={`w-screen max-w-lg transform bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+                  isCreateDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+                }`}
               >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-
-            {/* Drawer Form Body (Scrollable) */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* Unit Target */}
-              <div className="form-control">
-                <label
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="drawer-toilet"
-                >
-                  Toilet Unit Target
-                </label>
-                <ToiletUnitSelect
-                  id="drawer-toilet"
-                  value={modalDeviceId}
-                  onChange={setModalDeviceId}
-                  devices={devices}
-                  loading={devicesLoading}
-                  accentColor="primary"
-                  ariaLabel="Select Toilet Unit Target"
-                />
-              </div>
-
-              {/* Priority & Category */}
-              <div className="form-control">
-                <label
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="drawer-trigger"
-                >
-                  Task Priority & Category
-                </label>
-                <select
-                  id="drawer-trigger"
-                  className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
-                  value={modalTriggerType}
-                  onChange={(e) =>
-                    setModalTriggerType(e.target.value as TaskTriggerType)
-                  }
-                >
-                  <option value="manual">Manual Dispatch (Standard)</option>
-                  <option value="maintenance">Scheduled PM (Critical)</option>
-                  <option value="flush_count">Flush Threshold (High)</option>
-                  <option value="uv_complete">UV Cycle Follow-up (High)</option>
-                </select>
-              </div>
-
-              {/* Task Instructions */}
-              <div className="form-control">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label
-                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                    htmlFor="drawer-message"
-                  >
-                    Task Instructions
-                  </label>
-                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                    {modalMessage.length}/500
-                  </span>
-                </div>
-                <textarea
-                  id="drawer-message"
-                  className="textarea textarea-bordered min-h-28 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
-                  maxLength={500}
-                  value={modalMessage}
-                  onChange={(e) => setModalMessage(e.target.value)}
-                  placeholder="Describe maintenance or sanitation request..."
-                />
-              </div>
-
-              {/* Assign To Personnel */}
-              <div className="form-control">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Assign To Personnel
-                </span>
-                {personnelLoading ? (
-                  <div className="skeleton h-12 w-full rounded-xl"></div>
-                ) : (
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/40">
-                    <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary rounded-md"
-                        checked={modalAssignedToIds.length === 0}
-                        onChange={toggleAllModalAssignedToIds}
-                        aria-label="Broadcast task to all maintenance personnel"
-                      />
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        All Maintenance Team (Broadcast)
-                      </span>
-                    </label>
-                    <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                      {personnel.map((person) => {
-                        const initials = getInitials(
-                          person.displayName || person.email || person.id,
-                        );
-                        const isChecked =
-                          modalAssignedToIds.length === 0 ||
-                          modalAssignedToIds.includes(person.id);
-
-                        return (
-                          <label
-                            key={person.id}
-                            className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-                          >
-                            <input
-                              type="checkbox"
-                              className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
-                              checked={isChecked}
-                              onChange={() => toggleModalAssignedToId(person.id)}
-                              aria-label={`Assign to ${person.displayName || person.email || person.id}`}
-                            />
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary dark:bg-primary/25 dark:text-rose-300"
-                                aria-hidden="true"
-                              >
-                                {initials}
-                              </span>
-                              <div className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200">
-                                  {person.displayName}
-                                </span>
-                                {person.email ? (
-                                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                                    {person.email}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })}
+                {/* Drawer Header */}
+                <div className="p-6 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/60 dark:bg-slate-850/50 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-rose-400 border border-primary/20">
+                      <BrushCleaning className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h3
+                        id="slideover-task-title"
+                        className="text-lg font-bold text-slate-900 dark:text-slate-100"
+                      >
+                        Dispatch Maintenance Task
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Send real-time alerts and mobile push to technicians
+                      </p>
                     </div>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={closeCreateDrawer}
+                    disabled={taskAction === 'create'}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                    aria-label="Close drawer"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+
+                {/* Drawer Form Body (Scrollable) */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* Unit Target */}
+                  <div className="form-control">
+                    <label
+                      className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                      htmlFor="drawer-toilet"
+                    >
+                      Toilet Unit Target
+                    </label>
+                    <ToiletUnitSelect
+                      id="drawer-toilet"
+                      value={modalDeviceId}
+                      onChange={setModalDeviceId}
+                      devices={devices}
+                      loading={devicesLoading}
+                      accentColor="primary"
+                      ariaLabel="Select Toilet Unit Target"
+                    />
+                  </div>
+
+                  {/* Priority & Category */}
+                  <div className="form-control">
+                    <label
+                      className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                      htmlFor="drawer-trigger"
+                    >
+                      Task Priority & Category
+                    </label>
+                    <select
+                      id="drawer-trigger"
+                      className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
+                      value={modalTriggerType}
+                      onChange={(e) =>
+                        setModalTriggerType(e.target.value as TaskTriggerType)
+                      }
+                    >
+                      <option value="manual">Manual Dispatch (Standard)</option>
+                      <option value="maintenance">Scheduled PM (Critical)</option>
+                      <option value="flush_count">Flush Threshold (High)</option>
+                      <option value="uv_complete">UV Cycle Follow-up (High)</option>
+                    </select>
+                  </div>
+
+                  {/* Task Instructions */}
+                  <div className="form-control">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <label
+                        className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                        htmlFor="drawer-message"
+                      >
+                        Task Instructions
+                      </label>
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                        {modalMessage.length}/500
+                      </span>
+                    </div>
+                    <textarea
+                      id="drawer-message"
+                      className="textarea textarea-bordered min-h-28 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
+                      maxLength={500}
+                      value={modalMessage}
+                      onChange={(e) => setModalMessage(e.target.value)}
+                      placeholder="Describe maintenance or sanitation request..."
+                    />
+                  </div>
+
+                  {/* Assign To Personnel */}
+                  <div className="form-control">
+                    <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Assign To Personnel
+                    </span>
+                    {personnelLoading ? (
+                      <div className="skeleton h-12 w-full rounded-xl"></div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/40">
+                        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm checkbox-primary rounded-md"
+                            checked={modalAssignedToIds.length === 0}
+                            onChange={toggleAllModalAssignedToIds}
+                            aria-label="Broadcast task to all maintenance personnel"
+                          />
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            All Maintenance Team (Broadcast)
+                          </span>
+                        </label>
+                        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                          {personnel.map((person) => {
+                            const initials = getInitials(
+                              person.displayName || person.email || person.id,
+                            );
+                            const isChecked =
+                              modalAssignedToIds.length === 0 ||
+                              modalAssignedToIds.includes(person.id);
+
+                            return (
+                              <label
+                                key={person.id}
+                                className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
+                                  checked={isChecked}
+                                  onChange={() => toggleModalAssignedToId(person.id)}
+                                  aria-label={`Assign to ${person.displayName || person.email || person.id}`}
+                                />
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span
+                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary dark:bg-primary/25 dark:text-rose-300"
+                                    aria-hidden="true"
+                                  >
+                                    {initials}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                                      {person.displayName}
+                                    </span>
+                                    {person.email ? (
+                                      <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                                        {person.email}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Drawer Sticky Footer */}
+                <div className="p-4 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-850/50 flex items-center justify-end gap-3 shrink-0">
+                  <button
+                    type="button"
+                    className="btn btn-ghost min-h-[44px] rounded-xl px-5 text-slate-600 dark:text-slate-400 font-medium"
+                    onClick={closeCreateDrawer}
+                    disabled={taskAction === 'create'}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="action-btn-primary min-h-[44px] px-6 font-semibold shadow-sm disabled:opacity-50"
+                    onClick={() => void handleCreateTaskFromModal()}
+                    disabled={
+                      taskAction === 'create' ||
+                      !modalDeviceId ||
+                      !modalMessage.trim() ||
+                      devicesLoading ||
+                      devices.length === 0
+                    }
+                  >
+                    {taskAction === 'create' ? (
+                      <>
+                        <span
+                          className="loading loading-spinner loading-sm"
+                          aria-hidden="true"
+                        />
+                        <span>Dispatching...</span>
+                      </>
+                    ) : (
+                      <>
+                        <BrushCleaning className="h-4 w-4" aria-hidden="true" />
+                        <span>Create & Dispatch</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Drawer Sticky Footer */}
-            <div className="p-4 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-850/50 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                className="btn btn-ghost min-h-[44px] rounded-xl px-5 text-slate-600 dark:text-slate-400 font-medium"
-                onClick={closeCreateDrawer}
-                disabled={taskAction === 'create'}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="action-btn-primary min-h-[44px] px-6 font-semibold shadow-sm disabled:opacity-50"
-                onClick={() => void handleCreateTaskFromModal()}
-                disabled={
-                  taskAction === 'create' ||
-                  !modalDeviceId ||
-                  !modalMessage.trim() ||
-                  devicesLoading ||
-                  devices.length === 0
-                }
-              >
-                {taskAction === 'create' ? (
-                  <>
-                    <span
-                      className="loading loading-spinner loading-sm"
-                      aria-hidden="true"
-                    />
-                    <span>Dispatching...</span>
-                  </>
-                ) : (
-                  <>
-                    <BrushCleaning className="h-4 w-4" aria-hidden="true" />
-                    <span>Create & Dispatch</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+          </div>,
+          document.body,
+        )}
 
       {/* ── EDIT TASK MODAL ────────────────────────────────────────── */}
       <dialog
