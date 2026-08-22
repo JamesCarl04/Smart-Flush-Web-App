@@ -13,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   RotateCw,
+  Search,
   ShieldAlert,
   Sparkles,
   Trash2,
@@ -60,6 +61,7 @@ interface DeleteTaskResponse {
 
 type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
+type FilterStatus = 'all' | 'pending' | 'acknowledged' | 'completed';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
 
 function formatDeviceLabel(device: Device): string {
@@ -189,49 +191,46 @@ export function MaintenanceTaskPanel() {
   const { user, loading: authLoading } = useAuth();
   const {
     tasks,
-    pendingCount,
     loading: tasksLoading,
     error: tasksError,
     refreshTasks,
   } = useTasks();
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
-  const [selectedToiletId, setSelectedToiletId] = useState('');
-  const [message, setMessage] = useState('');
-  const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(null);
   const [roleLoading, setRoleLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [taskAction, setTaskAction] = useState<
     'edit' | 'delete' | 'create' | null
   >(null);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
-  const [editToiletId, setEditToiletId] = useState('');
-  const [editMessage, setEditMessage] = useState('');
-  const [editAssignedToIds, setEditAssignedToIds] = useState<string[]>([]);
 
-  // Modal Add Task State
+  // Filters & Search State
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Drawer / Slide-Over Create Task State
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [modalDeviceId, setModalDeviceId] = useState('');
   const [modalTriggerType, setModalTriggerType] =
     useState<TaskTriggerType>('manual');
   const [modalMessage, setModalMessage] = useState('');
   const [modalAssignedToIds, setModalAssignedToIds] = useState<string[]>([]);
 
+  // Edit / Delete State
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [editToiletId, setEditToiletId] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [editAssignedToIds, setEditAssignedToIds] = useState<string[]>([]);
+
   const [taskToast, setTaskToast] = useState<{
     kind: ToastKind;
     message: string;
   } | null>(null);
 
-  const confirmDialogRef = useRef<HTMLDialogElement | null>(null);
   const editDialogRef = useRef<HTMLDialogElement | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
-  const createDialogRef = useRef<HTMLDialogElement | null>(null);
-  const previousDefaultMessageRef = useRef('');
 
-  const showAssignmentForm = role === 'admin';
-  const showAssignmentSkeleton = roleLoading;
   const canManageTasks = role === 'admin';
 
   const isForbiddenError = useMemo(() => {
@@ -251,14 +250,14 @@ export function MaintenanceTaskPanel() {
     personnel,
     personnelById,
     loading: personnelLoading,
-    error: personnelError,
   } = useMaintenancePersonnel({
-    enabled: showAssignmentForm || canManageTasks,
+    enabled: canManageTasks,
   });
 
   const resolveDeviceLabel = (deviceId: string) =>
     devices.find((device) => device.id === deviceId)?.name || deviceId;
 
+  // Toast auto-dismissal
   useEffect(() => {
     if (!taskToast) {
       return;
@@ -271,6 +270,7 @@ export function MaintenanceTaskPanel() {
     return () => window.clearTimeout(timeoutId);
   }, [taskToast]);
 
+  // Load User Role
   useEffect(() => {
     let cancelled = false;
 
@@ -316,6 +316,7 @@ export function MaintenanceTaskPanel() {
     };
   }, [authLoading, user]);
 
+  // Load Devices
   useEffect(() => {
     let cancelled = false;
 
@@ -339,16 +340,6 @@ export function MaintenanceTaskPanel() {
         if (!cancelled) {
           const nextDevices = Array.isArray(response.data) ? response.data : [];
           setDevices(nextDevices);
-          setSelectedToiletId((current) => {
-            if (
-              current &&
-              nextDevices.some((device) => device.id === current)
-            ) {
-              return current;
-            }
-
-            return nextDevices[0]?.id ?? '';
-          });
           setModalDeviceId((current) => {
             if (
               current &&
@@ -356,7 +347,6 @@ export function MaintenanceTaskPanel() {
             ) {
               return current;
             }
-
             return nextDevices[0]?.id ?? '';
           });
         }
@@ -364,7 +354,6 @@ export function MaintenanceTaskPanel() {
         console.warn('[MaintenanceTaskPanel] device lookup failed:', error);
         if (!cancelled) {
           setDevices([]);
-          setSelectedToiletId('');
         }
       } finally {
         if (!cancelled) {
@@ -380,31 +369,17 @@ export function MaintenanceTaskPanel() {
     };
   }, [authLoading, roleLoading, user]);
 
-  const selectedDevice = useMemo(
-    () => devices.find((device) => device.id === selectedToiletId) ?? null,
-    [devices, selectedToiletId],
-  );
-  const selectedDeviceLabel = selectedDevice
-    ? formatDeviceLabel(selectedDevice)
-    : selectedToiletId || 'the selected toilet unit';
-  const defaultMessage = useMemo(
-    () => getDefaultMessage(selectedDeviceLabel),
-    [selectedDeviceLabel],
-  );
-  const useTwoColumnLayout = showAssignmentForm || showAssignmentSkeleton;
-
+  // Close drawer on Escape key
   useEffect(() => {
-    const previousDefaultMessage = previousDefaultMessageRef.current;
-    previousDefaultMessageRef.current = defaultMessage;
-
-    setMessage((currentMessage) => {
-      if (!currentMessage.trim() || currentMessage === previousDefaultMessage) {
-        return defaultMessage;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCreateDrawerOpen && taskAction !== 'create') {
+        setIsCreateDrawerOpen(false);
       }
+    };
 
-      return currentMessage;
-    });
-  }, [defaultMessage]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCreateDrawerOpen, taskAction]);
 
   const resolveAssignedName = (
     assignedUserId?: string | null,
@@ -481,56 +456,39 @@ export function MaintenanceTaskPanel() {
     return `${summary.acknowledgedCount}/${summary.totalCount} staff ack`;
   };
 
-  const toggleAllAssignedToIds = () => {
-    setAssignedToIds((current) =>
-      current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
-    );
-  };
+  // Filter & Stats calculation
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const pending = tasks.filter((t) => t.status === 'pending').length;
+    const acknowledged = tasks.filter((t) => t.status === 'acknowledged').length;
+    const completed = tasks.filter((t) => t.status === 'completed').length;
+    return { total, pending, acknowledged, completed };
+  }, [tasks]);
 
-  const toggleAssignedToId = (userId: string) => {
-    setAssignedToIds((current) => {
-      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
-      const isSelected = activeIds.includes(userId);
-      const nextIds = isSelected
-        ? activeIds.filter((id) => id !== userId)
-        : [...activeIds, userId];
-
-      if (nextIds.length === 0) {
-        return [NO_ASSIGNEES_VALUE];
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (filterStatus !== 'all' && task.status !== filterStatus) {
+        return false;
       }
 
-      return normalizeAssigneeSelection(
-        nextIds,
-        personnel.map((person) => person.id),
-      );
-    });
-  };
-
-  const toggleAllEditAssignedToIds = () => {
-    setEditAssignedToIds((current) =>
-      current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
-    );
-  };
-
-  const toggleEditAssignedToId = (userId: string) => {
-    setEditAssignedToIds((current) => {
-      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
-      const isSelected = activeIds.includes(userId);
-      const nextIds = isSelected
-        ? activeIds.filter((id) => id !== userId)
-        : [...activeIds, userId];
-
-      if (nextIds.length === 0) {
-        return [NO_ASSIGNEES_VALUE];
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const deviceName = resolveDeviceLabel(task.deviceId).toLowerCase();
+        const msg = (task.message || '').toLowerCase();
+        const assignee = resolveAssignedName(
+          task.assignedTo,
+          task.assignedToIds,
+        ).toLowerCase();
+        return (
+          deviceName.includes(q) || msg.includes(q) || assignee.includes(q)
+        );
       }
 
-      return normalizeAssigneeSelection(
-        nextIds,
-        personnel.map((person) => person.id),
-      );
+      return true;
     });
-  };
+  }, [tasks, filterStatus, searchQuery, devices, personnelById]);
 
+  // Drawer assignees toggle
   const toggleAllModalAssignedToIds = () => {
     setModalAssignedToIds((current) =>
       current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
@@ -539,6 +497,32 @@ export function MaintenanceTaskPanel() {
 
   const toggleModalAssignedToId = (userId: string) => {
     setModalAssignedToIds((current) => {
+      const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
+      const isSelected = activeIds.includes(userId);
+      const nextIds = isSelected
+        ? activeIds.filter((id) => id !== userId)
+        : [...activeIds, userId];
+
+      if (nextIds.length === 0) {
+        return [NO_ASSIGNEES_VALUE];
+      }
+
+      return normalizeAssigneeSelection(
+        nextIds,
+        personnel.map((person) => person.id),
+      );
+    });
+  };
+
+  // Edit modal assignees toggle
+  const toggleAllEditAssignedToIds = () => {
+    setEditAssignedToIds((current) =>
+      current.length === 0 ? [NO_ASSIGNEES_VALUE] : [],
+    );
+  };
+
+  const toggleEditAssignedToId = (userId: string) => {
+    setEditAssignedToIds((current) => {
       const activeIds = current.filter((id) => id !== NO_ASSIGNEES_VALUE);
       const isSelected = activeIds.includes(userId);
       const nextIds = isSelected
@@ -575,30 +559,23 @@ export function MaintenanceTaskPanel() {
     }
   };
 
-  const openConfirmModal = () => {
-    confirmDialogRef.current?.showModal();
-  };
-
-  const closeConfirmModal = () => {
-    confirmDialogRef.current?.close();
-  };
-
-  const openCreateTaskModal = () => {
-    setModalDeviceId(selectedToiletId || devices[0]?.id || '');
+  // Open & Close Slide-Over Drawer
+  const openCreateDrawer = () => {
+    const initialDeviceId = devices[0]?.id || '';
+    setModalDeviceId(initialDeviceId);
     setModalTriggerType('manual');
     setModalMessage(
-      getDefaultMessage(
-        resolveDeviceLabel(selectedToiletId || devices[0]?.id || ''),
-      ),
+      getDefaultMessage(resolveDeviceLabel(initialDeviceId)),
     );
     setModalAssignedToIds([]);
-    createDialogRef.current?.showModal();
+    setIsCreateDrawerOpen(true);
   };
 
-  const closeCreateTaskModal = () => {
-    createDialogRef.current?.close();
+  const closeCreateDrawer = () => {
+    setIsCreateDrawerOpen(false);
   };
 
+  // Create Task Handler
   const handleCreateTaskFromModal = async () => {
     if (!user) {
       setTaskToast({
@@ -650,7 +627,7 @@ export function MaintenanceTaskPanel() {
         }),
       });
 
-      closeCreateTaskModal();
+      closeCreateDrawer();
       await refreshTasks();
       setTaskToast({
         kind: 'success',
@@ -666,74 +643,7 @@ export function MaintenanceTaskPanel() {
     }
   };
 
-  const handleAssignTask = async () => {
-    if (!user) {
-      setTaskToast({
-        kind: 'error',
-        message: 'You must be logged in to assign a task.',
-      });
-      return;
-    }
-
-    if (!selectedToiletId) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Select a toilet unit before assigning a task.',
-      });
-      return;
-    }
-
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Enter a task message before assigning a task.',
-      });
-      return;
-    }
-
-    if (assignedToIds.includes(NO_ASSIGNEES_VALUE)) {
-      setTaskToast({
-        kind: 'error',
-        message: 'Select at least one maintenance person before assigning.',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      await apiFetch<CreateTaskResponse>('/api/tasks', user, {
-        method: 'POST',
-        body: JSON.stringify({
-          deviceId: selectedToiletId,
-          triggerType: 'manual',
-          message: trimmedMessage,
-          assignedTo: assignedToIds.length === 1 ? assignedToIds[0] : null,
-          assignedToIds: assignedToIds.filter(
-            (userId) => userId !== NO_ASSIGNEES_VALUE,
-          ),
-        }),
-      });
-
-      closeConfirmModal();
-      setMessage(defaultMessage);
-      setAssignedToIds([]);
-      await refreshTasks();
-      setTaskToast({
-        kind: 'success',
-        message: 'Task assigned and notification sent',
-      });
-    } catch (error) {
-      setTaskToast({
-        kind: 'error',
-        message: getErrorMessage(error) ?? 'Failed to assign task',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+  // Edit Task Handlers
   const openEditTaskModal = (task: Task) => {
     setEditingTask(task);
     setEditToiletId(task.deviceId);
@@ -814,6 +724,7 @@ export function MaintenanceTaskPanel() {
     }
   };
 
+  // Delete Task Handlers
   const openDeleteTaskModal = (task: Task) => {
     setDeletingTask(task);
     deleteDialogRef.current?.showModal();
@@ -859,212 +770,13 @@ export function MaintenanceTaskPanel() {
     <>
       <section
         id="maintenance-task-panel"
-        aria-label="Maintenance Dispatch & Task Feed"
-        className={`grid scroll-mt-24 gap-6 xl:gap-8 ${
-          useTwoColumnLayout ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'
-        }`}
+        aria-label="Maintenance Operations & Live Task Feed"
+        className="w-full"
       >
-        {showAssignmentSkeleton ? (
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95">
-            <div className="space-y-5">
-              <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4 dark:border-slate-800/80">
-                <div className="skeleton h-11 w-11 rounded-xl"></div>
-                <div className="space-y-2">
-                  <div className="skeleton h-5 w-40"></div>
-                  <div className="skeleton h-3 w-56 max-w-full"></div>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="skeleton h-4 w-32"></div>
-                <div className="skeleton h-12 w-full rounded-xl"></div>
-                <div className="skeleton h-4 w-32"></div>
-                <div className="skeleton h-24 w-full rounded-xl"></div>
-                <div className="skeleton h-4 w-28"></div>
-                <div className="skeleton h-28 w-full rounded-xl"></div>
-                <div className="skeleton h-12 w-full rounded-xl"></div>
-              </div>
-            </div>
-          </div>
-        ) : showAssignmentForm ? (
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95 transition-all">
-            {/* Top Amber Accent Glow */}
-            <div
-              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 via-rose-500 to-amber-600 opacity-90"
-              aria-hidden="true"
-            />
-
-            <div className="mb-6 flex items-center justify-between border-b border-slate-200/80 pb-4 dark:border-slate-800/80">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400">
-                  <BrushCleaning className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    Assign Task
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Send real-time dispatch alerts and mobile push to
-                    technicians.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              <div className="form-control w-full">
-                <label
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="maintenance-toilet"
-                >
-                  Toilet Unit Target
-                </label>
-                <ToiletUnitSelect
-                  id="maintenance-toilet"
-                  value={selectedToiletId}
-                  onChange={setSelectedToiletId}
-                  devices={devices}
-                  loading={devicesLoading}
-                  accentColor="amber"
-                  ariaLabel="Select Toilet Unit Target"
-                />
-              </div>
-
-              <div className="form-control w-full">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label
-                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                    htmlFor="maintenance-message"
-                  >
-                    Task Instructions
-                  </label>
-                  <span
-                    id="maintenance-msg-count"
-                    className="text-xs font-mono text-slate-500 dark:text-slate-400"
-                  >
-                    {message.length}/500
-                  </span>
-                </div>
-                <textarea
-                  id="maintenance-message"
-                  aria-describedby="maintenance-msg-count"
-                  className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
-                  maxLength={500}
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="Describe maintenance or sanitation request..."
-                ></textarea>
-              </div>
-
-              <div className="form-control w-full">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Assign To Personnel
-                </span>
-                {personnelLoading ? (
-                  <div className="skeleton h-12 w-full rounded-xl"></div>
-                ) : (
-                  <>
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/40">
-                      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-sm checkbox-warning rounded-md"
-                          checked={assignedToIds.length === 0}
-                          onChange={toggleAllAssignedToIds}
-                          aria-label="Broadcast task to all maintenance personnel"
-                        />
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          All Maintenance Team (Broadcast)
-                        </span>
-                      </label>
-                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                        {personnel.map((person) => {
-                          const initials = getInitials(
-                            person.displayName || person.email || person.id,
-                          );
-                          const isChecked =
-                            assignedToIds.length === 0 ||
-                            assignedToIds.includes(person.id);
-
-                          return (
-                            <label
-                              key={person.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                className="checkbox checkbox-sm checkbox-warning mt-0.5 rounded-md"
-                                checked={isChecked}
-                                onChange={() => toggleAssignedToId(person.id)}
-                                aria-label={`Assign to ${person.displayName || person.email || person.id}`}
-                              />
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-700 dark:bg-amber-500/25 dark:text-amber-300"
-                                  aria-hidden="true"
-                                >
-                                  {initials}
-                                </span>
-                                <div className="min-w-0">
-                                  <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200">
-                                    {person.displayName}
-                                  </span>
-                                  {person.email ? (
-                                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                                      {person.email}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {personnelError && (
-                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
-                        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span>{personnelError}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className="action-btn-primary w-full min-h-[48px] shadow-sm font-semibold tracking-wide"
-                disabled={
-                  isSubmitting ||
-                  devicesLoading ||
-                  personnelLoading ||
-                  devices.length === 0
-                }
-                onClick={openConfirmModal}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span
-                      className="loading loading-spinner loading-sm"
-                      aria-hidden="true"
-                    ></span>
-                    <span>Assigning Task...</span>
-                  </>
-                ) : (
-                  <>
-                    <BrushCleaning className="h-4 w-4" aria-hidden="true" />
-                    <span>Dispatch Task</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* ── RIGHT COLUMN: MAINTENANCE TASK FEED CARD ─────────────── */}
         <div
           className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/95"
           role="region"
-          aria-label="Maintenance Task Feed"
+          aria-label="Maintenance Operations Feed"
         >
           {/* Top Primary Accent Glow */}
           <div
@@ -1072,34 +784,56 @@ export function MaintenanceTaskPanel() {
             aria-hidden="true"
           />
 
-          <div className="mb-6 flex flex-col gap-3 border-b border-slate-200/80 pb-4 md:flex-row md:items-center md:justify-between dark:border-slate-800/80">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary dark:border-primary/30 dark:bg-primary/20 dark:text-rose-400">
-                <ClipboardList className="h-5 w-5" aria-hidden="true" />
+          {/* ── HEADER ──────────────────────────────────────────────── */}
+          <div className="mb-6 flex flex-col gap-4 border-b border-slate-200/80 pb-5 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800/80">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary dark:border-primary/30 dark:bg-primary/20 dark:text-rose-400 shadow-xs">
+                <ClipboardList className="h-6 w-6" aria-hidden="true" />
               </div>
               <div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    Maintenance Task Feed
+                    Maintenance Task Operations
                   </h2>
                   <span className="relative flex h-2.5 w-2.5 items-center justify-center">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
                   </span>
                   <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    Live
+                    Live Feed
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Real-time status updates and technician acknowledgments.
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Real-time telemetry dispatch, technician status tracking, and SLA resolution.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              {/* Quick Live Metric Badges */}
+              {!tasksLoading && !isForbiddenError && (
+                <div className="hidden sm:flex items-center gap-1.5 mr-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Pending:</span>
+                    <span className="font-bold tabular-nums">{stats.pending}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-800 dark:text-sky-300">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Ack:</span>
+                    <span className="font-bold tabular-nums">{stats.acknowledged}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Done:</span>
+                    <span className="font-bold tabular-nums">{stats.completed}</span>
+                  </span>
+                </div>
+              )}
+
               <button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => void handleManualRefresh()}
                 title="Refresh tasks"
                 aria-label="Refresh tasks"
@@ -1110,31 +844,85 @@ export function MaintenanceTaskPanel() {
                 />
               </button>
 
-              {canManageTasks ? (
+              {canManageTasks && (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all active:translate-y-0.5 min-h-[36px] whitespace-nowrap"
-                  onClick={openCreateTaskModal}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all active:translate-y-0.5 min-h-[40px] whitespace-nowrap"
+                  onClick={openCreateDrawer}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span>Add Task</span>
+                  <span>Dispatch Task</span>
                 </button>
-              ) : null}
-
-              {tasksLoading ? (
-                <div className="skeleton h-8 w-24 rounded-full"></div>
-              ) : !isForbiddenError ? (
-                <div
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300 whitespace-nowrap"
-                  aria-live="polite"
-                >
-                  <span>Pending</span>
-                  <span className="font-bold tabular-nums">{pendingCount}</span>
-                </div>
-              ) : null}
+              )}
             </div>
           </div>
 
+          {/* ── FILTER & SEARCH BAR ──────────────────────────────────── */}
+          {!tasksLoading && !isForbiddenError && tasks.length > 0 && (
+            <div className="mb-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Filter Tabs */}
+              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('all')}
+                  className={`px-3 py-1.5 font-semibold rounded-lg transition-all ${
+                    filterStatus === 'all'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  All ({stats.total})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('pending')}
+                  className={`px-3 py-1.5 font-semibold rounded-lg transition-all ${
+                    filterStatus === 'pending'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'
+                  }`}
+                >
+                  Pending ({stats.pending})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('acknowledged')}
+                  className={`px-3 py-1.5 font-semibold rounded-lg transition-all ${
+                    filterStatus === 'acknowledged'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400'
+                  }`}
+                >
+                  Acknowledged ({stats.acknowledged})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('completed')}
+                  className={`px-3 py-1.5 font-semibold rounded-lg transition-all ${
+                    filterStatus === 'completed'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+                  }`}
+                >
+                  Completed ({stats.completed})
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative min-w-[220px] sm:max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search unit, message, or staff..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── FEED CONTENT LIST ────────────────────────────────────── */}
           {tasksLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((item) => (
@@ -1208,19 +996,35 @@ export function MaintenanceTaskPanel() {
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 mt-4 text-xs font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all min-h-[36px]"
-                  onClick={openCreateTaskModal}
+                  onClick={openCreateDrawer}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   <span>Create First Task</span>
                 </button>
               )}
             </div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/30 px-6 py-10 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-850/20 dark:text-slate-400">
+              <p className="font-medium text-sm text-slate-700 dark:text-slate-300">
+                No tasks matching the selected filter or search
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterStatus('all');
+                  setSearchQuery('');
+                }}
+                className="mt-2 text-xs font-semibold text-primary hover:underline"
+              >
+                Reset filters
+              </button>
+            </div>
           ) : (
             <div
-              className="max-h-[34rem] space-y-3 overflow-y-auto pr-1"
+              className="max-h-[38rem] space-y-3 overflow-y-auto pr-1"
               aria-live="polite"
             >
-              {tasks.map((task) => {
+              {filteredTasks.map((task) => {
                 const acknowledgementSummary = getAcknowledgementSummary(task);
                 const priority = getPriorityBadge(task.triggerType);
                 const statusInfo = getStatusBadge(task.status);
@@ -1228,23 +1032,23 @@ export function MaintenanceTaskPanel() {
                 return (
                   <div
                     key={task.id}
-                    className="group rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-850/60 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                    className="group rounded-xl border border-slate-200/90 bg-white p-4.5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-850/60 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                   >
                     {/* Header Row: Location, Priority, and Status Badge */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/80">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <span className="font-bold text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-md whitespace-nowrap">
+                      <div className="flex flex-wrap items-center gap-2 min-w-0">
+                        <span className="font-bold text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg whitespace-nowrap">
                           {resolveDeviceLabel(task.deviceId)}
                         </span>
                         <span
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold whitespace-nowrap ${priority.className}`}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${priority.className}`}
                         >
                           {priority.icon}
                           <span>{priority.label}</span>
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <div
                           className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
                         >
@@ -1277,7 +1081,7 @@ export function MaintenanceTaskPanel() {
                       </div>
                     </div>
 
-                    {/* Body: Message text with proper full width flow */}
+                    {/* Body: Message text */}
                     <p className="my-3 break-words text-sm font-medium text-slate-900 dark:text-slate-100 leading-relaxed">
                       {task.message || 'No message provided'}
                     </p>
@@ -1360,64 +1164,95 @@ export function MaintenanceTaskPanel() {
         </div>
       </section>
 
-      {/* ── CREATE TASK MODAL ────────────────────────────────────── */}
-      <dialog
-        ref={createDialogRef}
-        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
-        aria-labelledby="create-task-title"
+      {/* ── SLIDE-OVER CREATE / DISPATCH TASK DRAWER ──────────────── */}
+      <div
+        className={`fixed inset-0 z-50 transition-all duration-300 ${
+          isCreateDrawerOpen
+            ? 'visible pointer-events-auto'
+            : 'invisible pointer-events-none'
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slideover-task-title"
       >
-        <div className="modal-box max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
-            <div>
-              <h3
-                id="create-task-title"
-                className="text-lg font-bold text-slate-900 dark:text-slate-100"
-              >
-                Create Maintenance Task
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Dispatch a new task to technicians with custom priority
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={closeCreateTaskModal}
-              aria-label="Close create task dialog"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
+        {/* Backdrop */}
+        <div
+          className={`fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-300 ${
+            isCreateDrawerOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+          onClick={() => {
+            if (taskAction !== 'create') closeCreateDrawer();
+          }}
+          aria-hidden="true"
+        />
 
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Drawer Container */}
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+          <div
+            className={`w-screen max-w-lg transform bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+              isCreateDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            {/* Drawer Header */}
+            <div className="p-6 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/60 dark:bg-slate-850/50">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-rose-400 border border-primary/20">
+                  <BrushCleaning className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h3
+                    id="slideover-task-title"
+                    className="text-lg font-bold text-slate-900 dark:text-slate-100"
+                  >
+                    Dispatch Maintenance Task
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Send real-time alerts and mobile push to technicians
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeCreateDrawer}
+                disabled={taskAction === 'create'}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Close drawer"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            {/* Drawer Form Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Unit Target */}
               <div className="form-control">
                 <label
-                  className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="modal-toilet"
+                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="drawer-toilet"
                 >
-                  Toilet Unit
+                  Toilet Unit Target
                 </label>
                 <ToiletUnitSelect
-                  id="modal-toilet"
+                  id="drawer-toilet"
                   value={modalDeviceId}
                   onChange={setModalDeviceId}
                   devices={devices}
                   loading={devicesLoading}
                   accentColor="primary"
-                  ariaLabel="Select Toilet Unit"
+                  ariaLabel="Select Toilet Unit Target"
                 />
               </div>
 
+              {/* Priority & Category */}
               <div className="form-control">
                 <label
-                  className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="modal-trigger"
+                  className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                  htmlFor="drawer-trigger"
                 >
-                  Task Type / Priority
+                  Task Priority & Category
                 </label>
                 <select
-                  id="modal-trigger"
+                  id="drawer-trigger"
                   className="select select-bordered w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100 min-h-[44px]"
                   value={modalTriggerType}
                   onChange={(e) =>
@@ -1430,200 +1265,140 @@ export function MaintenanceTaskPanel() {
                   <option value="uv_complete">UV Cycle Follow-up (High)</option>
                 </select>
               </div>
-            </div>
 
-            <div className="form-control">
-              <div className="mb-1 flex items-center justify-between">
-                <label
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
-                  htmlFor="modal-message"
-                >
-                  Task Message
-                </label>
-                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                  {modalMessage.length}/500
-                </span>
-              </div>
-              <textarea
-                id="modal-message"
-                className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
-                maxLength={500}
-                value={modalMessage}
-                onChange={(e) => setModalMessage(e.target.value)}
-                placeholder="Enter instructions for maintenance team..."
-              ></textarea>
-            </div>
-
-            <div className="form-control">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Assign To
-              </span>
-              <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 dark:border-slate-800/80 dark:bg-slate-850/40">
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-sm checkbox-primary rounded-md"
-                    checked={modalAssignedToIds.length === 0}
-                    onChange={toggleAllModalAssignedToIds}
-                    aria-label="Broadcast task to all maintenance personnel"
-                  />
-                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    All Maintenance Team (Broadcast)
+              {/* Task Instructions */}
+              <div className="form-control">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                    htmlFor="drawer-message"
+                  >
+                    Task Instructions
+                  </label>
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                    {modalMessage.length}/500
                   </span>
-                </label>
-                <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                  {personnel.map((person) => (
-                    <label
-                      key={person.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-                    >
+                </div>
+                <textarea
+                  id="drawer-message"
+                  className="textarea textarea-bordered min-h-28 w-full rounded-xl border-slate-300 bg-white p-3 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-850 dark:text-slate-100"
+                  maxLength={500}
+                  value={modalMessage}
+                  onChange={(e) => setModalMessage(e.target.value)}
+                  placeholder="Describe maintenance or sanitation request..."
+                />
+              </div>
+
+              {/* Assign To Personnel */}
+              <div className="form-control">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Assign To Personnel
+                </span>
+                {personnelLoading ? (
+                  <div className="skeleton h-12 w-full rounded-xl"></div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800/80 dark:bg-slate-850/40">
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors">
                       <input
                         type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
-                        checked={
-                          modalAssignedToIds.length === 0 ||
-                          modalAssignedToIds.includes(person.id)
-                        }
-                        onChange={() => toggleModalAssignedToId(person.id)}
-                        aria-label={`Assign to ${person.displayName || person.email || person.id}`}
+                        className="checkbox checkbox-sm checkbox-primary rounded-md"
+                        checked={modalAssignedToIds.length === 0}
+                        onChange={toggleAllModalAssignedToIds}
+                        aria-label="Broadcast task to all maintenance personnel"
                       />
-                      <span className="min-w-0 text-sm">
-                        <span className="block font-medium text-slate-800 dark:text-slate-200">
-                          {person.displayName}
-                        </span>
-                        {person.email ? (
-                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                            {person.email}
-                          </span>
-                        ) : null}
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        All Maintenance Team (Broadcast)
                       </span>
                     </label>
-                  ))}
-                </div>
+                    <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                      {personnel.map((person) => {
+                        const initials = getInitials(
+                          person.displayName || person.email || person.id,
+                        );
+                        const isChecked =
+                          modalAssignedToIds.length === 0 ||
+                          modalAssignedToIds.includes(person.id);
+
+                        return (
+                          <label
+                            key={person.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-sm checkbox-primary mt-0.5 rounded-md"
+                              checked={isChecked}
+                              onChange={() => toggleModalAssignedToId(person.id)}
+                              aria-label={`Assign to ${person.displayName || person.email || person.id}`}
+                            />
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary dark:bg-primary/25 dark:text-rose-300"
+                                aria-hidden="true"
+                              >
+                                {initials}
+                              </span>
+                              <div className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                                  {person.displayName}
+                                </span>
+                                {person.email ? (
+                                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                                    {person.email}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
 
-          <div className="modal-action mt-6 gap-2">
-            <button
-              type="button"
-              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
-              onClick={closeCreateTaskModal}
-              disabled={taskAction === 'create'}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="action-btn-primary min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-50"
-              onClick={() => void handleCreateTaskFromModal()}
-              disabled={
-                taskAction === 'create' ||
-                !modalDeviceId ||
-                !modalMessage.trim()
-              }
-            >
-              {taskAction === 'create' ? (
-                <>
-                  <span
-                    className="loading loading-spinner loading-sm"
-                    aria-hidden="true"
-                  ></span>
-                  <span>Creating...</span>
-                </>
-              ) : (
-                'Create & Dispatch'
-              )}
-            </button>
-          </div>
-        </div>
-        <form method="dialog" className="modal-backdrop">
-          <button disabled={taskAction === 'create'}>close</button>
-        </form>
-      </dialog>
-
-      {/* ── CONFIRM TASK MODAL ────────────────────────────────────── */}
-      <dialog
-        ref={confirmDialogRef}
-        className="modal modal-bottom backdrop-blur-sm sm:modal-middle"
-        aria-labelledby="confirm-task-title"
-      >
-        <div className="modal-box rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
-            <div>
-              <h3
-                id="confirm-task-title"
-                className="text-lg font-bold text-slate-900 dark:text-slate-100"
+            {/* Drawer Sticky Footer */}
+            <div className="p-4 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-850/50 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="btn btn-ghost min-h-[44px] rounded-xl px-5 text-slate-600 dark:text-slate-400 font-medium"
+                onClick={closeCreateDrawer}
+                disabled={taskAction === 'create'}
               >
-                Confirm Task Assignment
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Review task details before dispatching to maintenance personnel
-              </p>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action-btn-primary min-h-[44px] px-6 font-semibold shadow-sm disabled:opacity-50"
+                onClick={() => void handleCreateTaskFromModal()}
+                disabled={
+                  taskAction === 'create' ||
+                  !modalDeviceId ||
+                  !modalMessage.trim() ||
+                  devicesLoading ||
+                  devices.length === 0
+                }
+              >
+                {taskAction === 'create' ? (
+                  <>
+                    <span
+                      className="loading loading-spinner loading-sm"
+                      aria-hidden="true"
+                    />
+                    <span>Dispatching...</span>
+                  </>
+                ) : (
+                  <>
+                    <BrushCleaning className="h-4 w-4" aria-hidden="true" />
+                    <span>Create & Dispatch</span>
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={closeConfirmModal}
-              aria-label="Close confirm dialog"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="space-y-3 py-2 text-sm">
-            <p className="text-slate-600 dark:text-slate-300">
-              Send this task for{' '}
-              <span className="font-semibold text-slate-900 dark:text-slate-100">
-                {selectedDeviceLabel}
-              </span>
-              ?
-            </p>
-            <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800/80 dark:bg-slate-850/60">
-              <p className="font-medium text-slate-800 dark:text-slate-200">
-                {message}
-              </p>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Assigned to:{' '}
-                <span className="font-semibold text-slate-700 dark:text-slate-300">
-                  {resolveAssignedName(null, assignedToIds)}
-                </span>
-              </p>
-            </div>
-          </div>
-          <div className="modal-action mt-6 gap-2">
-            <button
-              type="button"
-              className="btn btn-ghost min-h-[48px] rounded-xl px-5 text-slate-600 dark:text-slate-400"
-              onClick={closeConfirmModal}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="action-btn-primary min-h-[48px] px-6 font-semibold shadow-sm disabled:opacity-50"
-              onClick={() => void handleAssignTask()}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <span
-                    className="loading loading-spinner loading-sm"
-                    aria-hidden="true"
-                  ></span>
-                  <span>Assigning...</span>
-                </>
-              ) : (
-                'Confirm & Send'
-              )}
-            </button>
           </div>
         </div>
-        <form method="dialog" className="modal-backdrop">
-          <button disabled={isSubmitting}>close</button>
-        </form>
-      </dialog>
+      </div>
 
       {/* ── EDIT TASK MODAL ────────────────────────────────────────── */}
       <dialog
