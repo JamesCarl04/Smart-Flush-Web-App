@@ -28,11 +28,22 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
 
-    // Only open events represent usage
-    const snap = await adminDb
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get('from');
+    const to = searchParams.get('to') ?? from;
+
+    let lidQuery: FirebaseFirestore.Query = adminDb
       .collection('lidEvents')
-      .where('status', '==', 'open')
-      .get();
+      .where('status', '==', 'open');
+
+    if (from) {
+      const fromTs = Timestamp.fromDate(new Date(`${from}T00:00:00.000Z`));
+      const toTs = Timestamp.fromDate(new Date(`${to}T23:59:59.999Z`));
+      lidQuery = lidQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
+    }
+
+    // Only open events represent usage
+    const snap = await lidQuery.get();
 
     const byDay = new Array<number>(7).fill(0);
     const byHour = new Array<number>(24).fill(0);

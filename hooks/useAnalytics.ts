@@ -102,16 +102,18 @@ export function useAnalytics(range: DateRange) {
       const toStr = format(new Date(toTime), 'yyyy-MM-dd');
 
       const [dashboardRes, waterRes, patternsRes, perfRes] = await Promise.all([
-        apiFetch<DashboardResponse>('/api/analytics/dashboard', user, {
-          cache: 'no-store',
-        }),
+        apiFetch<DashboardResponse>(
+          `/api/analytics/dashboard?from=${fromStr}&to=${toStr}`,
+          user,
+          { cache: 'no-store' },
+        ),
         apiFetch<WaterUsageResponse>(
           `/api/analytics/water-usage?from=${fromStr}&to=${toStr}`,
           user,
           { cache: 'no-store' },
         ),
         apiFetch<FlushPatternsResponse>(
-          '/api/analytics/flush-patterns',
+          `/api/analytics/flush-patterns?from=${fromStr}&to=${toStr}`,
           user,
           { cache: 'no-store' },
         ),

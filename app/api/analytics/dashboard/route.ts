@@ -17,10 +17,24 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
 
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get('from');
+    const to = searchParams.get('to') ?? from;
+
+    let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
+    let uvQuery: FirebaseFirestore.Query = adminDb.collection('uvCycles');
+
+    if (from) {
+      const fromTs = Timestamp.fromDate(new Date(`${from}T00:00:00.000Z`));
+      const toTs = Timestamp.fromDate(new Date(`${to}T23:59:59.999Z`));
+      flushQuery = flushQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
+      uvQuery = uvQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
+    }
+
     // Fetch all collections in parallel
     const [flushSnap, uvSnap, devicesSnap] = await Promise.all([
-      adminDb.collection('flushEvents').get(),
-      adminDb.collection('uvCycles').get(),
+      flushQuery.get(),
+      uvQuery.get(),
       adminDb.collection('devices').get(),
     ]);
 
