@@ -154,7 +154,7 @@ export function ControlPanel() {
         '/api/actuators/lid/open',
       );
       if (result) {
-        toast.success('ESP32: Lid open servo activated');
+        toast.success('Toilet seat lid raised');
       }
     } catch {
       // Error handled in handleAction
@@ -169,7 +169,7 @@ export function ControlPanel() {
         '/api/actuators/lid/close',
       );
       if (result) {
-        toast.success('ESP32: Lid close servo activated');
+        toast.success('Toilet seat lid lowered');
       }
     } catch {
       // Error handled in handleAction
@@ -194,7 +194,7 @@ export function ControlPanel() {
       if (result) {
         setPumpOn(true);
         updateActuatorState('flush', 'active');
-        toast.success('Solenoid valve opened: Manual Flush started');
+        toast.success('Manual flush cycle started');
       }
     } catch {
       // Error handled in handleAction
@@ -209,7 +209,7 @@ export function ControlPanel() {
       if (result) {
         setPumpOn(false);
         updateActuatorState('flush', 'idle');
-        toast.success('Solenoid valve closed: Flush halted');
+        toast.success('Flush stopped');
       }
     } catch {
       // Error handled in handleAction
@@ -228,8 +228,8 @@ export function ControlPanel() {
         updateActuatorState('uv', nextState ? 'active' : 'idle');
         toast.success(
           nextState
-            ? 'UV-C Sterilization chamber engaged'
-            : 'UV-C Sterilization deactivated',
+            ? 'UV disinfection cycle started'
+            : 'UV disinfection stopped',
         );
       }
     } catch {
@@ -248,7 +248,7 @@ export function ControlPanel() {
         setUvOn(false);
         updateActuatorState('flush', 'idle');
         updateActuatorState('uv', 'idle');
-        toast.success('ESP32 Reboot signal dispatched');
+        toast.success('Unit restart signal sent');
       }
     } catch {
       // Error handled in handleAction
@@ -267,7 +267,7 @@ export function ControlPanel() {
               </div>
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                  Actuator Control Station
+                  Toilet Device Controls
                 </h2>
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
                   <span className="relative flex h-2 w-2 items-center justify-center">
@@ -282,8 +282,8 @@ export function ControlPanel() {
                   </span>
                   <span className="tabular-nums">
                     {connected
-                      ? 'ESP32 Direct Telemetry Sync'
-                      : 'ESP32 Disconnected'}
+                      ? 'Live Device Connected'
+                      : 'Device Offline'}
                   </span>
                 </div>
               </div>
@@ -303,7 +303,7 @@ export function ControlPanel() {
                   connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
                 }`}
               />
-              {connected ? 'Hardware Connected' : 'Offline'}
+              {connected ? 'Unit Online' : 'Offline'}
             </span>
 
             {presentationMode && (
@@ -323,10 +323,10 @@ export function ControlPanel() {
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-rose-800 dark:text-rose-300">
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
             <div className="text-sm">
-              <div className="font-bold">Actuator Interlock Active</div>
+              <div className="font-bold">Controls Temporarily Locked</div>
               <div className="mt-0.5 text-xs text-rose-700 dark:text-rose-400/90">
-                Manual actuation controls are disabled while ESP32 connection is
-                lost. ({controlsDisabledReason})
+                Remote controls are disabled while the toilet unit is
+                offline. ({controlsDisabledReason})
               </div>
             </div>
           </div>
@@ -337,7 +337,7 @@ export function ControlPanel() {
           {/* 1. OPEN LID */}
           <TactileActuatorButton
             title="Open Lid"
-            subtitle="Engage Servo 01"
+            subtitle="Lift Seat Lid"
             icon={ChevronUp}
             state={actuatorStates.lid_open}
             activeAccent="sky"
@@ -349,7 +349,7 @@ export function ControlPanel() {
           {/* 2. CLOSE LID */}
           <TactileActuatorButton
             title="Close Lid"
-            subtitle="Reset Servo 01"
+            subtitle="Lower Seat Lid"
             icon={ChevronDown}
             state={actuatorStates.lid_close}
             activeAccent="slate"
@@ -360,11 +360,11 @@ export function ControlPanel() {
 
           {/* 3. MANUAL FLUSH / EMERGENCY HALT */}
           <TactileActuatorButton
-            title={pumpOn ? 'Halt Flush Pump' : 'Manual Flush'}
+            title={pumpOn ? 'Stop Flush Cycle' : 'Manual Flush'}
             subtitle={
               pumpOn
-                ? 'EMERGENCY STOP (Valve Open)'
-                : 'Initiate 6s Discharge'
+                ? 'EMERGENCY STOP (Flushing)'
+                : 'Run Flush Cycle (6s)'
             }
             icon={Droplets}
             state={actuatorStates.flush}
@@ -378,11 +378,11 @@ export function ControlPanel() {
 
           {/* 4. UV STERILIZE */}
           <TactileActuatorButton
-            title={uvOn ? 'Deactivate UV-C' : 'UV Sterilization'}
+            title={uvOn ? 'Stop UV-C' : 'UV Disinfection'}
             subtitle={
               uvOn
-                ? 'Chamber Active (254nm)'
-                : 'Toggle Sanitization'
+                ? 'Disinfection Active'
+                : 'Start UV Clean (45s)'
             }
             icon={Sun}
             state={actuatorStates.uv}
@@ -398,10 +398,10 @@ export function ControlPanel() {
         <div className="mt-8 border-t border-slate-200/80 pt-5 dark:border-slate-800/80">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-              Emergency & Diagnostic Interlock
+              System Restart & Diagnostics
             </span>
             <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-              Poka-Yoke Guarded
+              Safety Protected
             </span>
           </div>
 
@@ -431,7 +431,7 @@ export function ControlPanel() {
               ) : (
                 <Power className="h-4 w-4" />
               )}
-              <span>System Hard Reset (ESP32)</span>
+              <span>Restart Toilet Hardware</span>
             </button>
           </div>
         </div>
@@ -446,10 +446,10 @@ export function ControlPanel() {
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
             <div className="flex flex-col">
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Confirm Manual Flush Cycle
+                Confirm Manual Flush
               </h3>
               <p className="text-xs text-slate-500">
-                Direct Valve Override Protocol
+                Manual Flush Request
               </p>
             </div>
             <button
@@ -463,26 +463,25 @@ export function ControlPanel() {
           </div>
 
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Are you sure you want to trigger a manual flush? This initiates a
-            high-pressure discharge cycle via the solenoid valve, temporarily
-            overriding automated proximity schedules.
+            Are you sure you want to trigger a manual flush? This will start a
+            complete flush cycle on this unit now.
           </p>
 
           <div className="mt-4 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs font-mono dark:border-slate-800/80 dark:bg-slate-800/40">
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
-              <span>Target Actuator:</span>
+              <span>Target Valve & Pump:</span>
               <span className="font-semibold text-slate-900 dark:text-slate-200">
-                Submersible Pump Relay (GPIO 26)
+                Flush Valve & Water Pump
               </span>
             </div>
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
-              <span>Standard Duration:</span>
+              <span>Flush Duration:</span>
               <span className="font-semibold text-slate-900 dark:text-slate-200 tabular-nums">
                 6.0 seconds
               </span>
             </div>
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
-              <span>Estimated Flow Volume:</span>
+              <span>Estimated Water Volume:</span>
               <span className="font-semibold text-cyan-600 dark:text-cyan-400 tabular-nums">
                 ~4.2 Liters
               </span>
@@ -502,7 +501,7 @@ export function ControlPanel() {
               onClick={() => void executeFlush()}
             >
               <Droplets className="h-4 w-4 mr-1.5" />
-              Initiate Discharge
+              Confirm Flush
             </button>
           </div>
         </div>
@@ -520,10 +519,10 @@ export function ControlPanel() {
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
             <div className="flex flex-col">
               <h3 className="text-lg font-bold text-rose-600 dark:text-rose-400">
-                Critical Hardware Reset
+                Confirm Hardware Restart
               </h3>
               <p className="text-xs text-slate-500">
-                ESP32 Watchdog Restart
+                System Reboot
               </p>
             </div>
             <button
@@ -541,13 +540,12 @@ export function ControlPanel() {
 
           <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
             <p className="font-semibold">
-              Warning: This command sends an emergency reboot signal to the
-              micro-controller.
+              Warning: This command will restart the toilet unit's controller.
             </p>
             <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] opacity-90">
-              <li>All active solenoid valves and UV lamps will be severed immediately.</li>
-              <li>MQTT connection will drop for 5-10 seconds while ESP32 boots.</li>
-              <li>Sensor calibration baselines will re-initialize.</li>
+              <li>Any active flush or UV cleaning cycles will stop immediately.</li>
+              <li>Connection will drop for 5–10 seconds while the unit reboots.</li>
+              <li>Occupancy and water sensors will reset to baseline.</li>
             </ul>
           </div>
 
@@ -560,7 +558,7 @@ export function ControlPanel() {
               onChange={(e) => setResetConfirmed(e.target.checked)}
             />
             <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              I understand all active cycles will stop and telemetry will reboot.
+              I understand all active cycles will stop and the unit will restart.
             </span>
           </label>
 
@@ -568,24 +566,34 @@ export function ControlPanel() {
             <form method="dialog">
               <button
                 className="btn btn-ghost min-h-[48px] border border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                onClick={() => setResetConfirmed(false)}
+                type="button"
+                onClick={() => {
+                  setResetConfirmed(false);
+                  getDialog('reset_modal')?.close();
+                }}
               >
-                Abort
+                Cancel
               </button>
             </form>
             <button
               type="button"
-              className="btn btn-error min-h-[48px] px-5 text-white shadow-sm hover:shadow-md disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600 disabled:opacity-90"
+              className="btn btn-error min-h-[48px] px-5 text-white shadow-sm hover:shadow-md disabled:opacity-50"
               disabled={!resetConfirmed || controlsDisabled}
               onClick={() => void executeReset()}
             >
               <Power className="h-4 w-4 mr-1.5" />
-              Execute Hard Reset
+              Restart System
             </button>
           </div>
         </div>
         <form method="dialog" className="modal-backdrop bg-slate-950/60">
-          <button onClick={() => setResetConfirmed(false)}>close</button>
+          <button
+            onClick={() => {
+              setResetConfirmed(false);
+            }}
+          >
+            close
+          </button>
         </form>
       </dialog>
     </>

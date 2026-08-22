@@ -77,21 +77,21 @@ function getPriorityBadge(triggerType?: TaskTriggerType) {
   switch (triggerType) {
     case 'maintenance':
       return {
-        label: 'Critical PM',
+        label: 'Scheduled Maintenance',
         className:
           'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30',
         icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'uv_complete':
       return {
-        label: 'UV Cycle Done',
+        label: 'Sanitation Check',
         className:
           'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30',
         icon: <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'flush_count':
       return {
-        label: 'Flush Threshold',
+        label: 'High Usage Check',
         className:
           'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30',
         icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
@@ -99,7 +99,7 @@ function getPriorityBadge(triggerType?: TaskTriggerType) {
     case 'manual':
     default:
       return {
-        label: 'Manual Dispatch',
+        label: 'Standard Request',
         className:
           'bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30',
         icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
@@ -828,7 +828,7 @@ export function MaintenanceTaskPanel() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Real-time telemetry dispatch, technician status tracking, and SLA resolution.
+                  Dispatch cleaning and repair tasks, track technician status, and monitor response times.
                 </p>
               </div>
             </div>
@@ -1287,10 +1287,10 @@ export function MaintenanceTaskPanel() {
                         setModalTriggerType(e.target.value as TaskTriggerType)
                       }
                     >
-                      <option value="manual">Manual Dispatch (Standard)</option>
-                      <option value="maintenance">Scheduled PM (Critical)</option>
-                      <option value="flush_count">Flush Threshold (High)</option>
-                      <option value="uv_complete">UV Cycle Follow-up (High)</option>
+                      <option value="manual">Standard Request (Manual Dispatch)</option>
+                      <option value="maintenance">Scheduled Maintenance (High Priority)</option>
+                      <option value="flush_count">High Usage / Frequent Flush Check</option>
+                      <option value="uv_complete">Sanitation & UV Inspection</option>
                     </select>
                   </div>
 

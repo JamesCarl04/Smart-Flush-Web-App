@@ -32,7 +32,7 @@ function getEventDetails(event: ActivityEvent) {
       };
     default:
       return {
-        title: 'System Telemetry Event',
+        title: 'System Activity',
         badgeLabel: 'Event',
         badgeStyle: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
         iconBg: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30',
@@ -102,7 +102,7 @@ export function ActivityFeed() {
             <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="font-medium text-sm">No recent events recorded</p>
             <p className="text-xs text-base-content/40 mt-0.5">
-              Live telemetry signals from connected units will appear here in real time.
+              Real-time activity and sensor events from connected units will appear here.
             </p>
           </div>
         ) : (

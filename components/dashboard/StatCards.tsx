@@ -228,7 +228,7 @@ export function StatCards() {
                         isPersonPresent ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
                       }`}
                     />
-                    {isPersonPresent ? 'Person Present' : 'Zone Clear'}
+                    {isPersonPresent ? 'Stall Occupied' : 'Stall Vacant'}
                   </span>
                 </div>
               </div>
@@ -240,7 +240,7 @@ export function StatCards() {
             <div className="mb-1.5 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 tabular-nums">
               <span>0 cm</span>
               <span className="font-semibold text-slate-500 dark:text-slate-400">
-                Thresh: 30 cm
+                Detect: 30 cm
               </span>
               <span>100 cm+</span>
             </div>
@@ -320,7 +320,7 @@ export function StatCards() {
                         isFlowActive ? 'bg-cyan-500 animate-pulse' : 'bg-slate-400'
                       }`}
                     />
-                    {isFlowActive ? 'Active Flow' : 'Static / Sealed'}
+                    {isFlowActive ? 'Water Flowing' : 'Idle (No Flow)'}
                   </span>
                 </div>
               </div>
@@ -371,7 +371,7 @@ export function StatCards() {
                   )}
                 </div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  ESP32 Link
+                  Unit Connection
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -423,7 +423,7 @@ export function StatCards() {
                         connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
                       }`}
                     />
-                    {connected ? 'MQTT Broker Sync' : 'Link Severed'}
+                    {connected ? 'Cloud Connected' : 'Connection Lost'}
                   </span>
                 </div>
               </div>
