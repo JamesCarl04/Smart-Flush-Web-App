@@ -111,6 +111,19 @@ export function serializeTaskData(
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
     createdBy: stringOrFallback(data.createdBy, 'unknown'),
+    beforePhotoUrl: nullableString(data.beforePhotoUrl),
+    beforePhotoCapturedAt: timestampToMillis(data.beforePhotoCapturedAt),
+    afterPhotoUrl: nullableString(data.afterPhotoUrl),
+    afterPhotoCapturedAt: timestampToMillis(data.afterPhotoCapturedAt),
+    checklist:
+      data.checklist && typeof data.checklist === 'object'
+        ? (data.checklist as Record<string, unknown>)
+        : undefined,
+    remarks: typeof data.remarks === 'string' ? data.remarks : undefined,
+    workDuration: typeof data.workDuration === 'number' ? data.workDuration : null,
+    responseTime: typeof data.responseTime === 'number' ? data.responseTime : null,
+    totalTime: typeof data.totalTime === 'number' ? data.totalTime : null,
+    biometricVerified: data.biometricVerified === true,
   };
 }
 

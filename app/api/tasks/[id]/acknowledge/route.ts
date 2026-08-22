@@ -57,33 +57,11 @@ export async function POST(
       ...(task.acknowledgedBy ?? {}),
       [user.uid]: now,
     };
-    const allAcknowledged =
-      requiredUserIds.length > 0 &&
-      requiredUserIds.every((uid) => acknowledgedBy[uid]);
-    const completedBy = allAcknowledged
-      ? requiredUserIds.reduce<Record<string, unknown>>(
-          (result, uid) => {
-            result[uid] = acknowledgedBy[uid];
-            return result;
-          },
-          { ...(task.completedBy ?? {}) },
-        )
-      : task.completedBy;
 
     await taskRef.update({
       [`acknowledgedBy.${user.uid}`]: now,
-      ...(allAcknowledged
-        ? {
-            status: 'completed',
-            acknowledgedAt: now,
-            completedAt: now,
-            completedBy,
-          }
-        : {
-            status: 'acknowledged',
-            acknowledgedAt: now,
-            completedAt: null,
-          }),
+      status: 'acknowledged',
+      acknowledgedAt: now,
     });
 
     return NextResponse.json({ success: true });

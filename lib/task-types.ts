@@ -49,6 +49,16 @@ export interface TaskApiData {
   acknowledgedBy: Record<string, number>;
   completedBy: Record<string, number>;
   createdBy: string;
+  beforePhotoUrl?: string | null;
+  beforePhotoCapturedAt?: number | null;
+  afterPhotoUrl?: string | null;
+  afterPhotoCapturedAt?: number | null;
+  checklist?: Record<string, unknown>;
+  remarks?: string;
+  workDuration?: number | null;
+  responseTime?: number | null;
+  totalTime?: number | null;
+  biometricVerified?: boolean;
 }
 
 export interface CreateTaskInput {
