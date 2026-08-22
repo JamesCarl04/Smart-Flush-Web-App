@@ -60,7 +60,12 @@ export function useAlerts() {
   }, [user]);
 
   useEffect(() => {
-    fetchAlerts();
+    void fetchAlerts();
+    const interval = window.setInterval(() => {
+      void fetchAlerts();
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
   }, [fetchAlerts]);
 
   const acknowledgeAlerts = async (ids: string[]) => {
