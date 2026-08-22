@@ -193,6 +193,17 @@ export async function PATCH(
       );
     }
 
+    if (existingTask.status !== 'pending') {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Only pending tasks can be modified. Acknowledged or completed tasks are locked.',
+        },
+        { status: 400 },
+      );
+    }
+
     await taskRef.update(updates);
 
     const updatedSnapshot = await taskRef.get();
