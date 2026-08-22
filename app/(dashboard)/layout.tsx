@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAlerts } from '@/hooks/useAlerts';
+import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -11,6 +12,7 @@ import {
   Bell,
   LayoutDashboard,
   BarChart3,
+  ClipboardList,
   SlidersHorizontal,
   FileText,
   Sun,
@@ -56,6 +58,9 @@ export default function DashboardLayout({
 
   const { alerts, unreadCount } = useAlerts();
   const recentAlerts = alerts.slice(0, 5);
+
+  const { tasks } = useTasks();
+  const pendingTasksCount = tasks.filter((t) => t.status === 'pending').length;
 
   useEffect(() => {
     if (!loading && !user && !presentationMode && !isLoggingOut) {
@@ -112,6 +117,12 @@ export default function DashboardLayout({
     {
       title: 'Operations',
       items: [
+        {
+          name: 'Tasks',
+          href: '/tasks',
+          icon: ClipboardList,
+          badge: pendingTasksCount > 0 ? pendingTasksCount : null,
+        },
         {
           name: 'Configuration',
           href: '/configuration',

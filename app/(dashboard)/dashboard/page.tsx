@@ -6,7 +6,7 @@ import { useAlerts } from '@/hooks/useAlerts';
 import { StatCards } from '@/components/dashboard/StatCards';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { ControlPanel } from '@/components/dashboard/ControlPanel';
-import { MaintenanceTaskPanel } from '@/components/dashboard/MaintenanceTaskPanel';
+import { ActiveTasksSummary } from '@/components/dashboard/ActiveTasksSummary';
 
 export default function DashboardPage() {
   const { alerts } = useAlerts();
@@ -67,9 +67,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ROW 4: Maintenance Tasks */}
+      {/* ROW 4: Active Maintenance Tasks Summary */}
       <div>
-        <MaintenanceTaskPanel />
+        <ActiveTasksSummary />
       </div>
     </div>
   );
