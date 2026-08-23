@@ -3,12 +3,10 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
 
-interface FlagBody {
+interface ApproveBody {
   taskId?: unknown;
-  reason?: unknown;
   supervisorUid?: unknown;
   supervisorName?: unknown;
-  flagPhotoUrls?: unknown;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -23,12 +21,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const body = (await request.json()) as FlagBody;
+    const body = (await request.json()) as ApproveBody;
     const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : null;
-    const reason =
-      typeof body.reason === 'string'
-        ? body.reason.trim()
-        : 'Requires supervisor re-inspection';
     const supervisorUid =
       typeof body.supervisorUid === 'string'
         ? body.supervisorUid.trim()
@@ -37,9 +31,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       typeof body.supervisorName === 'string' && body.supervisorName.trim().length > 0
         ? body.supervisorName.trim()
         : user.email?.split('@')[0] || 'Supervisor';
-    const flagPhotoUrls = Array.isArray(body.flagPhotoUrls)
-      ? body.flagPhotoUrls.filter((url): url is string => typeof url === 'string')
-      : [];
 
     if (!taskId) {
       return NextResponse.json(
@@ -58,30 +49,25 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     await taskRef.update({
-      status: 'flagged',
-      inspectionStatus: 'flagged',
-      flagReason: reason,
-      flagPhotoUrls,
+      inspectionStatus: 'approved',
       inspectedBy: supervisorUid,
       inspectedByName: supervisorName,
       inspectedAt: FieldValue.serverTimestamp(),
-      supervisorUid,
-      flaggedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Task flagged for re-inspection',
+      message: 'Task approved by supervisor',
     });
   } catch (error) {
     if (error instanceof Response) {
       return new NextResponse(error.body, error);
     }
 
-    console.error('[Supervisor] Flag task error:', error);
+    console.error('[Supervisor] Approve task error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to flag task' },
+      { success: false, error: 'Failed to approve task' },
       { status: 500 },
     );
   }

@@ -19,6 +19,7 @@ import {
   History,
   Hourglass,
   Layers,
+  ShieldCheck,
   Timer,
   Wrench,
 } from 'lucide-react';
@@ -34,7 +35,8 @@ type ReportType =
   | 'weekly'
   | 'monthly'
   | 'custom'
-  | 'maintenance_tasks';
+  | 'maintenance_tasks'
+  | 'supervisor_audit';
 
 type DateRangeOption =
   | 'last_7_days'
@@ -49,7 +51,8 @@ type RequestReportType =
   | 'weekly'
   | 'monthly'
   | 'custom'
-  | 'maintenance_tasks';
+  | 'maintenance_tasks'
+  | 'supervisor_audit';
 
 interface ExportRecord {
   id: string;
@@ -91,6 +94,11 @@ const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] 
     value: 'maintenance_tasks',
     desc: 'Work order history, response times, and personnel attribution.',
   },
+  {
+    label: 'Supervisor QA & Approval Audit',
+    value: 'supervisor_audit',
+    desc: 'Supervisor approval rate vs maintenance submissions, inspection turnaround, and flagged recheck analytics.',
+  },
 ];
 
 const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
@@ -105,6 +113,7 @@ const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
   uv_complete: 'UV Cycle Complete',
   flush_count: 'Flush Count Trigger',
   maintenance: 'Scheduled Maintenance',
+  hardware_failure: 'Hardware Failure Alert',
 };
 
 function getStatusBadge(status: TaskStatus) {
@@ -121,11 +130,47 @@ function getStatusBadge(status: TaskStatus) {
           Completed
         </span>
       );
+    case 'flagged':
+      return (
+        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+          Flagged (Recheck)
+        </span>
+      );
+    case 'rechecking':
+      return (
+        <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-semibold text-purple-700 dark:border-purple-800 dark:bg-purple-950/50 dark:text-purple-300">
+          Rechecking
+        </span>
+      );
     case 'pending':
     default:
       return (
         <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
           Pending
+        </span>
+      );
+  }
+}
+
+function getInspectionBadge(inspectionStatus?: string | null) {
+  switch (inspectionStatus) {
+    case 'approved':
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+          ✓ Approved
+        </span>
+      );
+    case 'flagged':
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+          ⚠️ Flagged
+        </span>
+      );
+    case 'pending_review':
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          ⏳ Pending Review
         </span>
       );
   }
@@ -221,6 +266,67 @@ function buildMaintenanceTasksCsv(
   return lines.join('\n');
 }
 
+function buildSupervisorAuditCsv(
+  tasks: Task[],
+  resolveAssignedName: (assignedUserId?: string | null) => string,
+): string {
+  const headers = [
+    'Task ID',
+    'Location',
+    'Floor',
+    'Building',
+    'Trigger Type',
+    'Task Message',
+    'Status',
+    'Assigned To',
+    'Assigned To Name',
+    'Inspection Status',
+    'Inspected By',
+    'Inspected By Name',
+    'Inspected At',
+    'Flag Reason',
+    'Recheck Count',
+    'Created At',
+    'Completed At',
+    'Work Duration (Seconds)',
+    'Biometric Verified',
+    'Created By',
+  ];
+
+  const lines = [headers.join(',')];
+
+  for (const task of tasks) {
+    lines.push(
+      [
+        task.id,
+        task.location || task.restroomName || task.deviceId,
+        task.floor ?? '',
+        task.building ?? '',
+        task.triggerType,
+        task.message,
+        task.status,
+        task.assignedTo ?? '',
+        resolveAssignedName(task.assignedTo),
+        task.inspectionStatus ?? (task.status === 'flagged' ? 'flagged' : 'pending_review'),
+        task.inspectedBy ?? '',
+        task.inspectedByName ?? '',
+        taskTimestampToCsv(task.inspectedAt),
+        task.flagReason ?? '',
+        task.recheckCount ?? 0,
+        taskTimestampToCsv(task.createdAt),
+        taskTimestampToCsv(task.completedAt),
+        task.workDuration ?? 0,
+        task.biometricVerified ? 'Yes' : 'No',
+        task.createdBy,
+      ]
+        .map(escapeCsvValue)
+        .join(','),
+    );
+  }
+
+  return lines.join('\n');
+}
+
 function downloadTextFile(content: string, filename: string, type: string) {
   const blob = new Blob([content], { type });
   const url = window.URL.createObjectURL(blob);
@@ -282,7 +388,11 @@ export default function ReportsPage() {
   ]);
 
   const isMaintenanceTaskReport = reportType === 'maintenance_tasks';
-  const usesExplicitRange = reportType === 'custom' || isMaintenanceTaskReport;
+  const isSupervisorAuditReport = reportType === 'supervisor_audit';
+  const usesExplicitRange =
+    reportType === 'custom' ||
+    isMaintenanceTaskReport ||
+    isSupervisorAuditReport;
   const hasInvalidDateRange =
     usesExplicitRange && customRange.from > customRange.to;
 
@@ -336,6 +446,47 @@ export default function ReportsPage() {
     [pendingCount, tasks],
   );
 
+  const supervisorAuditSummary = useMemo(() => {
+    const completedTasks = tasks.filter(
+      (t) =>
+        t.status === 'completed' ||
+        t.status === 'flagged' ||
+        t.status === 'rechecking' ||
+        Boolean(t.completedAt),
+    );
+
+    const totalSubmissions = completedTasks.length;
+    let approvedCount = 0;
+    let flaggedCount = 0;
+
+    for (const t of completedTasks) {
+      if (t.inspectionStatus === 'approved') {
+        approvedCount += 1;
+      } else if (t.inspectionStatus === 'flagged' || t.status === 'flagged') {
+        flaggedCount += 1;
+      }
+    }
+
+    const pendingAuditCount = totalSubmissions - (approvedCount + flaggedCount);
+    const auditedCount = approvedCount + flaggedCount;
+    const approvalRatePct =
+      auditedCount > 0 ? Math.round((approvedCount / auditedCount) * 100) : 100;
+    const complianceRatePct =
+      totalSubmissions > 0
+        ? Math.round((auditedCount / totalSubmissions) * 100)
+        : 100;
+
+    return {
+      totalSubmissions,
+      approvedCount,
+      flaggedCount,
+      pendingAuditCount,
+      approvalRate: `${approvalRatePct}%`,
+      complianceRate: `${complianceRatePct}%`,
+      completedTasks,
+    };
+  }, [tasks]);
+
   const handleExportMaintenanceCsv = () => {
     if (!user) {
       toast.error('You must be logged in to export reports.');
@@ -363,6 +514,35 @@ export default function ReportsPage() {
     toast.success('Maintenance task CSV exported');
   };
 
+  const handleExportSupervisorAuditCsv = () => {
+    if (!user) {
+      toast.error('You must be logged in to export reports.');
+      return;
+    }
+
+    const csv = buildSupervisorAuditCsv(
+      supervisorAuditSummary.completedTasks,
+      resolveAssignedName,
+    );
+    const generatedAt = format(new Date(), 'yyyy-MM-dd-HHmm');
+    const filename = `smart-flush-supervisor-qa-audit-${generatedAt}.csv`;
+    downloadTextFile(csv, filename, 'text/csv;charset=utf-8');
+
+    setExportHistory((prev) => [
+      {
+        id: `exp-${Date.now()}`,
+        name: filename.replace('.csv', ''),
+        type: 'supervisor_audit',
+        date: new Date(),
+        size: `${Math.max(1, Math.round(csv.length / 1024))} KB`,
+        format: 'CSV',
+      },
+      ...prev,
+    ]);
+
+    toast.success('Supervisor QA audit CSV exported');
+  };
+
   const handleGenerate = async () => {
     if (!user) {
       toast.error('You must be logged in to generate reports.');
@@ -376,6 +556,11 @@ export default function ReportsPage() {
 
     if (isMaintenanceTaskReport && formatType === 'CSV') {
       handleExportMaintenanceCsv();
+      return;
+    }
+
+    if (isSupervisorAuditReport && formatType === 'CSV') {
+      handleExportSupervisorAuditCsv();
       return;
     }
 
@@ -635,9 +820,23 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Recent Exports / Maintenance Task Report (lg:col-span-7) */}
+        {/* RIGHT COLUMN: Recent Exports / Maintenance Task Report / Supervisor QA Audit (lg:col-span-7) */}
         <div className="lg:col-span-7">
-          {isMaintenanceTaskReport ? (
+          {isSupervisorAuditReport ? (
+            <SupervisorAuditReport
+              approvalRate={supervisorAuditSummary.approvalRate}
+              approvedCount={supervisorAuditSummary.approvedCount}
+              complianceRate={supervisorAuditSummary.complianceRate}
+              error={tasksError}
+              flaggedCount={supervisorAuditSummary.flaggedCount}
+              loading={tasksLoading || personnelLoading}
+              onExportCsv={handleExportSupervisorAuditCsv}
+              pendingAuditCount={supervisorAuditSummary.pendingAuditCount}
+              resolveAssignedName={resolveAssignedName}
+              tasks={supervisorAuditSummary.completedTasks}
+              totalSubmissions={supervisorAuditSummary.totalSubmissions}
+            />
+          ) : isMaintenanceTaskReport ? (
             <MaintenanceTaskReport
               averageCompletionMinutes={taskSummary.averageCompletionMinutes}
               averageResponseMinutes={taskSummary.averageResponseMinutes}
@@ -970,4 +1169,189 @@ function FormatIcon({
     default:
       return <FileText className={className} />;
   }
+}
+
+function SupervisorAuditReport({
+  approvalRate,
+  approvedCount,
+  complianceRate,
+  error,
+  flaggedCount,
+  loading,
+  onExportCsv,
+  pendingAuditCount,
+  resolveAssignedName,
+  tasks,
+  totalSubmissions,
+}: {
+  approvalRate: string;
+  approvedCount: number;
+  complianceRate: string;
+  error: string | null;
+  flaggedCount: number;
+  loading: boolean;
+  onExportCsv: () => void;
+  pendingAuditCount: number;
+  resolveAssignedName: (assignedUserId?: string | null) => string;
+  tasks: Task[];
+  totalSubmissions: number;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* 4 QA Summary KPI Cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <SummaryCard
+          icon={<Layers className="h-4 w-4 text-slate-500" />}
+          label="Total Submissions"
+          loading={loading}
+          value={String(totalSubmissions)}
+        />
+        <SummaryCard
+          icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          label="Approved Tasks"
+          loading={loading}
+          value={String(approvedCount)}
+        />
+        <SummaryCard
+          icon={<AlertCircle className="h-4 w-4 text-rose-500" />}
+          label="Flagged / Recheck"
+          loading={loading}
+          value={String(flaggedCount)}
+        />
+        <SummaryCard
+          icon={<ShieldCheck className="h-4 w-4 text-sky-500" />}
+          label="Supervisor Approval Rate"
+          loading={loading}
+          value={approvalRate}
+        />
+      </div>
+
+      {/* Compliance Rate Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-4 dark:border-sky-950 dark:bg-sky-950/30">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-sky-950 dark:text-sky-100">
+              Supervisor Audit Compliance: {complianceRate}
+            </div>
+            <div className="text-[11px] text-sky-700 dark:text-sky-300">
+              {pendingAuditCount > 0
+                ? `${pendingAuditCount} completed work order(s) currently awaiting supervisor QA review.`
+                : 'All maintenance submissions have been audited and verified.'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* QA Audit Matrix Table */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Supervisor QA Audit & Inspection Log
+              </h3>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Maintenance submissions aligned with supervisor approvals, rechecks, and remarks
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            onClick={onExportCsv}
+            disabled={loading}
+          >
+            <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            Export Audit CSV
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3 p-6">
+            {[1, 2, 3].map((item) => (
+              <div
+                key={item}
+                className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/60"
+              ></div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="p-6">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-medium text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+              {error}
+            </div>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+            <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              No completed maintenance submissions found
+            </p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              Technician completed work orders will appear here for QA auditing.
+            </p>
+          </div>
+        ) : (
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">QA Status</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Stall / Location</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Technician</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Audited By</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Flag Reason / Remarks</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Completed</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {tasks.map((task) => (
+                  <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      {getInspectionBadge(task.inspectionStatus ?? (task.status === 'flagged' ? 'flagged' : 'pending_review'))}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {task.deviceId}
+                      </div>
+                      <div className="text-slate-400 text-[11px]">
+                        {task.location || task.restroomName || 'General Facility'}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
+                      {resolveAssignedName(task.assignedTo)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                      {task.inspectedByName || (task.inspectedBy ? 'Supervisor' : '—')}
+                    </td>
+                    <td className="py-3 px-4 max-w-xs">
+                      {task.flagReason ? (
+                        <div className="rounded bg-rose-50 p-1.5 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-[11px] font-medium">
+                          ⚠️ {task.flagReason}
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 text-[11px] italic">
+                          {task.remarks || 'Standard completion'}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                      {formatTaskTimestamp(task.completedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

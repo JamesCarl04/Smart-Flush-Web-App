@@ -63,13 +63,19 @@ export interface Alert {
   timestamp: number;
 }
 
-export type TaskStatus = 'pending' | 'acknowledged' | 'completed';
+export type TaskStatus =
+  | 'pending'
+  | 'acknowledged'
+  | 'completed'
+  | 'flagged'
+  | 'rechecking';
 
 export type TaskTriggerType =
   | 'manual'
   | 'uv_complete'
   | 'flush_count'
-  | 'maintenance';
+  | 'maintenance'
+  | 'hardware_failure';
 
 export interface Task {
   id: string;
@@ -85,6 +91,25 @@ export interface Task {
   acknowledgedBy?: Record<string, number>;
   completedBy?: Record<string, number>;
   createdBy: string;
+  location?: string;
+  restroomName?: string;
+  floor?: string;
+  building?: string;
+  component?: string;
+  remarks?: string;
+  beforePhotoUrl?: string | null;
+  afterPhotoUrl?: string | null;
+  workDuration?: number;
+  biometricVerified?: boolean;
+  inspectionStatus?: 'pending_review' | 'approved' | 'flagged' | null;
+  inspectedBy?: string | null;
+  inspectedByName?: string | null;
+  inspectedAt?: number | null;
+  flagReason?: string | null;
+  flagPhotoUrls?: string[];
+  recheckCount?: number;
+  recheckedBy?: string | null;
+  recheckedAt?: number | null;
 }
 
 export interface AutomationRule {
