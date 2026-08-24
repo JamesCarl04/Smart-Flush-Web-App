@@ -6,6 +6,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 interface CreateDeviceBody {
   name: string;
+  building?: string;
+  floor?: string;
+  location?: string;
   firmwareVersion?: string;
   config?: Record<string, string | number | boolean>;
 }
@@ -47,7 +50,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     const docRef = adminDb.collection('devices').doc();
     const device = {
       id: docRef.id,
-      name: body.name,
+      name: body.name.trim(),
+      building: body.building?.trim() || 'SDCA Annex Building',
+      floor: body.floor?.trim() || '4th Floor',
+      location: body.location?.trim() || '4th Floor Restroom Zone',
       status: 'offline' as const,
       firmwareVersion: body.firmwareVersion ?? '',
       lastSeen: null,

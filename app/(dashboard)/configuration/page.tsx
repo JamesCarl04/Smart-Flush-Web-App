@@ -5,10 +5,16 @@ import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
   Clock,
   Cpu,
   Droplets,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  MapPin,
   Plus,
   Radio,
   RefreshCw,
@@ -18,8 +24,10 @@ import {
   Sun,
   Trash2,
   UserCheck,
+  X,
   Zap,
 } from 'lucide-react';
+import { reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAuth } from '@/hooks/useAuth';
 import { useDeviceStatus } from '@/hooks/useDeviceStatus';
@@ -67,6 +75,9 @@ interface RuleDoc {
 interface DeviceDoc {
   id?: string;
   name?: string;
+  building?: string;
+  floor?: string;
+  location?: string;
   config?: Partial<TimingConfig & { threshold: number }>;
 }
 
@@ -91,12 +102,29 @@ interface RulesResponse {
 }
 
 const DEFAULT_DEVICE_NAME = "Men's Restroom - Stall 1";
+const DEFAULT_BUILDING = 'SDCA Annex Building';
+const DEFAULT_LOCATION = '4th Floor Restroom Zone';
 const DEFAULT_THRESHOLD = 30;
 const DEFAULT_TIMING: TimingConfig = {
   pumpDuration: 8,
   uvDuration: 45,
   personGoneConfirm: 3,
 };
+
+const CAMPUS_BUILDING_OPTIONS = [
+  'SDCA Annex Building',
+  'SDCA Main Building',
+  'SDCA Science & Tech Complex',
+  'SDCA Gymnasium & Sports Complex',
+] as const;
+
+const STANDARD_LOCATION_OPTIONS = [
+  '1st Floor - Lobby & PWD Restroom',
+  '2nd Floor - Faculty & Student Restrooms',
+  '3rd Floor - Laboratory Restrooms',
+  '4th Floor - Restroom Zone',
+  '5th Floor - Executive & Auditorium Restrooms',
+] as const;
 
 const RULE_ACTION_OPTIONS = [
   'Send Warning Email',
@@ -219,6 +247,18 @@ export default function ConfigurationPage() {
   } = useDeviceStatus(DEFAULT_DEVICE_ID);
 
   const [deviceName, setDeviceName] = useState(DEFAULT_DEVICE_NAME);
+  const [deviceBuilding, setDeviceBuilding] = useState(DEFAULT_BUILDING);
+  const [deviceLocation, setDeviceLocation] = useState(DEFAULT_LOCATION);
+  const [savedBuilding, setSavedBuilding] = useState(DEFAULT_BUILDING);
+  const [savedLocation, setSavedLocation] = useState(DEFAULT_LOCATION);
+
+  // Password confirmation modal state
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
   const [timing, setTiming] = useState<TimingConfig>(DEFAULT_TIMING);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -247,7 +287,18 @@ export default function ConfigurationPage() {
       );
       const config = response.data?.config ?? {};
 
-      setDeviceName(response.data?.name?.trim() || DEFAULT_DEVICE_NAME);
+      const loadedName = response.data?.name?.trim() || DEFAULT_DEVICE_NAME;
+      const loadedBuilding =
+        response.data?.building?.trim() || DEFAULT_BUILDING;
+      const loadedLocation =
+        response.data?.location?.trim() || DEFAULT_LOCATION;
+
+      setDeviceName(loadedName);
+      setDeviceBuilding(loadedBuilding);
+      setDeviceLocation(loadedLocation);
+      setSavedBuilding(loadedBuilding);
+      setSavedLocation(loadedLocation);
+
       setThreshold(
         typeof config.threshold === 'number'
           ? config.threshold
@@ -275,6 +326,10 @@ export default function ConfigurationPage() {
       }
 
       setDeviceName(DEFAULT_DEVICE_NAME);
+      setDeviceBuilding(DEFAULT_BUILDING);
+      setDeviceLocation(DEFAULT_LOCATION);
+      setSavedBuilding(DEFAULT_BUILDING);
+      setSavedLocation(DEFAULT_LOCATION);
       setThreshold(DEFAULT_THRESHOLD);
       setTiming(DEFAULT_TIMING);
       setIsDirty(false);
@@ -327,6 +382,39 @@ export default function ConfigurationPage() {
     }
   };
 
+  const executeDeviceSave = async () => {
+    if (!user) {
+      toast.error('You must be logged in to save device settings.');
+      return;
+    }
+
+    setSavingSection('device');
+    try {
+      await apiFetch<DeviceResponse>(
+        `/api/devices/${DEFAULT_DEVICE_ID}`,
+        user,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: deviceName.trim(),
+            building: deviceBuilding.trim(),
+            location: deviceLocation.trim(),
+          }),
+        },
+      );
+      setSavedBuilding(deviceBuilding.trim());
+      setSavedLocation(deviceLocation.trim());
+      setIsPasswordModalOpen(false);
+      setConfirmPassword('');
+      toast.success('Device profile and facility location updated.');
+      await fetchConfiguration();
+    } catch (error) {
+      toast.error(getErrorMessage(error) ?? 'Failed to save device profile.');
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
   const handleDeviceSave = async () => {
     if (!user) {
       toast.error('You must be logged in to save device settings.');
@@ -339,22 +427,59 @@ export default function ConfigurationPage() {
       return;
     }
 
-    setSavingSection('device');
+    const locationChanged =
+      deviceBuilding.trim() !== savedBuilding.trim() ||
+      deviceLocation.trim() !== savedLocation.trim();
+
+    if (locationChanged) {
+      setPasswordError(null);
+      setConfirmPassword('');
+      setIsPasswordModalOpen(true);
+      return;
+    }
+
+    await executeDeviceSave();
+  };
+
+  const handleConfirmPasswordSave = async () => {
+    if (!user || !user.email) {
+      toast.error('User authentication session is invalid.');
+      return;
+    }
+
+    if (!confirmPassword) {
+      setPasswordError('Please enter your account password.');
+      return;
+    }
+
+    setIsVerifyingPassword(true);
+    setPasswordError(null);
+
     try {
-      await apiFetch<DeviceResponse>(
-        `/api/devices/${DEFAULT_DEVICE_ID}`,
-        user,
-        {
-          method: 'PUT',
-          body: JSON.stringify({ name: deviceName.trim() }),
-        },
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        confirmPassword,
       );
-      toast.success('Device profile saved.');
-      await fetchConfiguration();
-    } catch (error) {
-      toast.error(getErrorMessage(error) ?? 'Failed to save device profile.');
+      await reauthenticateWithCredential(user, credential);
+      await executeDeviceSave();
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (
+        code === 'auth/wrong-password' ||
+        code === 'auth/invalid-credential'
+      ) {
+        setPasswordError(
+          'Incorrect password. Location change was not authorized.',
+        );
+      } else {
+        setPasswordError(
+          err instanceof Error
+            ? err.message
+            : 'Authentication verification failed.',
+        );
+      }
     } finally {
-      setSavingSection(null);
+      setIsVerifyingPassword(false);
     }
   };
 
@@ -646,16 +771,67 @@ export default function ConfigurationPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
-                  Assigned Facility Location
-                </label>
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-700 dark:border-slate-800/80 dark:bg-slate-800/40 dark:text-slate-300">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    SDCA Annex Building
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Assigned Facility Location
+                  </label>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                    <Lock className="w-3 h-3" />
+                    <span>Protected Setting</span>
                   </span>
-                  <span className="text-slate-400">·</span>
-                  <span>4th Floor Restroom Zone</span>
                 </div>
+
+                <div className="space-y-2.5">
+                  {/* Campus Building Selector */}
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <select
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-8 text-xs font-medium text-slate-900 transition-colors focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      value={deviceBuilding}
+                      disabled={loadingConfiguration}
+                      onChange={(e) => {
+                        setDeviceBuilding(e.target.value);
+                        markDirty();
+                      }}
+                    >
+                      {CAMPUS_BUILDING_OPTIONS.map((building) => (
+                        <option key={building} value={building}>
+                          {building}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Floor / Zone Selector / Input */}
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                      <MapPin className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="text"
+                      list="facility-location-list"
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-4 text-xs font-medium text-slate-900 transition-colors focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      value={deviceLocation}
+                      disabled={loadingConfiguration}
+                      placeholder="e.g. 4th Floor Restroom Zone"
+                      onChange={(e) => {
+                        setDeviceLocation(e.target.value);
+                        markDirty();
+                      }}
+                    />
+                    <datalist id="facility-location-list">
+                      {STANDARD_LOCATION_OPTIONS.map((loc) => (
+                        <option key={loc} value={loc} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Changing physical facility assignment updates telemetry zone routing and requires your admin password.
+                </p>
               </div>
             </div>
 
@@ -675,7 +851,7 @@ export default function ConfigurationPage() {
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                    Connection Lost
+                    Hardware Offline / Disconnected
                   </span>
                 )}
               </div>
@@ -686,10 +862,12 @@ export default function ConfigurationPage() {
                 </span>
                 <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">
                   {deviceLoading
-                    ? 'Checking...'
-                    : lastSeen
-                      ? formatDistanceToNow(new Date(lastSeen), { addSuffix: true })
-                      : 'Never'}
+                    ? 'Checking signal...'
+                    : connected
+                      ? 'Active now (Online)'
+                      : lastSeen && lastSeen > 0
+                        ? `${formatDistanceToNow(new Date(lastSeen), { addSuffix: true })} (Offline)`
+                        : 'No signal recorded (Offline)'}
                 </span>
               </div>
 
@@ -1306,6 +1484,151 @@ export default function ConfigurationPage() {
           <button>close</button>
         </form>
       </dialog>
+
+      {/* Password Confirmation Modal for Location Reassignment */}
+      {isPasswordModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-password-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-scale-up">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3
+                    id="confirm-password-title"
+                    className="text-base font-bold text-slate-900 dark:text-slate-100"
+                  >
+                    Confirm Location Reassignment
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Admin verification required
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isVerifyingPassword) {
+                    setIsPasswordModalOpen(false);
+                    setConfirmPassword('');
+                    setPasswordError(null);
+                  }
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                You are changing the physical facility location of controller{' '}
+                <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">
+                  {DEFAULT_DEVICE_ID}
+                </span>{' '}
+                to{' '}
+                <span className="font-semibold text-primary dark:text-rose-400">
+                  {deviceBuilding} · {deviceLocation}
+                </span>
+                . Enter your account password to authorize this hardware binding update.
+              </p>
+
+              <div className="form-control">
+                <label
+                  htmlFor="reauth-password"
+                  className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+                >
+                  Account Password
+                </label>
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="reauth-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (passwordError) setPasswordError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && confirmPassword) {
+                        e.preventDefault();
+                        void handleConfirmPasswordSave();
+                      }
+                    }}
+                    placeholder="Enter your password..."
+                    disabled={isVerifyingPassword}
+                    className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                    aria-label="Toggle password visibility"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                {passwordError && (
+                  <p className="mt-1.5 text-xs font-semibold text-rose-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>{passwordError}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm h-10 px-4 rounded-xl text-slate-600 dark:text-slate-400 font-medium"
+                onClick={() => {
+                  setIsPasswordModalOpen(false);
+                  setConfirmPassword('');
+                  setPasswordError(null);
+                }}
+                disabled={isVerifyingPassword}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-sm h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-sm flex items-center gap-2"
+                onClick={() => void handleConfirmPasswordSave()}
+                disabled={isVerifyingPassword || !confirmPassword.trim()}
+              >
+                {isVerifyingPassword ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs" />
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>Authorize &amp; Save</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,9 @@ interface RouteParams {
 interface UpdateDeviceBody {
   name?: string;
   description?: string;
+  building?: string;
+  floor?: string;
+  location?: string;
   config?: Record<string, string | number | boolean>;
 }
 
@@ -42,7 +45,7 @@ export async function GET(
   }
 }
 
-// PUT /api/devices/:id — update name, description, or config
+// PUT /api/devices/:id — update name, description, location, or config
 export async function PUT(
   request: Request,
   { params }: RouteParams,
@@ -67,6 +70,18 @@ export async function PUT(
 
     if (body.description !== undefined) {
       updates.description = body.description.trim();
+    }
+
+    if (body.building !== undefined) {
+      updates.building = body.building.trim();
+    }
+
+    if (body.floor !== undefined) {
+      updates.floor = body.floor.trim();
+    }
+
+    if (body.location !== undefined) {
+      updates.location = body.location.trim();
     }
 
     if (body.config !== undefined) {

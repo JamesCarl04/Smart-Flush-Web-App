@@ -99,21 +99,11 @@ export async function getDeviceConnectionState(
   if (shouldUseLocalRuntimeCache()) {
     const cachedDevice = await getCachedDeviceEntry(deviceId);
 
-    if (!cachedDevice) {
-      return {
-        deviceId,
-        exists: false,
-        connected: false,
-        status: 'offline',
-        lastSeenMs: null,
-        staleMs: null,
-        reason: 'Waiting for local MQTT heartbeat',
-      };
+    if (cachedDevice && typeof cachedDevice.lastSeenMs === 'number' && cachedDevice.lastSeenMs > 0) {
+      return getConnectionStateFromDeviceData(deviceId, {
+        lastSeen: new Date(cachedDevice.lastSeenMs),
+      });
     }
-
-    return getConnectionStateFromDeviceData(deviceId, {
-      lastSeen: new Date(cachedDevice.lastSeenMs ?? 0),
-    });
   }
 
   let snapshot;
@@ -124,9 +114,9 @@ export async function getDeviceConnectionState(
     if (isQuotaExceededError(error)) {
       const cachedDevice = await getCachedDeviceEntry(deviceId);
 
-      if (cachedDevice) {
+      if (cachedDevice && typeof cachedDevice.lastSeenMs === 'number' && cachedDevice.lastSeenMs > 0) {
         return getConnectionStateFromDeviceData(deviceId, {
-          lastSeen: new Date(cachedDevice.lastSeenMs ?? 0),
+          lastSeen: new Date(cachedDevice.lastSeenMs),
         });
       }
     }
