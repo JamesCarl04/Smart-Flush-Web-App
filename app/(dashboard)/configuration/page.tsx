@@ -118,20 +118,37 @@ const SDCA_FLOORS = [
   '4th Floor',
 ] as const;
 
-const STANDARD_RESTROOM_OPTIONS = [
-  '1st Floor - Male Restroom',
-  '1st Floor - Female Restroom',
-  '1st Floor - PWD Restroom',
-  '2nd Floor - Male Restroom',
-  '2nd Floor - Female Restroom',
-  '2nd Floor - Faculty Restroom',
-  '3rd Floor - Male Restroom',
-  '3rd Floor - Female Restroom',
-  '3rd Floor - Science Lab Restroom',
-  '4th Floor - Restroom Zone',
-  '4th Floor - Male Restroom',
-  '4th Floor - Female Restroom',
-] as const;
+const SDCA_FLOOR_RESTROOMS: Record<string, string[]> = {
+  '1st Floor': [
+    '1F Canteen Female Restroom',
+    '1F Canteen Male Restroom',
+    '1F Faculty Female Restroom',
+    '1F Faculty Male Restroom',
+    '1st Floor Testing Lab',
+  ],
+  '2nd Floor': [
+    '2F Female Restroom 1',
+    '2F Female Restroom 2',
+    '2F Male Restroom 1',
+    '2F Male Restroom 2',
+    '2F PWD Restroom',
+  ],
+  '3rd Floor': [
+    '3F Female Restroom 1',
+    '3F Female Restroom 2',
+    '3F Male Restroom 1',
+    '3F Male Restroom 2',
+    '3F PWD Restroom',
+  ],
+  '4th Floor': [
+    '4F Female Restroom 1',
+    '4F Female Restroom 2',
+    '4F Male Restroom 1',
+    '4F Male Restroom 2',
+    '4F PWD Restroom',
+    '4th Floor Restroom Zone',
+  ],
+};
 
 const RULE_ACTION_OPTIONS = [
   'Send Warning Email',
@@ -282,6 +299,17 @@ export default function ConfigurationPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Lock background scrolling when password modal is open
+  useEffect(() => {
+    if (isPasswordModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isPasswordModalOpen]);
 
   const markDirty = () => setIsDirty(true);
 
@@ -809,8 +837,13 @@ export default function ConfigurationPage() {
                         value={deviceFloor}
                         disabled={loadingConfiguration}
                         onChange={(e) => {
-                          setDeviceFloor(e.target.value);
+                          const nextFloor = e.target.value;
+                          setDeviceFloor(nextFloor);
                           markDirty();
+                          const restrooms = SDCA_FLOOR_RESTROOMS[nextFloor] || [];
+                          if (restrooms.length > 0 && !restrooms.includes(deviceLocation)) {
+                            setDeviceLocation(restrooms[0]);
+                          }
                         }}
                       >
                         {SDCA_FLOORS.map((floor) => (
@@ -829,23 +862,27 @@ export default function ConfigurationPage() {
                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
                           <MapPin className="h-3.5 w-3.5" />
                         </div>
-                        <input
-                          type="text"
-                          list="facility-restroom-list"
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-900 transition-colors focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        <select
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-8 pr-8 text-xs font-medium text-slate-900 transition-colors focus:border-primary focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                           value={deviceLocation}
                           disabled={loadingConfiguration}
-                          placeholder="e.g. 4th Floor Restroom Zone"
                           onChange={(e) => {
                             setDeviceLocation(e.target.value);
                             markDirty();
                           }}
-                        />
-                        <datalist id="facility-restroom-list">
-                          {STANDARD_RESTROOM_OPTIONS.map((loc) => (
-                            <option key={loc} value={loc} />
+                        >
+                          {(SDCA_FLOOR_RESTROOMS[deviceFloor] || []).map((loc) => (
+                            <option key={loc} value={loc}>
+                              {loc}
+                            </option>
                           ))}
-                        </datalist>
+                          {!(SDCA_FLOOR_RESTROOMS[deviceFloor] || []).includes(deviceLocation) &&
+                            deviceLocation && (
+                              <option value={deviceLocation}>
+                                {deviceLocation} (Custom)
+                              </option>
+                            )}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1497,7 +1534,7 @@ export default function ConfigurationPage() {
         mounted &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md animate-fade-in"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md animate-fade-in overscroll-contain overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-password-title"
