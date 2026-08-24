@@ -156,21 +156,24 @@ function getInspectionBadge(inspectionStatus?: string | null) {
   switch (inspectionStatus) {
     case 'approved':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-          ✓ Approved
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <CheckCircle2 className="h-3 w-3" />
+          Approved
         </span>
       );
     case 'flagged':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
-          ⚠️ Flagged
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+          <AlertCircle className="h-3 w-3" />
+          Flagged
         </span>
       );
     case 'pending_review':
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-          ⏳ Pending Review
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          <Clock className="h-3 w-3" />
+          Pending Review
         </span>
       );
   }
@@ -339,6 +342,126 @@ function downloadTextFile(content: string, filename: string, type: string) {
   window.URL.revokeObjectURL(url);
 }
 
+const DEVICE_FACILITY_DIRECTORY: Record<
+  string,
+  { name: string; floor: string; building: string }
+> = {
+  'SDCA-FL1-CANTEEN-M': {
+    name: '1F Canteen Male Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-CANTEEN-F': {
+    name: '1F Canteen Female Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-FACULTY-M': {
+    name: '1F Faculty Male Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-FACULTY-F': {
+    name: '1F Faculty Female Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-M1': {
+    name: '2F Male Restroom 1',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-M2': {
+    name: '2F Male Restroom 2',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-F1': {
+    name: '2F Female Restroom 1',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-F2': {
+    name: '2F Female Restroom 2',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-PWD': {
+    name: '2F PWD Restroom',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-M1': {
+    name: '3F Male Restroom 1',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-M2': {
+    name: '3F Male Restroom 2',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-F1': {
+    name: '3F Female Restroom 1',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-F2': {
+    name: '3F Female Restroom 2',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-PWD': {
+    name: '3F PWD Restroom',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-M1': {
+    name: '4F Male Restroom 1',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-M2': {
+    name: '4F Male Restroom 2',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-F1': {
+    name: '4F Female Restroom 1',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-F2': {
+    name: '4F Female Restroom 2',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-PWD': {
+    name: '4F PWD Restroom',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'toilet-01': {
+    name: '1st Floor Testing Lab',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+};
+
+function resolveTaskLocation(task: Task): { displayName: string; floor: string } {
+  if (task.restroomName && task.floor) {
+    return { displayName: task.restroomName, floor: task.floor };
+  }
+  if (task.location) {
+    return { displayName: task.location, floor: task.floor || 'SDCA Annex' };
+  }
+  const known = DEVICE_FACILITY_DIRECTORY[task.deviceId];
+  if (known) {
+    return { displayName: known.name, floor: known.floor };
+  }
+  return { displayName: task.deviceId || 'General Facility', floor: 'SDCA Annex' };
+}
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const {
@@ -470,18 +593,18 @@ export default function ReportsPage() {
     const pendingAuditCount = totalSubmissions - (approvedCount + flaggedCount);
     const auditedCount = approvedCount + flaggedCount;
     const approvalRatePct =
-      auditedCount > 0 ? Math.round((approvedCount / auditedCount) * 100) : 100;
+      auditedCount > 0 ? Math.round((approvedCount / auditedCount) * 100) : 0;
     const complianceRatePct =
       totalSubmissions > 0
         ? Math.round((auditedCount / totalSubmissions) * 100)
-        : 100;
+        : 0;
 
     return {
       totalSubmissions,
       approvedCount,
       flaggedCount,
       pendingAuditCount,
-      approvalRate: `${approvalRatePct}%`,
+      approvalRate: auditedCount > 0 ? `${approvalRatePct}%` : '0%',
       complianceRate: `${complianceRatePct}%`,
       completedTasks,
     };
@@ -640,223 +763,206 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-7xl animate-fade-in p-4 pb-24 md:p-8">
+    <div className="container mx-auto max-w-7xl animate-fade-in p-4 pb-24 md:p-8 space-y-8">
       {/* Clean Slate Typography Headline */}
-      <div className="mb-8">
+      <div>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
           <FileBarChart className="h-3.5 w-3.5" />
-          Analytics & Compliance Exports
+          Analytics &amp; Compliance Exports
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-          Data Exports & Reports
+          Data Exports &amp; Reports
         </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          Generate audit-ready telemetry summaries, export maintenance work order records, and download compliance packages.
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
+          Generate audit-ready telemetry summaries, inspect supervisor QA work orders, and download compliance packages.
         </p>
       </div>
 
-      {/* Modern 2-Column Layout */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
-        {/* LEFT COLUMN: Report Builder (lg:col-span-5) */}
-        <div className="lg:col-span-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+      {/* Top Action & Filter Bar (Report Builder) */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+          <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
               <Download className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                Report Builder
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Report Builder &amp; Data Export
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Configure parameters and download formatted data
+                Select telemetry scope, configure parameters, and download formatted audit packages
               </p>
             </div>
           </div>
 
-          <div className="mt-6 space-y-5">
-            {/* Report Type Select */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Report Type
-              </label>
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:block">
+            Format: <span className="font-bold text-slate-900 dark:text-slate-100">{formatType}</span> · Scope: <span className="font-bold text-slate-900 dark:text-slate-100">{resolvedRange.from} to {resolvedRange.to}</span>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 items-end">
+          {/* Col 1: Report Type (lg:col-span-4) */}
+          <div className="lg:col-span-4">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+              Report Type
+            </label>
+            <select
+              className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-900 transition-colors focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              value={reportType}
+              onChange={(event) =>
+                setReportType(event.target.value as ReportType)
+              }
+            >
+              {REPORT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500 line-clamp-1">
+              {REPORT_TYPE_OPTIONS.find((o) => o.value === reportType)?.desc}
+            </p>
+          </div>
+
+          {/* Col 2: Date Range (lg:col-span-3) */}
+          <div className="lg:col-span-3">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+              {usesExplicitRange ? 'Audit Date Range' : 'Time Period'}
+            </label>
+            {usesExplicitRange ? (
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  value={customRange.from}
+                  onChange={(event) =>
+                    setCustomRange((current) => ({
+                      ...current,
+                      from: event.target.value,
+                    }))
+                  }
+                />
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  value={customRange.to}
+                  onChange={(event) =>
+                    setCustomRange((current) => ({
+                      ...current,
+                      to: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            ) : (
               <select
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                value={reportType}
+                className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-900 transition-colors focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                value={dateRange}
                 onChange={(event) =>
-                  setReportType(event.target.value as ReportType)
+                  setDateRange(event.target.value as DateRangeOption)
                 }
               >
-                {REPORT_TYPE_OPTIONS.map((option) => (
+                {RANGE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
-              <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                {REPORT_TYPE_OPTIONS.find((o) => o.value === reportType)?.desc}
-              </p>
-            </div>
-
-            {/* Date Range Selector */}
-            {usesExplicitRange ? (
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/40">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-3">
-                  <CalendarRange className="h-4 w-4 text-[#B5121B] dark:text-red-400" />
-                  {isMaintenanceTaskReport ? 'Task Date Range' : 'Custom Audit Range'}
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                      From Date
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                      value={customRange.from}
-                      onChange={(event) =>
-                        setCustomRange((current) => ({
-                          ...current,
-                          from: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                      To Date
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                      value={customRange.to}
-                      onChange={(event) =>
-                        setCustomRange((current) => ({
-                          ...current,
-                          to: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                {hasInvalidDateRange && (
-                  <p className="mt-2 text-xs text-rose-500 font-medium">
-                    The end date must be on or after the start date.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                  Time Period
-                </label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  value={dateRange}
-                  onChange={(event) =>
-                    setDateRange(event.target.value as DateRangeOption)
-                  }
-                >
-                  {RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
             )}
+            {hasInvalidDateRange && (
+              <p className="mt-1 text-[11px] text-rose-500 font-medium">
+                End date must be on or after start date.
+              </p>
+            )}
+          </div>
 
-            {/* Format Selector Pills [PDF, CSV, JSON] */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Export Format
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['PDF', 'CSV', 'JSON'] as ExportFormat[]).map((fmt) => {
-                  const isSelected = formatType === fmt;
-                  return (
-                    <button
-                      key={fmt}
-                      type="button"
-                      onClick={() => setFormatType(fmt)}
-                      className={`tactile-btn flex flex-col items-center justify-center gap-1.5 rounded-xl border py-3 px-2 text-xs font-semibold transition-all ${
-                        isSelected
-                          ? 'border-[#B5121B] bg-red-50 text-[#B5121B] dark:border-red-500 dark:bg-red-950/60 dark:text-red-300 shadow-sm'
-                          : 'border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-300 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <FormatIcon fmt={fmt} className={`h-4 w-4 ${isSelected ? 'text-[#B5121B] dark:text-red-400' : 'text-slate-400'}`} />
-                      <span>{fmt}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Unified Primary Button: Generate & Download */}
-            <div className="pt-2">
-              <button
-                type="button"
-                className="tactile-btn flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#B5121B] py-3 px-4 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
-                onClick={handleGenerate}
-                disabled={isGenerating || hasInvalidDateRange}
-                data-loading={isGenerating}
-              >
-                {isGenerating ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                    <span>Generating File...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    <span>Generate & Download</span>
-                  </>
-                )}
-              </button>
+          {/* Col 3: Export Format (lg:col-span-2) */}
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+              Export Format
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['PDF', 'CSV', 'JSON'] as ExportFormat[]).map((fmt) => {
+                const isSelected = formatType === fmt;
+                return (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => setFormatType(fmt)}
+                    className={`tactile-btn flex items-center justify-center py-2 px-1 text-xs font-bold rounded-xl border transition-all ${
+                      isSelected
+                        ? 'border-[#B5121B] bg-red-50 text-[#B5121B] dark:border-red-500 dark:bg-red-950/60 dark:text-red-300 shadow-xs'
+                        : 'border-slate-200 bg-slate-50/70 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
 
-        {/* RIGHT COLUMN: Recent Exports / Maintenance Task Report / Supervisor QA Audit (lg:col-span-7) */}
-        <div className="lg:col-span-7">
-          {isSupervisorAuditReport ? (
-            <SupervisorAuditReport
-              approvalRate={supervisorAuditSummary.approvalRate}
-              approvedCount={supervisorAuditSummary.approvedCount}
-              complianceRate={supervisorAuditSummary.complianceRate}
-              error={tasksError}
-              flaggedCount={supervisorAuditSummary.flaggedCount}
-              loading={tasksLoading || personnelLoading}
-              onExportCsv={handleExportSupervisorAuditCsv}
-              pendingAuditCount={supervisorAuditSummary.pendingAuditCount}
-              resolveAssignedName={resolveAssignedName}
-              tasks={supervisorAuditSummary.completedTasks}
-              totalSubmissions={supervisorAuditSummary.totalSubmissions}
-            />
-          ) : isMaintenanceTaskReport ? (
-            <MaintenanceTaskReport
-              averageCompletionMinutes={taskSummary.averageCompletionMinutes}
-              averageResponseMinutes={taskSummary.averageResponseMinutes}
-              error={tasksError}
-              loading={tasksLoading || personnelLoading}
-              onExportCsv={handleExportMaintenanceCsv}
-              pendingNow={taskSummary.pendingNow}
-              resolveAssignedName={resolveAssignedName}
-              tasks={tasks}
-              totalTasks={taskSummary.totalTasks}
-            />
-          ) : (
-            <RecentExportsHistory
-              reports={exportHistory}
-              onQuickDownload={(report) => {
-                toast.success(`Downloading ${report.name}.${report.format.toLowerCase()}`);
-              }}
-            />
-          )}
+          {/* Col 4: Primary Generate & Download Button (lg:col-span-3) */}
+          <div className="lg:col-span-3">
+            <button
+              type="button"
+              className="tactile-btn flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-[#B5121B] py-2.5 px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40 active:translate-y-0.5 disabled:opacity-50"
+              onClick={handleGenerate}
+              disabled={isGenerating || hasInvalidDateRange}
+              data-loading={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  <span>Generating File...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Generate &amp; Download</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Main Full-Width Data Canvas */}
+      <div>
+        {isSupervisorAuditReport ? (
+          <SupervisorAuditReport
+            approvalRate={supervisorAuditSummary.approvalRate}
+            approvedCount={supervisorAuditSummary.approvedCount}
+            complianceRate={supervisorAuditSummary.complianceRate}
+            error={tasksError}
+            flaggedCount={supervisorAuditSummary.flaggedCount}
+            loading={tasksLoading || personnelLoading}
+            onExportCsv={handleExportSupervisorAuditCsv}
+            pendingAuditCount={supervisorAuditSummary.pendingAuditCount}
+            resolveAssignedName={resolveAssignedName}
+            tasks={supervisorAuditSummary.completedTasks}
+            totalSubmissions={supervisorAuditSummary.totalSubmissions}
+          />
+        ) : isMaintenanceTaskReport ? (
+          <MaintenanceTaskReport
+            averageCompletionMinutes={taskSummary.averageCompletionMinutes}
+            averageResponseMinutes={taskSummary.averageResponseMinutes}
+            error={tasksError}
+            loading={tasksLoading || personnelLoading}
+            onExportCsv={handleExportMaintenanceCsv}
+            pendingNow={taskSummary.pendingNow}
+            resolveAssignedName={resolveAssignedName}
+            tasks={tasks}
+            totalTasks={taskSummary.totalTasks}
+          />
+        ) : (
+          <RecentExportsHistory
+            reports={exportHistory}
+            onQuickDownload={(report) => {
+              toast.success(`Downloading ${report.name}.${report.format.toLowerCase()}`);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -886,28 +992,32 @@ function MaintenanceTaskReport({
   return (
     <div className="space-y-6">
       {/* 4 Summary KPI Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
-          icon={<Layers className="h-4 w-4" />}
+          icon={<Layers className="h-4 w-4 text-slate-500" />}
           label="Total Tasks"
+          sublabel="All Time Logged"
           loading={loading}
           value={String(totalTasks)}
         />
         <SummaryCard
           icon={<AlertCircle className="h-4 w-4 text-amber-500" />}
-          label="Pending Now"
+          label="Pending Dispatch"
+          sublabel="Awaiting Tech Action"
           loading={loading}
           value={String(pendingNow)}
         />
         <SummaryCard
           icon={<Timer className="h-4 w-4 text-sky-500" />}
-          label="Avg Response"
+          label="Average Response"
+          sublabel="Dispatch to Ack"
           loading={loading}
           value={formatAverageMinutes(averageResponseMinutes)}
         />
         <SummaryCard
           icon={<Hourglass className="h-4 w-4 text-emerald-500" />}
-          label="Avg Complete"
+          label="Average Completion"
+          sublabel="Dispatch to Resolution"
           loading={loading}
           value={formatAverageMinutes(averageCompletionMinutes)}
         />
@@ -921,7 +1031,7 @@ function MaintenanceTaskReport({
               <Wrench className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 Maintenance Work Orders
               </h3>
               <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -932,7 +1042,7 @@ function MaintenanceTaskReport({
 
           <button
             type="button"
-            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             onClick={onExportCsv}
             disabled={loading}
           >
@@ -971,42 +1081,45 @@ function MaintenanceTaskReport({
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Status</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Trigger</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Stall / Description</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Assigned</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Created</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Completed</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Trigger</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Facility / Stall</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Tech</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Created</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {tasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {getStatusBadge(task.status)}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-700 dark:text-slate-300">
-                      {TRIGGER_LABELS[task.triggerType]}
-                    </td>
-                    <td className="py-3 px-4 max-w-xs">
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        {task.deviceId}
-                      </div>
-                      <div className="text-slate-500 dark:text-slate-400 truncate">
-                        {task.message || 'No description provided'}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
-                      {resolveAssignedName(task.assignedTo)}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
-                      {formatTaskTimestamp(task.createdAt)}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
-                      {formatTaskTimestamp(task.completedAt)}
-                    </td>
-                  </tr>
-                ))}
+                {tasks.map((task) => {
+                  const loc = resolveTaskLocation(task);
+                  return (
+                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {getStatusBadge(task.status)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-700 dark:text-slate-300">
+                        {TRIGGER_LABELS[task.triggerType]}
+                      </td>
+                      <td className="py-3 px-4 max-w-sm">
+                        <div className="font-semibold text-slate-900 dark:text-slate-100">
+                          {loc.displayName}
+                        </div>
+                        <div className="text-slate-500 dark:text-slate-400 text-[11px] font-mono">
+                          {task.deviceId} · <span className="text-slate-600 dark:text-slate-300 font-sans">{loc.floor}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
+                        {resolveAssignedName(task.assignedTo)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                        {formatTaskTimestamp(task.createdAt)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                        {formatTaskTimestamp(task.completedAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1019,30 +1132,43 @@ function MaintenanceTaskReport({
 function SummaryCard({
   icon,
   label,
+  sublabel,
   loading,
   value,
 }: {
   icon: ReactNode;
   label: string;
+  sublabel?: string;
   loading: boolean;
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all">
       {loading ? (
         <div className="space-y-2">
-          <div className="h-4 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
-          <div className="h-6 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
+          <div className="h-4 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
+          <div className="h-7 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {icon}
-            <span className="truncate">{label}</span>
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {icon}
+            </div>
+            <span className="font-semibold text-slate-700 dark:text-slate-300 whitespace-normal">
+              {label}
+            </span>
           </div>
-          <p className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
-            {value}
-          </p>
+          <div className="mt-2.5 flex items-baseline justify-between gap-2">
+            <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
+              {value}
+            </p>
+            {sublabel && (
+              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                {sublabel}
+              </span>
+            )}
+          </div>
         </>
       )}
     </div>
@@ -1064,7 +1190,7 @@ function RecentExportsHistory({
             <History className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Recent Exports History
             </h3>
             <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -1085,7 +1211,7 @@ function RecentExportsHistory({
             No exported reports yet
           </p>
           <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-            Use the Report Builder on the left to create and export telemetry records.
+            Use the Report Builder above to create and export telemetry records.
           </p>
         </div>
       ) : (
@@ -1093,11 +1219,11 @@ function RecentExportsHistory({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Report File</th>
-                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Generated</th>
-                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Format</th>
-                <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Size</th>
-                <th className="py-3 px-4 text-right font-semibold uppercase tracking-wider text-[10px]">Action</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Report File</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Generated</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Format</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Size</th>
+                <th className="py-3 px-4 text-right font-bold uppercase tracking-wider text-[10px]">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1171,6 +1297,8 @@ function FormatIcon({
   }
 }
 
+type QAFilterTab = 'all' | 'pending' | 'approved' | 'flagged';
+
 function SupervisorAuditReport({
   approvalRate,
   approvedCount,
@@ -1196,47 +1324,73 @@ function SupervisorAuditReport({
   tasks: Task[];
   totalSubmissions: number;
 }) {
+  const [activeTab, setActiveTab] = useState<QAFilterTab>('all');
+
+  const filteredTasks = useMemo(() => {
+    if (activeTab === 'approved') {
+      return tasks.filter((t) => t.inspectionStatus === 'approved');
+    }
+    if (activeTab === 'flagged') {
+      return tasks.filter(
+        (t) => t.inspectionStatus === 'flagged' || t.status === 'flagged',
+      );
+    }
+    if (activeTab === 'pending') {
+      return tasks.filter(
+        (t) => !t.inspectionStatus || t.inspectionStatus === 'pending_review',
+      );
+    }
+    return tasks;
+  }, [tasks, activeTab]);
+
   return (
     <div className="space-y-6">
       {/* 4 QA Summary KPI Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
-          icon={<Layers className="h-4 w-4 text-slate-500" />}
+          icon={<Layers className="h-4 w-4 text-slate-600 dark:text-slate-300" />}
           label="Total Submissions"
+          sublabel="Completed Work Orders"
           loading={loading}
           value={String(totalSubmissions)}
         />
         <SummaryCard
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
           label="Approved Tasks"
+          sublabel="Passed Inspection"
           loading={loading}
           value={String(approvedCount)}
         />
         <SummaryCard
           icon={<AlertCircle className="h-4 w-4 text-rose-500" />}
           label="Flagged / Recheck"
+          sublabel="Requires Rework"
           loading={loading}
           value={String(flaggedCount)}
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-sky-500" />}
           label="Supervisor Approval Rate"
+          sublabel={`${approvedCount} of ${approvedCount + flaggedCount} Audited`}
           loading={loading}
           value={approvalRate}
         />
       </div>
 
       {/* Compliance Rate Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-4 dark:border-sky-950 dark:bg-sky-950/30">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-4.5 dark:border-sky-950 dark:bg-sky-950/30">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm shrink-0">
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-xs font-bold text-sky-950 dark:text-sky-100">
-              Supervisor Audit Compliance: {complianceRate}
+            <div className="text-sm font-bold text-sky-950 dark:text-sky-100 flex items-center gap-2">
+              <span>Supervisor Audit Compliance: {complianceRate}</span>
+              <span className="inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:text-sky-200">
+                {totalSubmissions - pendingAuditCount} / {totalSubmissions} Inspected
+              </span>
             </div>
-            <div className="text-[11px] text-sky-700 dark:text-sky-300">
+            <div className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
               {pendingAuditCount > 0
                 ? `${pendingAuditCount} completed work order(s) currently awaiting supervisor QA review.`
                 : 'All maintenance submissions have been audited and verified.'}
@@ -1247,14 +1401,14 @@ function SupervisorAuditReport({
 
       {/* QA Audit Matrix Table */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
               <ShieldCheck className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Supervisor QA Audit & Inspection Log
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Supervisor QA Audit &amp; Inspection Log
               </h3>
               <p className="text-xs text-slate-400 dark:text-slate-500">
                 Maintenance submissions aligned with supervisor approvals, rechecks, and remarks
@@ -1262,15 +1416,74 @@ function SupervisorAuditReport({
             </div>
           </div>
 
-          <button
-            type="button"
-            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-            onClick={onExportCsv}
-            disabled={loading}
-          >
-            <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-            Export Audit CSV
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Quick Filter Tabs (Zero-Scroll triage) */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                  activeTab === 'all'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                All ({totalSubmissions})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('pending')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'pending'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-amber-700 dark:text-amber-300 hover:bg-amber-500/10'
+                }`}
+              >
+                <span>⏳ Pending</span>
+                <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.2 text-[10px] font-bold">
+                  {pendingAuditCount}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('approved')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'approved'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10'
+                }`}
+              >
+                <span>✓ Approved</span>
+                <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.2 text-[10px] font-bold">
+                  {approvedCount}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('flagged')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'flagged'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-rose-700 dark:text-rose-300 hover:bg-rose-500/10'
+                }`}
+              >
+                <span>⚠️ Flagged</span>
+                <span className="rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200 px-1.5 py-0.2 text-[10px] font-bold">
+                  {flaggedCount}
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              onClick={onExportCsv}
+              disabled={loading}
+            >
+              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+              Export Audit CSV
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -1288,11 +1501,13 @@ function SupervisorAuditReport({
               {error}
             </div>
           </div>
-        ) : tasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              No completed maintenance submissions found
+              {activeTab === 'all'
+                ? 'No completed maintenance submissions found'
+                : `No work orders currently in "${activeTab}" status`}
             </p>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
               Technician completed work orders will appear here for QA auditing.
@@ -1303,50 +1518,54 @@ function SupervisorAuditReport({
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">QA Status</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Stall / Location</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Technician</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Audited By</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Flag Reason / Remarks</th>
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[10px]">Completed</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">QA Status</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom &amp; Location</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Technician</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Audited By</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flag Reason / Remarks</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {tasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {getInspectionBadge(task.inspectionStatus ?? (task.status === 'flagged' ? 'flagged' : 'pending_review'))}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        {task.deviceId}
-                      </div>
-                      <div className="text-slate-400 text-[11px]">
-                        {task.location || task.restroomName || 'General Facility'}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
-                      {resolveAssignedName(task.assignedTo)}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
-                      {task.inspectedByName || (task.inspectedBy ? 'Supervisor' : '—')}
-                    </td>
-                    <td className="py-3 px-4 max-w-xs">
-                      {task.flagReason ? (
-                        <div className="rounded bg-rose-50 p-1.5 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-[11px] font-medium">
-                          ⚠️ {task.flagReason}
+                {filteredTasks.map((task) => {
+                  const loc = resolveTaskLocation(task);
+                  return (
+                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {getInspectionBadge(task.inspectionStatus ?? (task.status === 'flagged' ? 'flagged' : 'pending_review'))}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900 dark:text-slate-100">
+                          {loc.displayName}
                         </div>
-                      ) : (
-                        <div className="text-slate-400 text-[11px] italic">
-                          {task.remarks || 'Standard completion'}
+                        <div className="text-slate-500 dark:text-slate-400 text-[11px] font-mono">
+                          {task.deviceId} · <span className="text-slate-600 dark:text-slate-300 font-sans">{loc.floor}</span>
                         </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
-                      {formatTaskTimestamp(task.completedAt)}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
+                        {resolveAssignedName(task.assignedTo)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                        {task.inspectedByName || (task.inspectedBy ? 'Supervisor' : '—')}
+                      </td>
+                      <td className="py-3 px-4 max-w-sm">
+                        {task.flagReason ? (
+                          <div className="rounded-lg bg-rose-50 p-2 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-[11px] font-medium border border-rose-200 dark:border-rose-900/50 flex items-start gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                            <span>{task.flagReason}</span>
+                          </div>
+                        ) : (
+                          <div className="text-slate-400 text-[11px] italic">
+                            {task.remarks || 'Standard completion'}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                        {formatTaskTimestamp(task.completedAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

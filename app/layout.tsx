@@ -79,8 +79,9 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   icons: {
-    icon: '/favicon.ico',
-    apple: '/favicon.ico',
+    icon: '/kliricon.ico',
+    shortcut: '/kliricon.ico',
+    apple: '/kliricon.png',
   },
 };
 
