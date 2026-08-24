@@ -100,16 +100,23 @@ export function serializeTaskData(
     floor: nullableString(data.floor),
     building: nullableString(data.building),
     location: nullableString(data.location),
+    component: nullableString(data.component),
+    shift: nullableString(data.shift),
     triggerType: triggerTypeOrManual(data.triggerType),
     message: stringOrFallback(data.message, ''),
     status: statusOrPending(data.status),
     assignedTo: nullableString(data.assignedTo),
     assignedToIds: stringArray(data.assignedToIds),
     createdAt: timestampToMillis(data.createdAt),
+    assignedAt: timestampToMillis(data.assignedAt),
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),
     completedAt: timestampToMillis(data.completedAt),
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
+    submissions:
+      data.submissions && typeof data.submissions === 'object'
+        ? (data.submissions as Record<string, unknown>)
+        : undefined,
     createdBy: stringOrFallback(data.createdBy, 'unknown'),
     beforePhotoUrl: nullableString(data.beforePhotoUrl),
     beforePhotoCapturedAt: timestampToMillis(data.beforePhotoCapturedAt),
@@ -124,6 +131,24 @@ export function serializeTaskData(
     responseTime: typeof data.responseTime === 'number' ? data.responseTime : null,
     totalTime: typeof data.totalTime === 'number' ? data.totalTime : null,
     biometricVerified: data.biometricVerified === true,
+
+    // QA & Supervisor Audit Fields
+    inspectionStatus:
+      data.inspectionStatus === 'approved' ||
+      data.inspectionStatus === 'flagged' ||
+      data.inspectionStatus === 'pending_review'
+        ? data.inspectionStatus
+        : undefined,
+    inspectedBy: nullableString(data.inspectedBy),
+    inspectedByName: nullableString(data.inspectedByName),
+    inspectedAt: timestampToMillis(data.inspectedAt),
+    flagReason: nullableString(data.flagReason),
+    flagPhotoUrls: Array.isArray(data.flagPhotoUrls)
+      ? data.flagPhotoUrls.filter((url): url is string => typeof url === 'string')
+      : undefined,
+    recheckCount: typeof data.recheckCount === 'number' ? data.recheckCount : 0,
+    recheckedBy: nullableString(data.recheckedBy),
+    recheckedAt: timestampToMillis(data.recheckedAt),
   };
 }
 

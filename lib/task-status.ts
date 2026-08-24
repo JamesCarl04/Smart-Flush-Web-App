@@ -31,6 +31,14 @@ export function withDashboardTaskStatus(
   task: TaskApiData,
   maintenanceUserIds: string[],
 ): TaskApiData {
+  if (
+    task.status === 'flagged' ||
+    task.status === 'rechecking' ||
+    task.status === 'reassignment_needed'
+  ) {
+    return task;
+  }
+
   const userIds = requiredUserIds(task, maintenanceUserIds);
   if (userIds.length <= 1) {
     return task;
@@ -78,7 +86,7 @@ export function withDashboardTaskStatus(
 
   return {
     ...task,
-    status: 'pending',
+    status: task.status === 'unassigned' || task.status === 'assigned' ? task.status : 'pending',
     acknowledgedAt: null,
     completedAt: null,
   };
@@ -88,6 +96,14 @@ export function withMaintenanceUserStatus(
   task: TaskApiData,
   userId: string,
 ): TaskApiData {
+  if (
+    task.status === 'flagged' ||
+    task.status === 'rechecking' ||
+    task.status === 'reassignment_needed'
+  ) {
+    return task;
+  }
+
   if (!usesSharedProgress(task)) {
     return task;
   }
@@ -114,7 +130,7 @@ export function withMaintenanceUserStatus(
 
   return {
     ...task,
-    status: 'pending',
+    status: task.status === 'unassigned' || task.status === 'assigned' ? task.status : 'pending',
     acknowledgedAt: null,
     completedAt: null,
   };

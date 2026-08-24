@@ -75,21 +75,27 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     if (role === 'maintenance') {
       const taskMap = new Map<string, TaskApiData>();
-      const [assignedSnapshot, teamSnapshot] = await Promise.all([
-        adminDb.collection('tasks').where('assignedTo', '==', user.uid).get(),
-        adminDb.collection('tasks').where('assignedTo', '==', null).get(),
-      ]);
+      const allTasksSnapshot = await adminDb
+        .collection('tasks')
+        .orderBy('createdAt', 'desc')
+        .get();
 
-      for (const doc of assignedSnapshot.docs) {
-        const task = serializeTaskSnapshot(doc);
-        if (!statusParam || task.status === statusParam) {
-          taskMap.set(task.id, task);
-        }
-      }
-
-      for (const doc of teamSnapshot.docs) {
+      for (const doc of allTasksSnapshot.docs) {
         const rawTask = serializeTaskSnapshot(doc);
-        if (!isAssignedToUser(rawTask, user.uid)) {
+        const isUserTask =
+          isAssignedToUser(rawTask, user.uid) ||
+          (user.email && rawTask.assignedTo === user.email) ||
+          rawTask.createdBy === user.uid ||
+          Boolean(rawTask.completedBy && rawTask.completedBy[user.uid]) ||
+          Boolean(
+            rawTask.submissions &&
+              (rawTask.submissions as Record<string, unknown>)[user.uid],
+          ) ||
+          rawTask.status === 'unassigned' ||
+          rawTask.status === 'reassignment_needed' ||
+          rawTask.status === 'flagged';
+
+        if (!isUserTask) {
           continue;
         }
 
