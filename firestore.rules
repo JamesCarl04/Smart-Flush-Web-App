@@ -1,100 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isSelf(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function currentUserRole() {
-      return isAuthenticated()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-        : null;
+    function isRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role ||
+        getUserData().role == role
+      );
     }
 
     function isAdmin() {
-      return currentUserRole() == 'admin';
+      return isRole('admin');
+    }
+
+    function isSupervisor() {
+      return isRole('supervisor') || isAdmin();
     }
 
     function isMaintenance() {
-      return currentUserRole() == 'maintenance';
-    }
-
-    match /users/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow create: if isSelf(userId) || isAdmin();
-      // CRITICAL FIX: Prevent role escalation
-      // Users can update their own profile BUT:
-      // - Role must remain unchanged (prevent privilege escalation)
-      // - Email must remain unchanged (prevent email spoofing/account takeover)
-      // - Only admins can change role/email
-      allow update: if isAdmin()
-        || (
-          isSelf(userId)
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.email == resource.data.email
-        );
-      allow delete: if isAdmin();
-
-      match /fcmToken/{tokenId} {
-        allow read, write: if isSelf(userId) || isAdmin();
-      }
+      return isRole('maintenance') || isRole('technician') || isSupervisor();
     }
 
     match /tasks/{taskId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isMaintenance() || isAdmin();
+      allow create: if isSupervisor();
+      allow update: if isAuthenticated() && (
+        isSupervisor() ||
+        (
+          isMaintenance() &&
+          request.resource.data.inspectionStatus != 'approved'
+        )
+      );
       allow delete: if isAdmin();
     }
 
-    match /maintenanceNotes/{noteId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated() && currentUserRole() != 'viewer';
-      allow update, delete: if false;
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isSupervisor());
+      allow delete: if isAdmin();
     }
 
     match /devices/{deviceId} {
-      allow read, write: if isAuthenticated();
-      match /maintenanceCounters/{counterId} {
-        allow read, write: if isAuthenticated();
-      }
-    }
-
-    match /sensorReadings/{date}/readings/{readingId} {
       allow read: if isAuthenticated();
-      allow write: if false;
+      allow write: if isSupervisor();
     }
 
-    match /alerts/{alertId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    match /automationRules/{ruleId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    match /reports/{reportId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow write: if false;
-    }
-
-    match /flushEvents/{id} {
+    match /sensors/{sensorId} {
       allow read: if isAuthenticated();
-      allow write: if false;
-    }
-
-    match /lidEvents/{id} {
-      allow read: if isAuthenticated();
-      allow write: if false;
-    }
-
-    match /uvCycles/{id} {
-      allow read: if isAuthenticated();
-      allow write: if false;
+      allow write: if isSupervisor();
     }
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
 
 interface RouteParams {
@@ -18,6 +18,7 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
+    const role = await getUserRole(user);
     const { id: taskId } = await params;
 
     if (!taskId) {
@@ -28,12 +29,17 @@ export async function POST(
     }
 
     const body = (await request.json().catch(() => ({}))) as AcceptRecheckBody;
+    const isPrivileged = role === 'admin' || role === 'supervisor';
     const technicianUid =
-      typeof body.technicianUid === 'string' && body.technicianUid.trim().length > 0
+      isPrivileged &&
+      typeof body.technicianUid === 'string' &&
+      body.technicianUid.trim().length > 0
         ? body.technicianUid.trim()
         : user.uid;
     const technicianName =
-      typeof body.technicianName === 'string' && body.technicianName.trim().length > 0
+      isPrivileged &&
+      typeof body.technicianName === 'string' &&
+      body.technicianName.trim().length > 0
         ? body.technicianName.trim()
         : user.email?.split('@')[0] || 'Technician';
 

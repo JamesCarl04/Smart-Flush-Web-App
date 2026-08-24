@@ -206,10 +206,7 @@ export default function LoginPage() {
               disabled={isLoading}
             >
               {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="loading loading-spinner loading-sm"></span>
-                  <span>Signing in...</span>
-                </span>
+                <span className="loading loading-spinner loading-sm"></span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
                   Sign In to Dashboard

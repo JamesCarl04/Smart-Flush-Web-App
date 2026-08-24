@@ -51,20 +51,57 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    await taskRef.update({
-      assignedTo: newAssigneeUid,
-      assignedToIds: [newAssigneeUid],
-      status: 'assigned',
-      reassignReason: reason,
-      supervisorUid,
-      reassignCount: FieldValue.increment(1),
-      assignedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const taskData = snapshot.data();
+    const previousAssigneeUid =
+      typeof taskData?.assignedTo === 'string' && taskData.assignedTo.trim().length > 0
+        ? taskData.assignedTo.trim()
+        : null;
+
+    const updates: Promise<unknown>[] = [
+      taskRef.update({
+        assignedTo: newAssigneeUid,
+        assignedToIds: [newAssigneeUid],
+        status: 'assigned',
+        reassignReason: reason,
+        supervisorUid,
+        reassignCount: FieldValue.increment(1),
+        assignedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+      adminDb
+        .collection('users')
+        .doc(newAssigneeUid)
+        .set(
+          {
+            currentTaskId: taskId,
+            isAvailable: false,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ),
+    ];
+
+    if (previousAssigneeUid && previousAssigneeUid !== newAssigneeUid) {
+      updates.push(
+        adminDb
+          .collection('users')
+          .doc(previousAssigneeUid)
+          .set(
+            {
+              currentTaskId: null,
+              isAvailable: true,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          ),
+      );
+    }
+
+    await Promise.all(updates);
 
     return NextResponse.json({
       success: true,
-      message: 'Task reassigned successfully',
+      message: 'Task reassigned successfully and squad availability updated',
     });
   } catch (error) {
     if (error instanceof Response) {
