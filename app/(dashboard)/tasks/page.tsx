@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { MaintenanceTaskPanel } from '@/components/dashboard/MaintenanceTaskPanel';
 
 export default function TasksPage() {
@@ -16,7 +17,20 @@ export default function TasksPage() {
       </div>
 
       {/* Main Full-Width Maintenance Task Operations Panel */}
-      <MaintenanceTaskPanel />
+      <Suspense
+        fallback={
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-slate-900">
+            <div className="space-y-4">
+              <div className="h-6 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
+              <div className="h-4 w-72 animate-pulse rounded bg-slate-100 dark:bg-slate-800"></div>
+              <div className="h-32 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800"></div>
+            </div>
+          </div>
+        }
+      >
+        <MaintenanceTaskPanel />
+      </Suspense>
     </div>
   );
 }
+

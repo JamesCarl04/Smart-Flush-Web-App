@@ -15,7 +15,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useTasks } from '@/hooks/useTasks';
-import type { Task, TaskTriggerType } from '@/types';
+import type { TaskTriggerType } from '@/types';
 
 function getPriorityBadge(triggerType?: TaskTriggerType) {
   switch (triggerType) {
@@ -222,7 +222,7 @@ export function ActiveTasksSummary() {
                   </div>
 
                   <Link
-                    href="/tasks"
+                    href={`/tasks?taskId=${encodeURIComponent(task.id)}`}
                     className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline self-end sm:self-center"
                   >
                     <span>Manage</span>

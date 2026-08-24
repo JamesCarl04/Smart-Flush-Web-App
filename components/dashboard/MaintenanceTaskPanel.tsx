@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   AlertCircle,
@@ -64,10 +65,6 @@ type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
 type FilterStatus = 'all' | 'pending' | 'acknowledged' | 'completed';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
-
-function formatDeviceLabel(device: Device): string {
-  return device.name || device.id;
-}
 
 function getDefaultMessage(deviceLabel: string): string {
   return `Manual maintenance requested for ${deviceLabel}.`;
@@ -189,6 +186,8 @@ function normalizeAssigneeSelection(
 }
 
 export function MaintenanceTaskPanel() {
+  const searchParams = useSearchParams();
+  const targetTaskId = searchParams?.get('taskId') ?? null;
   const { user, loading: authLoading } = useAuth();
   const {
     tasks,
@@ -208,6 +207,57 @@ export function MaintenanceTaskPanel() {
   // Filters & Search State
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const scrolledTaskIdRef = useRef<string | null>(null);
+
+  // Auto-scroll and Messenger-style motion flash when targeted via query param
+  useEffect(() => {
+    if (!targetTaskId || tasksLoading || tasks.length === 0) {
+      return;
+    }
+
+    if (scrolledTaskIdRef.current === targetTaskId) {
+      return;
+    }
+
+    const targetTask = tasks.find((t) => t.id === targetTaskId);
+    if (!targetTask) {
+      return;
+    }
+
+    scrolledTaskIdRef.current = targetTaskId;
+
+    // Ensure the targeted task is visible within the active tab/filter
+    if (filterStatus !== 'all' && filterStatus !== targetTask.status) {
+      setFilterStatus('all');
+    }
+    if (searchQuery.trim()) {
+      setSearchQuery('');
+    }
+
+    // Trigger brief motion highlight
+    setHighlightedTaskId(targetTaskId);
+
+    // Smoothly scroll and center the targeted task in the viewport
+    const scrollTimer = window.setTimeout(() => {
+      const element = document.getElementById(`task-${targetTaskId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+
+    // Fade out highlight animation naturally
+    const clearTimer = window.setTimeout(() => {
+      setHighlightedTaskId((current) =>
+        current === targetTaskId ? null : current,
+      );
+    }, 1600);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [targetTaskId, tasksLoading, tasks, filterStatus, searchQuery]);
 
   // Drawer / Slide-Over Create Task State
   const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
@@ -1052,11 +1102,17 @@ export function MaintenanceTaskPanel() {
                 const acknowledgementSummary = getAcknowledgementSummary(task);
                 const priority = getPriorityBadge(task.triggerType);
                 const statusInfo = getStatusBadge(task.status);
+                const isHighlighted = highlightedTaskId === task.id;
 
                 return (
                   <div
                     key={task.id}
-                    className="group rounded-xl border border-slate-200/90 bg-white p-4.5 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                    id={`task-${task.id}`}
+                    className={`group rounded-xl border p-4.5 transition-all duration-700 ease-out ${
+                      isHighlighted
+                        ? 'border-rose-400 bg-rose-50/80 shadow-lg ring-2 ring-primary/80 ring-offset-2 scale-[1.01] dark:border-rose-500 dark:bg-rose-950/40 dark:ring-offset-slate-900'
+                        : 'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800'
+                    }`}
                   >
                     {/* Header Row: Location, Priority, and Status Badge */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/80">

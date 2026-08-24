@@ -405,7 +405,7 @@ export default function AlertsPage() {
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                       {alert.source === 'task' ? (
                         <Link
-                          href="/dashboard#maintenance-task-panel"
+                          href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
                           className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 shadow-sm transition-all hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50"
                         >
                           View Task <ExternalLink className="h-3.5 w-3.5" />
