@@ -60,28 +60,13 @@ function buildBrokerUrl(hostOrUrl: string | undefined, port: string): string {
 
 // ─── Message router ───────────────────────────────────────────────────────────
 
-async function writeUvCycleAndMaybeCreateTask(
+async function writeUvCycleTelemetry(
   payload: UVPayload,
   deviceId: string,
 ): Promise<void> {
   await writeUVCycle(payload, deviceId);
-
-  if (payload.completed !== true) {
-    return;
-  }
-
-  try {
-    await createTaskAndNotify({
-      deviceId,
-      triggerType: 'uv_complete',
-      message: 'UV cycle complete. Manual cleaning required.',
-      assignedTo: null,
-      assignedToIds: [],
-      createdBy: 'system:mqtt',
-    });
-  } catch (error) {
-    console.error('[MQTT] Failed to create UV completion task:', error);
-  }
+  // Normal UV completion is a healthy sanitation routine — telemetry only.
+  // Hardware failures (payload.completed === false) are evaluated by evaluateAlerts.
 }
 
 async function handleMessage(topic: string, raw: Buffer): Promise<void> {
@@ -118,13 +103,14 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
     }
     case 'toilet/events/uv': {
       const p = payload as UVPayload;
-      void writeUvCycleAndMaybeCreateTask(p, DEVICE_ID);
+      void writeUvCycleTelemetry(p, DEVICE_ID);
       void evaluateAlerts(topic, p, DEVICE_ID);
       break;
     }
-    case 'toilet/events/pump': {
-      // Pump events are informational — log only (no dedicated collection)
-      console.log('[MQTT] Pump event:', JSON.stringify(payload));
+    case 'toilet/events/pump':
+    case 'toilet/events/error': {
+      console.log(`[MQTT] Hardware event on ${topic}:`, JSON.stringify(payload));
+      void evaluateAlerts(topic, payload as Record<string, unknown>, DEVICE_ID);
       break;
     }
     default:

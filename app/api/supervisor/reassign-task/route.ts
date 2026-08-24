@@ -52,6 +52,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const taskData = snapshot.data();
+    if (taskData?.status === 'completed') {
+      return NextResponse.json(
+        { success: false, error: 'Cannot reassign a task that has already been completed.' },
+        { status: 400 },
+      );
+    }
+
+    if (taskData?.status === 'acknowledged' || taskData?.status === 'rechecking') {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Cannot reassign task: Work is currently in progress on-site by the technician.',
+        },
+        { status: 400 },
+      );
+    }
+
     const previousAssigneeUid =
       typeof taskData?.assignedTo === 'string' && taskData.assignedTo.trim().length > 0
         ? taskData.assignedTo.trim()
@@ -64,6 +82,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         status: 'assigned',
         reassignReason: reason,
         supervisorUid,
+        acknowledgedAt: null,
+        acknowledgedBy: {},
         reassignCount: FieldValue.increment(1),
         assignedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -98,6 +118,29 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     await Promise.all(updates);
+
+    // Dispatch FCM notification to the newly assigned technician
+    try {
+      const { sendTaskNotification } = await import('@/lib/fcm');
+      await sendTaskNotification(
+        {
+          id: taskId,
+          deviceId: taskData?.deviceId ?? '',
+          triggerType: taskData?.triggerType ?? 'maintenance',
+          message: taskData?.message ?? 'Task reassigned to you by supervisor',
+          status: 'assigned',
+          assignedTo: newAssigneeUid,
+          assignedToIds: [newAssigneeUid],
+          createdAt: taskData?.createdAt,
+          acknowledgedAt: null,
+          completedAt: null,
+          createdBy: supervisorUid,
+        },
+        newAssigneeUid,
+      );
+    } catch (err) {
+      console.warn('[ReassignTask] FCM notification warning:', err);
+    }
 
     return NextResponse.json({
       success: true,

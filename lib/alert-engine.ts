@@ -1,8 +1,9 @@
 // lib/alert-engine.ts
-// Evaluates incoming MQTT payloads against automationRules and creates alerts.
+// Evaluates incoming MQTT payloads against automationRules and creates alerts/tasks.
 // Called from mqtt-client.ts after every inbound message.
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { createTaskAndNotify } from '@/lib/task-service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,11 @@ const DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Returns true if an alert of this type was already created within the debounce window */
-async function isDebounced(alertType: string): Promise<boolean> {
+async function isDebounced(alertType: string, deviceId: string): Promise<boolean> {
   const cutoff = Timestamp.fromMillis(Date.now() - DEBOUNCE_MS);
   const snap = await adminDb
     .collection('alerts')
+    .where('deviceId', '==', deviceId)
     .where('type', '==', alertType)
     .where('timestamp', '>=', cutoff)
     .limit(1)
@@ -48,12 +50,30 @@ async function isDebounced(alertType: string): Promise<boolean> {
   return !snap.empty;
 }
 
-/** Creates an alert document in Firestore */
-async function createAlert(params: {
+/** Checks if an active uncompleted task already exists for this device to prevent duplicate task spam */
+async function hasActiveHardwareTask(deviceId: string): Promise<boolean> {
+  try {
+    const snap = await adminDb
+      .collection('tasks')
+      .where('deviceId', '==', deviceId)
+      .where('triggerType', '==', 'hardware_failure')
+      .where('status', 'in', ['pending', 'unassigned', 'assigned', 'acknowledged', 'reassignment_needed'])
+      .limit(1)
+      .get();
+    return !snap.empty;
+  } catch (err) {
+    console.warn('[AlertEngine] hasActiveHardwareTask check warning:', err);
+    return false;
+  }
+}
+
+/** Creates an alert document in Firestore and optionally dispatches an urgent maintenance task */
+async function createAlertAndMaybeTask(params: {
   type: string;
   message: string;
   severity: 'low' | 'medium' | 'high';
   deviceId: string;
+  isHardwareFailure?: boolean;
 }): Promise<void> {
   const docRef = adminDb.collection('alerts').doc();
   await docRef.set({
@@ -68,6 +88,28 @@ async function createAlert(params: {
   console.log(
     `[AlertEngine] Created alert: ${params.type} — ${params.message}`,
   );
+
+  // Automatically dispatch a debounced urgent maintenance task for critical hardware faults
+  if (params.isHardwareFailure && params.severity === 'high') {
+    const hasActiveTask = await hasActiveHardwareTask(params.deviceId);
+    if (!hasActiveTask) {
+      try {
+        await createTaskAndNotify({
+          deviceId: params.deviceId,
+          triggerType: 'hardware_failure',
+          message: params.message,
+          assignedTo: null,
+          assignedToIds: [],
+          createdBy: 'system:iot_sensor',
+        });
+        console.log(`[AlertEngine] Dispatched urgent hardware task for ${params.deviceId}`);
+      } catch (err) {
+        console.error('[AlertEngine] Failed to create hardware failure task:', err);
+      }
+    } else {
+      console.log(`[AlertEngine] Suppressed duplicate task: Active task already pending for ${params.deviceId}`);
+    }
+  }
 }
 
 /** Count today's flushEvents for a given deviceId */
@@ -85,8 +127,8 @@ async function todayFlushCount(deviceId: string): Promise<number> {
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
- * Evaluates system_alert automationRules against an incoming MQTT payload.
- * Creates debounced alerts in Firestore when triggers are met.
+ * Evaluates system_alert automationRules & hardware failure events against an incoming MQTT payload.
+ * Creates debounced alerts and dispatches urgent tasks in Firestore when triggers are met.
  */
 export async function evaluateAlerts(
   topic: string,
@@ -94,7 +136,39 @@ export async function evaluateAlerts(
   deviceId: string,
 ): Promise<void> {
   try {
-    // Load enabled system_alert rules
+    // 1. Direct hardware error topic or pump failure event
+    if (topic === 'toilet/events/error' || topic === 'toilet/events/pump') {
+      const raw = payload as Record<string, unknown>;
+      const isError =
+        Boolean(raw.error) ||
+        raw.status === 'error' ||
+        raw.status === 'failed' ||
+        raw.action === 'FAIL' ||
+        raw.flowDetected === false;
+
+      if (isError) {
+        const errorType = typeof raw.error === 'string' ? raw.error : 'PUMP_FAILURE';
+        const alertType = `hardware_${errorType.toLowerCase()}`;
+        const message =
+          typeof raw.reason === 'string' && raw.reason.trim()
+            ? `Hardware Alert on ${deviceId}: ${raw.reason}`
+            : `Water pump / sensor failure detected on ${deviceId}. No water flow during flush cycle.`;
+
+        const debounced = await isDebounced(alertType, deviceId);
+        if (!debounced) {
+          await createAlertAndMaybeTask({
+            type: alertType,
+            message,
+            severity: 'high',
+            deviceId,
+            isHardwareFailure: true,
+          });
+        }
+        return;
+      }
+    }
+
+    // 2. Load enabled system_alert automation rules
     const rulesSnap = await adminDb
       .collection('automationRules')
       .where('group', '==', 'system_alert')
@@ -106,10 +180,6 @@ export async function evaluateAlerts(
     for (const rule of rules) {
       await evaluateRule(rule, topic, payload, deviceId);
     }
-
-    // TODO: device_offline detection requires a scheduled job (cron) since MQTT
-    // is push-only — the server cannot know a device is silent without polling.
-    // Implement via a separate /api/alerts/check-offline route called by the frontend.
   } catch (error) {
     console.error('[AlertEngine] evaluateAlerts error:', error);
   }
@@ -125,6 +195,7 @@ async function evaluateRule(
   let alertType = rule.trigger;
   let message = rule.action;
   let severity: 'low' | 'medium' | 'high' = 'medium';
+  let isHardwareFailure = false;
 
   switch (rule.trigger) {
     case 'uv_cycle_failed': {
@@ -132,8 +203,9 @@ async function evaluateRule(
         const p = payload as UVPayload;
         if (p.completed === false) {
           triggered = true;
-          message = 'UV sterilisation cycle failed to complete.';
+          message = `UV sterilisation cycle failed to complete on ${deviceId}. Inspect UV-C emitter.`;
           severity = 'high';
+          isHardwareFailure = true;
         }
       }
       break;
@@ -144,7 +216,7 @@ async function evaluateRule(
         const p = payload as WaterflowPayload;
         if (p.volume > rule.threshold) {
           triggered = true;
-          message = `Water overuse detected: ${p.volume}L exceeds threshold of ${rule.threshold}L.`;
+          message = `Water overuse detected on ${deviceId}: ${p.volume}L exceeds threshold of ${rule.threshold}L.`;
           severity = 'medium';
           alertType = 'water_overuse';
         }
@@ -157,7 +229,7 @@ async function evaluateRule(
         const count = await todayFlushCount(deviceId);
         if (count > rule.threshold) {
           triggered = true;
-          message = `Flush count exceeded: ${count} flushes today (threshold: ${rule.threshold}).`;
+          message = `Flush count exceeded on ${deviceId}: ${count} flushes today (threshold: ${rule.threshold}).`;
           severity = 'low';
         }
       }
@@ -170,9 +242,15 @@ async function evaluateRule(
   }
 
   if (triggered) {
-    const debounced = await isDebounced(alertType);
+    const debounced = await isDebounced(alertType, deviceId);
     if (!debounced) {
-      await createAlert({ type: alertType, message, severity, deviceId });
+      await createAlertAndMaybeTask({
+        type: alertType,
+        message,
+        severity,
+        deviceId,
+        isHardwareFailure,
+      });
     } else {
       console.log(`[AlertEngine] Debounced alert: ${alertType}`);
     }
