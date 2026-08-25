@@ -59,8 +59,8 @@ export async function GET(request: Request): Promise<NextResponse> {
           email ??
           doc.id;
         const currentTaskId = activeTaskByPerson.get(doc.id) ?? null;
-        const isExplicitAvailable = data.isAvailable !== false;
-        const isAvailable = currentTaskId === null && isExplicitAvailable;
+        const isNotOffline = data.status !== 'offline' && data.isOnline !== false;
+        const isAvailable = currentTaskId === null && isNotOffline;
 
         return {
           id: doc.id,

@@ -78,3 +78,78 @@ export async function listRequiredTaskUserIds(
 
   return snapshot.docs.map((doc) => doc.id);
 }
+
+export interface AvailableTechnician {
+  id: string;
+  displayName: string;
+  email: string | null;
+  shift?: string | null;
+}
+
+/**
+ * Finds all on-duty, active maintenance personnel who do NOT have an active uncompleted work order.
+ */
+export async function findAvailableMaintenancePersonnel(): Promise<AvailableTechnician[]> {
+  try {
+    const [usersSnapshot, activeTasksSnapshot] = await Promise.all([
+      adminDb.collection('users').where('role', '==', 'maintenance').get(),
+      adminDb
+        .collection('tasks')
+        .where('status', 'in', [
+          'assigned',
+          'acknowledged',
+          'pending',
+          'reassignment_needed',
+          'rechecking',
+        ])
+        .get()
+        .catch(() => ({ docs: [] })),
+    ]);
+
+    const activeTaskByPerson = new Set<string>();
+    for (const doc of activeTasksSnapshot.docs) {
+      const data = doc.data();
+      const assignedTo =
+        typeof data.assignedTo === 'string' ? data.assignedTo.trim() : null;
+      if (assignedTo) {
+        activeTaskByPerson.add(assignedTo);
+      }
+      if (Array.isArray(data.assignedToIds)) {
+        for (const pid of data.assignedToIds) {
+          if (typeof pid === 'string' && pid.trim()) {
+            activeTaskByPerson.add(pid.trim());
+          }
+        }
+      }
+    }
+
+    const available: AvailableTechnician[] = [];
+    for (const doc of usersSnapshot.docs) {
+      const data = doc.data();
+      const isOnline = data.isOnline !== false && data.status !== 'offline';
+      const isAvailable = !activeTaskByPerson.has(doc.id) && isOnline;
+
+      if (isAvailable) {
+        const email = typeof data.email === 'string' ? data.email.trim() : null;
+        const displayName =
+          (typeof data.displayName === 'string' && data.displayName.trim()) ||
+          (typeof data.name === 'string' && data.name.trim()) ||
+          email ||
+          doc.id;
+
+        available.push({
+          id: doc.id,
+          displayName,
+          email,
+          shift: typeof data.shift === 'string' ? data.shift : null,
+        });
+      }
+    }
+
+    return available;
+  } catch (err) {
+    console.error('[task-assignment] findAvailableMaintenancePersonnel error:', err);
+    return [];
+  }
+}
+

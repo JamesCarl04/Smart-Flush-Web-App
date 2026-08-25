@@ -269,7 +269,23 @@ export async function DELETE(
       );
     }
 
-    await taskRef.delete();
+    const batch = adminDb.batch();
+    batch.delete(taskRef);
+
+    // Universal maintenance cleanup: Find all users holding this task as currentTaskId
+    const usersHoldingTask = await adminDb
+      .collection('users')
+      .where('currentTaskId', '==', id)
+      .get();
+
+    usersHoldingTask.docs.forEach((userDoc) => {
+      batch.update(userDoc.ref, {
+        currentTaskId: null,
+        isAvailable: true,
+      });
+    });
+
+    await batch.commit();
 
     return NextResponse.json({ success: true, data: { id } });
   } catch (error) {

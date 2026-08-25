@@ -175,7 +175,7 @@ export default function DashboardLayout({
       {/* ==================================================================== */}
       {/* DESKTOP SIDEBAR                                                      */}
       {/* ==================================================================== */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-slate-200 lg:bg-white transition-colors duration-300 dark:lg:border-slate-800 dark:lg:bg-slate-900">
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-slate-200 lg:bg-white transition-colors duration-300 dark:lg:border-slate-800 dark:lg:bg-slate-900 print:hidden">
         {/* Brand Header */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5 dark:border-slate-800">
           <Link
@@ -393,9 +393,9 @@ export default function DashboardLayout({
       {/* ==================================================================== */}
       {/* MAIN CONTENT WRAPPER                                                 */}
       {/* ==================================================================== */}
-      <div className="flex flex-1 flex-col lg:pl-64">
+      <div className="flex flex-1 flex-col lg:pl-64 print:pl-0 print:m-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 sm:px-6 md:px-8 backdrop-blur-md transition-colors duration-300 dark:border-slate-800/80 dark:bg-slate-900/85">
+        <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 sm:px-6 md:px-8 backdrop-blur-md transition-colors duration-300 dark:border-slate-800/80 dark:bg-slate-900/85 print:hidden">
           {/* Left section: Mobile menu toggle & Active Alerts indicator */}
           <div className="flex items-center gap-3 sm:gap-4">
             <button
@@ -563,7 +563,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto print:p-0 print:m-0 print:overflow-visible">
           {children}
         </main>
       </div>

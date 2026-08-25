@@ -153,7 +153,7 @@ const SDCA_FLOOR_RESTROOMS: Record<string, string[]> = {
 const RULE_ACTION_OPTIONS = [
   'Send Warning Email',
   'Disable Subsystem',
-  'Create Maintenance Ticket',
+  'Send Task to Available Maintenance',
 ] as const;
 
 const RULE_TRIGGER_OPTIONS = [
@@ -177,6 +177,13 @@ function toUiRuleGroup(group: string): RuleGroup {
 
 function toBackendRuleGroup(group: RuleGroup): string {
   return group === 'maintenance' ? 'maintenance' : 'system_alert';
+}
+
+function getRuleActionLabel(action: string): string {
+  if (action === 'Create Maintenance Ticket') {
+    return 'Send Task to Available Maintenance';
+  }
+  return action;
 }
 
 function getRuleTriggerLabel(trigger: string): string {
@@ -398,7 +405,7 @@ export default function ConfigurationPage() {
           trigger: rule.trigger,
           threshold: rule.threshold,
           basis: getRuleBasis(rule.trigger, rule.threshold),
-          action: rule.action,
+          action: getRuleActionLabel(rule.action),
           enabled: rule.enabled,
         })),
       );

@@ -122,6 +122,9 @@ export function serializeTaskData(
     beforePhotoCapturedAt: timestampToMillis(data.beforePhotoCapturedAt),
     afterPhotoUrl: nullableString(data.afterPhotoUrl),
     afterPhotoCapturedAt: timestampToMillis(data.afterPhotoCapturedAt),
+    additionalPhotos: Array.isArray(data.additionalPhotos)
+      ? data.additionalPhotos
+      : undefined,
     checklist:
       data.checklist && typeof data.checklist === 'object'
         ? (data.checklist as Record<string, unknown>)
@@ -182,6 +185,11 @@ export async function createTaskDocument(
     console.warn('[task-service] Could not fetch device doc for metadata:', err);
   }
 
+  const isAssigned = Boolean(
+    (input.assignedTo && input.assignedTo.trim()) ||
+    input.assignedToIds.length > 0,
+  );
+
   const task: TaskDoc = {
     id: docRef.id,
     deviceId: input.deviceId,
@@ -191,10 +199,11 @@ export async function createTaskDocument(
     location: location ?? restroomName ?? input.deviceId,
     triggerType: input.triggerType,
     message: input.message,
-    status: 'pending',
+    status: isAssigned ? 'assigned' : 'unassigned',
     assignedTo: input.assignedTo,
     assignedToIds: input.assignedToIds,
     createdAt: now,
+    assignedAt: isAssigned ? now : null,
     acknowledgedAt: null,
     completedAt: null,
     acknowledgedBy: {},

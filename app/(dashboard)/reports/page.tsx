@@ -19,6 +19,7 @@ import {
   History,
   Hourglass,
   Layers,
+  Printer,
   ShieldCheck,
   Timer,
   Wrench,
@@ -762,10 +763,14 @@ export default function ReportsPage() {
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="container mx-auto max-w-7xl animate-fade-in p-4 pb-24 md:p-8 space-y-8">
-      {/* Clean Slate Typography Headline */}
-      <div>
+    <div className="container mx-auto max-w-7xl animate-fade-in p-4 pb-24 md:p-8 space-y-8 print:p-0 print:m-0 print:space-y-4">
+      {/* Clean Slate Typography Headline (Hidden in Print) */}
+      <div className="print:hidden">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
           <FileBarChart className="h-3.5 w-3.5" />
           Analytics &amp; Compliance Exports
@@ -778,8 +783,8 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      {/* Top Action & Filter Bar (Report Builder) */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {/* Top Action & Filter Bar (Report Builder - Hidden in Print) */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
@@ -902,11 +907,11 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Col 4: Primary Generate & Download Button (lg:col-span-3) */}
-          <div className="lg:col-span-3">
+          {/* Col 4: Action Buttons (Download & Print) (lg:col-span-3) */}
+          <div className="lg:col-span-3 flex items-center gap-2">
             <button
               type="button"
-              className="tactile-btn flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-[#B5121B] py-2.5 px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40 active:translate-y-0.5 disabled:opacity-50"
+              className="tactile-btn flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#B5121B] py-2.5 px-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40 active:translate-y-0.5 disabled:opacity-50"
               onClick={handleGenerate}
               disabled={isGenerating || hasInvalidDateRange}
               data-loading={isGenerating}
@@ -914,14 +919,24 @@ export default function ReportsPage() {
               {isGenerating ? (
                 <>
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                  <span>Generating File...</span>
+                  <span className="truncate">Generating...</span>
                 </>
               ) : (
                 <>
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Generate &amp; Download</span>
+                  <Download className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Generate &amp; Download</span>
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              className="tactile-btn flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-800 py-2.5 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-all hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400/40 active:translate-y-0.5"
+              onClick={handlePrint}
+              title="Print or Save as PDF"
+            >
+              <Printer className="h-3.5 w-3.5 shrink-0 text-[#B5121B] dark:text-red-400" />
+              <span>Print</span>
             </button>
           </div>
         </div>
@@ -929,6 +944,13 @@ export default function ReportsPage() {
 
       {/* Main Full-Width Data Canvas */}
       <div>
+        {/* Official Header for Print Only */}
+        <PrintReportHeader
+          reportType={reportType}
+          resolvedRange={resolvedRange}
+          userDisplayName={user?.displayName || user?.email || 'Operations Supervisor'}
+        />
+
         {isSupervisorAuditReport ? (
           <SupervisorAuditReport
             approvalRate={supervisorAuditSummary.approvalRate}
@@ -938,6 +960,7 @@ export default function ReportsPage() {
             flaggedCount={supervisorAuditSummary.flaggedCount}
             loading={tasksLoading || personnelLoading}
             onExportCsv={handleExportSupervisorAuditCsv}
+            onPrint={handlePrint}
             pendingAuditCount={supervisorAuditSummary.pendingAuditCount}
             resolveAssignedName={resolveAssignedName}
             tasks={supervisorAuditSummary.completedTasks}
@@ -950,6 +973,7 @@ export default function ReportsPage() {
             error={tasksError}
             loading={tasksLoading || personnelLoading}
             onExportCsv={handleExportMaintenanceCsv}
+            onPrint={handlePrint}
             pendingNow={taskSummary.pendingNow}
             resolveAssignedName={resolveAssignedName}
             tasks={tasks}
@@ -963,6 +987,121 @@ export default function ReportsPage() {
             }}
           />
         )}
+
+        {/* Official QA / Facility Verification Sign-Off Block for Print Only */}
+        <PrintSignOffSection />
+      </div>
+    </div>
+  );
+}
+
+function PrintReportHeader({
+  reportType,
+  resolvedRange,
+  userDisplayName,
+}: {
+  reportType: ReportType;
+  resolvedRange: { from: string; to: string };
+  userDisplayName: string;
+}) {
+  const reportTitle =
+    REPORT_TYPE_OPTIONS.find((o) => o.value === reportType)?.label ||
+    'Facility Telemetry & Audit Report';
+
+  return (
+    <div className="hidden print:block mb-6 border-b-2 border-slate-800 pb-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[11px] font-extrabold uppercase tracking-widest text-[#B5121B]">
+            Klir · Smart Flush IoT Restroom Monitoring System
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 mt-0.5">
+            {reportTitle}
+          </h1>
+          <p className="text-xs text-slate-600 font-medium">
+            Facility Operations, Restroom Telemetry &amp; Quality Assurance Audit
+          </p>
+        </div>
+        <div className="text-right text-[11px] text-slate-600 font-mono space-y-0.5">
+          <div>
+            <span className="font-bold text-slate-800">FACILITY:</span> SDCA Annex Building
+          </div>
+          <div>
+            <span className="font-bold text-slate-800">PRINTED:</span> {format(new Date(), 'MMM dd, yyyy HH:mm')}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-xs text-slate-800">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+            Audit Scope / Range
+          </span>
+          <span className="font-bold font-mono text-slate-900">
+            {resolvedRange.from} &rarr; {resolvedRange.to}
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+            Report Type
+          </span>
+          <span className="font-semibold text-slate-900 capitalize">
+            {reportType.replaceAll('_', ' ')}
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+            Generated By
+          </span>
+          <span className="font-semibold text-slate-900">{userDisplayName}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrintSignOffSection() {
+  return (
+    <div className="hidden print:block mt-8 pt-6 border-t-2 border-slate-300 break-inside-avoid text-xs text-slate-800">
+      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-4">
+        Official Facility Verification &amp; Quality Sign-Off
+      </div>
+      <div className="grid grid-cols-3 gap-6">
+        <div className="border border-slate-300 rounded-lg p-3 space-y-4 bg-slate-50/50">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Prepared By (Operations / Tech)
+          </div>
+          <div className="pt-6 border-b border-slate-400"></div>
+          <div className="text-[11px] font-medium flex justify-between text-slate-600">
+            <span>Signature / Name</span>
+            <span>Date</span>
+          </div>
+        </div>
+
+        <div className="border border-slate-300 rounded-lg p-3 space-y-4 bg-slate-50/50">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Inspected By (QA Supervisor)
+          </div>
+          <div className="pt-6 border-b border-slate-400"></div>
+          <div className="text-[11px] font-medium flex justify-between text-slate-600">
+            <span>Signature / Name</span>
+            <span>Date</span>
+          </div>
+        </div>
+
+        <div className="border border-slate-300 rounded-lg p-3 space-y-4 bg-slate-50/50">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Approved By (Facility Director)
+          </div>
+          <div className="pt-6 border-b border-slate-400"></div>
+          <div className="text-[11px] font-medium flex justify-between text-slate-600">
+            <span>Signature / Name</span>
+            <span>Date</span>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 text-[10px] text-slate-400 text-center font-mono">
+        This document was system-generated by Klir Smart Flush Restroom Monitoring Platform. Physical verification validates facility compliance.
       </div>
     </div>
   );
@@ -974,6 +1113,7 @@ function MaintenanceTaskReport({
   error,
   loading,
   onExportCsv,
+  onPrint,
   pendingNow,
   resolveAssignedName,
   tasks,
@@ -984,15 +1124,16 @@ function MaintenanceTaskReport({
   error: string | null;
   loading: boolean;
   onExportCsv: () => void;
+  onPrint?: () => void;
   pendingNow: number;
   resolveAssignedName: (assignedUserId?: string | null) => string;
   tasks: Task[];
   totalTasks: number;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-4">
       {/* 4 Summary KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
         <SummaryCard
           icon={<Layers className="h-4 w-4 text-slate-500" />}
           label="Total Tasks"
@@ -1024,31 +1165,45 @@ function MaintenanceTaskReport({
       </div>
 
       {/* Task Audit Log Table */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden print:overflow-visible print:border-slate-300 print:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800 print:border-slate-300 print:p-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-200 print:text-black">
               <Wrench className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
                 Maintenance Work Orders
               </h3>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-400 dark:text-slate-500 print:text-slate-600">
                 Historical dispatch records and resolution timestamps
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-            onClick={onExportCsv}
-            disabled={loading}
-          >
-            <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2 print:hidden">
+            {onPrint && (
+              <button
+                type="button"
+                className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                onClick={onPrint}
+                disabled={loading}
+                title="Print this log"
+              >
+                <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" />
+                Print Log
+              </button>
+            )}
+            <button
+              type="button"
+              className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              onClick={onExportCsv}
+              disabled={loading}
+            >
+              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -1077,23 +1232,23 @@ function MaintenanceTaskReport({
             </p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="w-full overflow-x-auto print:overflow-visible">
+            <table className="w-full text-left text-xs print:border-collapse print:text-black">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Trigger</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Facility / Stall</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Tech</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Created</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Status</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Trigger</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Facility / Stall</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Assigned Tech</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Created</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Completed</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
                 {tasks.map((task) => {
                   const loc = resolveTaskLocation(task);
                   return (
-                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent">
                       <td className="py-3 px-4 whitespace-nowrap">
                         {getStatusBadge(task.status)}
                       </td>
@@ -1143,7 +1298,7 @@ function SummaryCard({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all print:border-slate-300 print:shadow-none print:bg-white print:p-3.5 print:text-black break-inside-avoid">
       {loading ? (
         <div className="space-y-2">
           <div className="h-4 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700"></div>
@@ -1151,20 +1306,20 @@ function SummaryCard({
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 print:text-slate-700">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-200 print:text-black">
               {icon}
             </div>
-            <span className="font-semibold text-slate-700 dark:text-slate-300 whitespace-normal">
+            <span className="font-semibold text-slate-700 dark:text-slate-300 print:text-black whitespace-normal">
               {label}
             </span>
           </div>
           <div className="mt-2.5 flex items-baseline justify-between gap-2">
-            <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
+            <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 print:text-black tabular-nums">
               {value}
             </p>
             {sublabel && (
-              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 print:text-slate-600">
                 {sublabel}
               </span>
             )}
@@ -1183,23 +1338,23 @@ function RecentExportsHistory({
   onQuickDownload: (report: ExportRecord) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden print:overflow-visible print:border-slate-300 print:shadow-none">
+      <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800 print:border-slate-300 print:p-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-200 print:text-black">
             <History className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
               Recent Exports History
             </h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-400 dark:text-slate-500 print:text-slate-600">
               Download history and generated snapshot logs
             </p>
           </div>
         </div>
 
-        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300 tabular-nums">
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300 print:border print:border-slate-300 print:text-black tabular-nums">
           {reports.length} records
         </span>
       </div>
@@ -1215,51 +1370,51 @@ function RecentExportsHistory({
           </p>
         </div>
       ) : (
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="w-full overflow-x-auto print:overflow-visible">
+          <table className="w-full text-left text-xs print:border-collapse print:text-black">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Report File</th>
-                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Generated</th>
-                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Format</th>
-                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Size</th>
-                <th className="py-3 px-4 text-right font-bold uppercase tracking-wider text-[10px]">Action</th>
+              <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Report File</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Generated</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Format</th>
+                <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Size</th>
+                <th className="py-3 px-4 text-right font-bold uppercase tracking-wider text-[10px] print:hidden">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
               {reports.map((report) => (
-                <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent">
+                  <td className="py-3 px-4 print:py-2 print:px-2">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
                       {report.name}
                     </div>
-                    <div className="text-[11px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 uppercase tracking-wider print:text-slate-600">
                       {report.type.replaceAll('_', ' ')}
                     </div>
                   </td>
-                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap print:text-black print:py-2 print:px-2">
                     {format(report.date, 'MMM dd, yyyy')}
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-[10px] text-slate-400 print:text-slate-600">
                       {format(report.date, 'HH:mm')}
                     </div>
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
+                  <td className="py-3 px-4 whitespace-nowrap print:py-2 print:px-2">
                     <span
                       className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold ${
                         report.format === 'PDF'
-                          ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
+                          ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 print:border-slate-300 print:bg-slate-100 print:text-black'
                           : report.format === 'CSV'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 print:border-slate-300 print:bg-slate-100 print:text-black'
+                            : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 print:border-slate-300 print:bg-slate-100 print:text-black'
                       }`}
                     >
                       {report.format}
                     </span>
                   </td>
-                  <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap print:text-black print:py-2 print:px-2">
                     {report.size}
                   </td>
-                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                  <td className="py-3 px-4 text-right whitespace-nowrap print:hidden">
                     <button
                       type="button"
                       className="tactile-btn inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/50 transition-colors"
@@ -1307,6 +1462,7 @@ function SupervisorAuditReport({
   flaggedCount,
   loading,
   onExportCsv,
+  onPrint,
   pendingAuditCount,
   resolveAssignedName,
   tasks,
@@ -1319,6 +1475,7 @@ function SupervisorAuditReport({
   flaggedCount: number;
   loading: boolean;
   onExportCsv: () => void;
+  onPrint?: () => void;
   pendingAuditCount: number;
   resolveAssignedName: (assignedUserId?: string | null) => string;
   tasks: Task[];
@@ -1344,9 +1501,9 @@ function SupervisorAuditReport({
   }, [tasks, activeTab]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-4">
       {/* 4 QA Summary KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
         <SummaryCard
           icon={<Layers className="h-4 w-4 text-slate-600 dark:text-slate-300" />}
           label="Total Submissions"
@@ -1378,19 +1535,19 @@ function SupervisorAuditReport({
       </div>
 
       {/* Compliance Rate Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-4.5 dark:border-sky-950 dark:bg-sky-950/30">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-4.5 dark:border-sky-950 dark:bg-sky-950/30 print:border-slate-300 print:bg-slate-50 print:p-3 break-inside-avoid">
         <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm shrink-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm shrink-0 print:bg-slate-800">
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-sm font-bold text-sky-950 dark:text-sky-100 flex items-center gap-2">
+            <div className="text-sm font-bold text-sky-950 dark:text-sky-100 print:text-black flex items-center gap-2">
               <span>Supervisor Audit Compliance: {complianceRate}</span>
-              <span className="inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:text-sky-200">
+              <span className="inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:text-sky-200 print:border print:border-slate-400 print:text-black">
                 {totalSubmissions - pendingAuditCount} / {totalSubmissions} Inspected
               </span>
             </div>
-            <div className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
+            <div className="text-xs text-sky-700 dark:text-sky-300 mt-0.5 print:text-slate-700">
               {pendingAuditCount > 0
                 ? `${pendingAuditCount} completed work order(s) currently awaiting supervisor QA review.`
                 : 'All maintenance submissions have been audited and verified.'}
@@ -1400,23 +1557,23 @@ function SupervisorAuditReport({
       </div>
 
       {/* QA Audit Matrix Table */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden print:overflow-visible print:border-slate-300 print:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800 print:border-slate-300 print:p-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-200 print:text-black">
               <ShieldCheck className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
                 Supervisor QA Audit &amp; Inspection Log
               </h3>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-400 dark:text-slate-500 print:text-slate-600">
                 Maintenance submissions aligned with supervisor approvals, rechecks, and remarks
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 print:hidden">
             {/* Quick Filter Tabs (Zero-Scroll triage) */}
             <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl">
               <button
@@ -1474,6 +1631,19 @@ function SupervisorAuditReport({
               </button>
             </div>
 
+            {onPrint && (
+              <button
+                type="button"
+                className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                onClick={onPrint}
+                disabled={loading}
+                title="Print this audit report"
+              >
+                <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" />
+                Print Audit
+              </button>
+            )}
+
             <button
               type="button"
               className="tactile-btn inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -1514,24 +1684,24 @@ function SupervisorAuditReport({
             </p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="w-full overflow-x-auto print:overflow-visible">
+            <table className="w-full text-left text-xs print:border-collapse print:text-black">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">QA Status</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom &amp; Location</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Technician</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Audited By</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flag Reason / Remarks</th>
-                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">QA Status</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Restroom &amp; Location</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Technician</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Audited By</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Flag Reason / Remarks</th>
+                  <th className="py-3 px-4 font-bold uppercase tracking-wider text-[10px] print:py-2 print:px-2">Completed</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
                 {filteredTasks.map((task) => {
                   const loc = resolveTaskLocation(task);
                   return (
-                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="py-3 px-4 whitespace-nowrap">
+                    <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent">
+                      <td className="py-3 px-4 whitespace-nowrap print:py-2 print:px-2">
                         {getInspectionBadge(task.inspectionStatus ?? (task.status === 'flagged' ? 'flagged' : 'pending_review'))}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">

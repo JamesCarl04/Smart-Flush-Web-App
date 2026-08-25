@@ -383,3 +383,43 @@
     animation: fade-in-down 0.28s ease-out both;
   }
 }
+
+/* ==========================================================================
+   Print Stylesheet Optimization
+   ========================================================================== */
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm 10mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Force background colors and borders to print accurately */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent page breaks inside cards and table rows */
+  tr,
+  .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Table headers repeat on subsequent printed pages */
+  thead {
+    display: table-header-group !important;
+  }
+
+  /* Force tables to fill full width cleanly */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+}
+
