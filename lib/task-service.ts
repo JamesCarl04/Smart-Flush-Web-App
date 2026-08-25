@@ -202,6 +202,8 @@ export async function createTaskDocument(
     status: isAssigned ? 'assigned' : 'unassigned',
     assignedTo: input.assignedTo,
     assignedToIds: input.assignedToIds,
+    isBroadcast: !isAssigned,
+    assignmentType: isAssigned ? 'individual' : 'broadcast',
     createdAt: now,
     assignedAt: isAssigned ? now : null,
     acknowledgedAt: null,

@@ -33,7 +33,7 @@ function readStringField(
 function buildPayload(task: TaskDoc): TaskNotificationPayload {
   return {
     notification: {
-      title: 'Cleaning Task Assigned',
+      title: task.isBroadcast ? 'Maintenance Task Available' : 'Maintenance Task Assigned',
       body: task.message,
     },
     data: {
@@ -103,10 +103,10 @@ async function readAssignedToken(uid: string): Promise<TokenOwner | null> {
   return token ? { uid, token } : null;
 }
 
-async function readMaintenanceTokens(): Promise<TokenOwner[]> {
+async function readTaskPoolTokens(): Promise<TokenOwner[]> {
   const snapshot = await adminDb
     .collection('users')
-    .where('role', '==', 'maintenance')
+    .where('role', 'in', ['maintenance', 'supervisor'])
     .get();
   const owners: TokenOwner[] = [];
 
@@ -218,9 +218,9 @@ export async function sendTaskNotification(
     return;
   }
 
-  const owners = await readMaintenanceTokens();
+  const owners = await readTaskPoolTokens();
   if (owners.length === 0) {
-    console.info('[FCM] No maintenance FCM tokens found. success=0 failure=0');
+    console.info('[FCM] No task-pool FCM tokens found. success=0 failure=0');
     return;
   }
 

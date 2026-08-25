@@ -18,6 +18,8 @@ export const TASK_TRIGGER_TYPES = [
   'flush_count',
   'maintenance',
   'hardware_failure',
+  'sensor_fault',
+  'water_overuse',
 ] as const;
 export type TaskTriggerType = (typeof TASK_TRIGGER_TYPES)[number];
 
@@ -35,6 +37,8 @@ export interface TaskDoc {
   status: TaskStatus;
   assignedTo: string | null;
   assignedToIds: string[];
+  isBroadcast?: boolean;
+  assignmentType?: 'broadcast' | 'individual' | 'team';
   createdAt: Timestamp;
   assignedAt?: Timestamp | null;
   acknowledgedAt: Timestamp | null;

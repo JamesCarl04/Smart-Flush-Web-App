@@ -55,14 +55,20 @@ export function isSendTaskAction(action?: string): boolean {
 /** Maps rule trigger/alert types to supported TaskTriggerType */
 function mapToTaskTriggerType(triggerOrType: string): TaskTriggerType {
   const norm = triggerOrType.toLowerCase();
-  if (norm.includes('hardware') || norm.includes('pump') || norm.includes('uv_cycle')) {
+  if (norm.includes('sensor')) {
+    return 'sensor_fault';
+  }
+  if (norm.includes('uv_cycle') || norm.includes('uv_complete')) {
+    return 'uv_complete';
+  }
+  if (norm.includes('hardware') || norm.includes('pump')) {
     return 'hardware_failure';
   }
   if (norm.includes('flush_count')) {
     return 'flush_count';
   }
-  if (norm.includes('uv_complete')) {
-    return 'uv_complete';
+  if (norm.includes('water_overuse')) {
+    return 'water_overuse';
   }
   return 'maintenance';
 }
@@ -249,7 +255,9 @@ export async function evaluateAlerts(
       .where('enabled', '==', true)
       .get();
 
-    const rules = rulesSnap.docs.map((d) => d.data() as AutomationRule);
+    const rules = rulesSnap.docs
+      .map((d) => d.data() as AutomationRule)
+      .filter((rule) => rule.group === 'system_alert' || rule.group === 'maintenance');
 
     for (const rule of rules) {
       await evaluateRule(rule, topic, payload, deviceId);

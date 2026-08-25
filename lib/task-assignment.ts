@@ -84,6 +84,7 @@ export interface AvailableTechnician {
   displayName: string;
   email: string | null;
   shift?: string | null;
+  workload: number;
 }
 
 /**
@@ -99,7 +100,6 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
           'assigned',
           'acknowledged',
           'pending',
-          'reassignment_needed',
           'rechecking',
         ])
         .get()
@@ -142,11 +142,16 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
           displayName,
           email,
           shift: typeof data.shift === 'string' ? data.shift : null,
+          workload: 0,
         });
       }
     }
 
-    return available;
+    return available.sort(
+      (left, right) =>
+        left.workload - right.workload ||
+        left.displayName.localeCompare(right.displayName),
+    );
   } catch (err) {
     console.error('[task-assignment] findAvailableMaintenancePersonnel error:', err);
     return [];
