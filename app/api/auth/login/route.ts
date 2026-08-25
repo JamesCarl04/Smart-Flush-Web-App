@@ -2,6 +2,12 @@
 // POST /api/auth/login — exchanges email+password for a Firebase ID token
 // The token can then be used in the Authorization header for all other routes.
 import { NextResponse } from 'next/server';
+import {
+  checkRateLimit,
+  getClientIp,
+  RATE_LIMITS,
+  createRateLimitResponse,
+} from '@/lib/rate-limit';
 
 interface LoginBody {
   email: string;
@@ -10,6 +16,12 @@ interface LoginBody {
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
+    const clientIp = getClientIp(request);
+    const ipRateLimit = checkRateLimit(`login-ip:${clientIp}`, RATE_LIMITS.login);
+    if (!ipRateLimit.success) {
+      return createRateLimitResponse(ipRateLimit.retryAfter || 60);
+    }
+
     const body = (await request.json()) as Partial<LoginBody>;
     const { email, password } = body;
 

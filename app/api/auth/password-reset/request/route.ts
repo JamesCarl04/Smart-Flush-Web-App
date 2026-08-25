@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import {
+  checkRateLimit,
+  getClientIp,
+  RATE_LIMITS,
+  createRateLimitResponse,
+} from '@/lib/rate-limit';
 
 interface PasswordResetRequestBody {
   email?: unknown;
@@ -20,6 +26,16 @@ function getResetContinueUrl(request: Request): string {
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
+    // 1. IP-based Rate Limiting (prevents IP spamming / DDoS)
+    const clientIp = getClientIp(request);
+    const ipRateLimit = checkRateLimit(
+      `pwd-reset-ip:${clientIp}`,
+      RATE_LIMITS.passwordReset,
+    );
+    if (!ipRateLimit.success) {
+      return createRateLimitResponse(ipRateLimit.retryAfter || 60);
+    }
+
     const body = (await request.json()) as PasswordResetRequestBody;
     const email =
       typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -29,6 +45,15 @@ export async function POST(request: Request): Promise<NextResponse> {
         { success: false, error: 'email is required' },
         { status: 400 },
       );
+    }
+
+    // 2. Email-based Rate Limiting (prevents inbox flooding to a single address)
+    const emailRateLimit = checkRateLimit(
+      `pwd-reset-email:${email}`,
+      RATE_LIMITS.passwordReset,
+    );
+    if (!emailRateLimit.success) {
+      return createRateLimitResponse(emailRateLimit.retryAfter || 60);
     }
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;

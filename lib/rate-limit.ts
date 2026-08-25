@@ -99,6 +99,13 @@ export function createRateLimitResponse(retryAfter: number): NextResponse {
 }
 
 /**
+ * Reset rate limit store (primarily for unit tests)
+ */
+export function resetRateLimitStore(): void {
+  rateLimitStore.clear();
+}
+
+/**
  * Clean up expired entries from rate limit store periodically
  */
 function cleanupRateLimitStore() {
@@ -110,5 +117,11 @@ function cleanupRateLimitStore() {
   }
 }
 
-// Run cleanup every 5 minutes
-setInterval(cleanupRateLimitStore, 5 * 60 * 1000);
+// Run cleanup every 5 minutes without holding event loop open in test/cli environments
+if (typeof setInterval !== 'undefined') {
+  const timer = setInterval(cleanupRateLimitStore, 5 * 60 * 1000);
+  if (timer && typeof timer.unref === 'function') {
+    timer.unref();
+  }
+}
+

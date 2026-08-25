@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import {
+  checkRateLimit,
+  getClientIp,
+  RATE_LIMITS,
+  createRateLimitResponse,
+} from '@/lib/rate-limit';
 
 interface PasswordResetConfirmBody {
   oobCode?: unknown;
@@ -28,6 +34,16 @@ function mapResetError(message: string | undefined): string {
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
+    // Rate limit password reset confirmation to prevent brute forcing oobCodes
+    const clientIp = getClientIp(request);
+    const ipRateLimit = checkRateLimit(
+      `pwd-confirm-ip:${clientIp}`,
+      RATE_LIMITS.login,
+    );
+    if (!ipRateLimit.success) {
+      return createRateLimitResponse(ipRateLimit.retryAfter || 60);
+    }
+
     const body = (await request.json()) as PasswordResetConfirmBody;
     const oobCode =
       typeof body.oobCode === 'string' ? body.oobCode.trim() : '';
