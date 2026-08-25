@@ -24,6 +24,30 @@ function getResetContinueUrl(request: Request): string {
   return new URL('/auth/reset-password', origin).toString();
 }
 
+function mapRequestError(message: string | undefined): string {
+  if (!message) return 'Failed to send password reset email. Please try again.';
+
+  if (message.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+    return 'Too many reset attempts. Please wait a few minutes before trying again.';
+  }
+  if (message.includes('INVALID_EMAIL')) {
+    return 'Please enter a valid email address.';
+  }
+  if (message.includes('OPERATION_NOT_ALLOWED')) {
+    return 'Password reset is currently disabled. Please contact an administrator.';
+  }
+  if (message.includes('UNAUTHORIZED_DOMAIN')) {
+    return 'The domain is not authorized in Firebase Authentication settings.';
+  }
+  if (
+    message.includes('API_KEY_INVALID') ||
+    message.includes('API_KEY_EXPIRED')
+  ) {
+    return 'Authentication service configuration error. Please contact support.';
+  }
+  return 'Failed to send password reset email. Please try again later.';
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     // 1. IP-based Rate Limiting (prevents IP spamming / DDoS)
@@ -67,7 +91,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const firebaseResp = await fetch(
+    let firebaseResp = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`,
       {
         method: 'POST',
@@ -81,10 +105,33 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     );
 
-    const data = (await firebaseResp.json()) as FirebaseOobResponse;
+    let data = (await firebaseResp.json()) as FirebaseOobResponse;
+
+    // Fallback: If continueUrl domain is not allowlisted in Firebase console, retry without continueUrl
+    if (
+      !firebaseResp.ok &&
+      data.error?.message?.includes('UNAUTHORIZED_DOMAIN')
+    ) {
+      console.warn(
+        '[Auth] continueUrl domain unauthorized, falling back to default reset email',
+      );
+      firebaseResp = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestType: 'PASSWORD_RESET',
+            email,
+          }),
+        },
+      );
+      data = (await firebaseResp.json()) as FirebaseOobResponse;
+    }
+
     if (!firebaseResp.ok) {
       const firebaseMessage = data.error?.message ?? 'PASSWORD_RESET_FAILED';
-      const status = firebaseMessage === 'EMAIL_NOT_FOUND' ? 200 : 400;
+      const status = firebaseMessage.includes('EMAIL_NOT_FOUND') ? 200 : 400;
 
       if (status !== 200) {
         console.warn('[Auth] password reset request failed:', firebaseMessage);
@@ -94,9 +141,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         {
           success: status === 200,
           error:
-            status === 200
-              ? undefined
-              : 'Failed to send password reset email',
+            status === 200 ? undefined : mapRequestError(firebaseMessage),
         },
         { status },
       );
