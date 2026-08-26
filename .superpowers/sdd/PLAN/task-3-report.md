@@ -72,3 +72,55 @@ Complete. Added anonymous, server-validated public issue reporting with durable 
 - Production must set strong `PUBLIC_REPORT_FINGERPRINT_SECRET` and correct `FIREBASE_STORAGE_BUCKET` server variables before enabling the route, then deploy the updated Firestore and Storage rules.
 - The Firestore transaction and private upload boundaries are covered with deterministic in-memory/mocked tests and a production build, but no live Firebase project was mutated during this task.
 - Deployments outside Cloudflare/Vercel must ensure the front proxy strips and overwrites forwarded-IP headers before requests reach the app so the selected address remains trustworthy.
+
+---
+
+## Fix round 1 — review findings
+
+### Status
+
+Complete. The trusted-IP boundary, evidence durability, leak-notification delivery, and request-size handling were redesigned and verified while preserving the anonymous intake contract.
+
+### Files changed
+
+- `.env.example`, `docs/public-issue-reporting-deployment.md` — define the single trusted proxy-header setting, Vercel production default, proxy overwrite assumption, 6 MiB application ceiling, and deployment requirements.
+- `lib/public-issue-reports.ts` — validate one allowlisted authoritative IP header; stage evidence privately before acceptance; atomically persist exact temporary/final paths plus a recoverable finalization job; provide idempotent evidence finalization; create/claim/retry/deliver a transactional notification outbox; and validate durable image MIME values.
+- `app/api/public/issue-reports/route.ts` — reject oversized declared bodies before `formData()`, retain post-parse enforcement, use private temporary/final Storage operations, and supply stable notification IDs.
+- `lib/fcm.ts` — surface multicast delivery failures to the outbox and use the outbox ID as Android/APNS collapse metadata.
+- `firestore.rules`, `storage.rules` — explicitly deny direct-client access to both durable job collections and temporary/final evidence paths.
+- `__tests__/integration/public-issue-reports-api.test.ts` — trusted-header spoofing/fail-closed and early/post-parse body-ceiling coverage.
+- `__tests__/unit/public-issue-report-service.test.ts` — evidence cleanup/interruption/retry/idempotence/fallback-failure coverage and transactional outbox cadence/retry/interruption coverage.
+- `__tests__/unit/fcm-admin-notification.test.ts`, `__tests__/unit/public-issue-report-validation.test.ts` — delivery-error propagation/collapse IDs and durable MIME type-guard coverage.
+
+### TDD RED/GREEN evidence
+
+- RED: five new route tests failed because spoofed forwarding headers could influence the fingerprint, invalid/missing authoritative values were not rejected, unsupported header configuration was accepted, and `formData()` was called before an oversized `Content-Length` could be rejected. GREEN: all route tests pass with exact-header selection, IP validation, production Vercel default behavior, pre-parse 413 rejection, and post-parse fallback validation.
+- RED: evidence recovery tests exposed post-upload metadata failure, process interruption, duplicate finalization, acceptance-transaction cleanup, and fallback-write failure gaps. GREEN: private staging plus a transactionally recorded finalization job keeps accepted evidence tracked; pre-commit failure cleans the temporary object; finalization is retryable and idempotent; failure-state write errors leave the original pending job durable.
+- RED: notification tests showed direct post-commit sends could be suppressed by cadence after failure or interruption. GREEN: acceptance now persists one outbox record transactionally, claims it after commit, retries failures, records delivery separately, reuses an undelivered outbox after the cadence window, and avoids concurrent duplicate attempts with a lease.
+- RED: the FCM failure test resolved despite a failed multicast result. GREEN: delivery failure now rejects back to the outbox, while stable collapse IDs mitigate a retry after an ambiguous delivery acknowledgment.
+- RED: the production build found that a generic Firestore string could not safely populate the evidence MIME union; the focused type-guard test initially failed because the guard did not exist. GREEN: the allowlist guard passes 14 validation tests and the production TypeScript build succeeds without an unsafe cast.
+
+### Verification
+
+- Focused MIME/service Jest: `npx jest __tests__/unit/public-issue-report-validation.test.ts __tests__/unit/public-issue-report-service.test.ts --runInBand --watchAll=false` — PASS, 2 suites and 35/35 tests.
+- Full root Jest: `npx jest --runInBand --watchAll=false` — PASS, 25 suites and 204/204 tests.
+- Production build: `npm run build` — PASS, including TypeScript, static generation, and the public report route/page.
+- Scoped ESLint over all changed TypeScript source/tests — PASS with exit code 0 and no findings.
+- `git diff --check` — PASS; only repository line-ending conversion notices were emitted.
+
+### Commit
+
+- Planned focused commit: `fix: make public report intake recoverable`.
+
+### Self-review
+
+- Only the configured allowlisted proxy-owned header is read. Generic `x-forwarded-for`, `x-real-ip`, and unrelated platform headers are ignored; a missing or invalid selected address cannot produce a fingerprint.
+- Evidence is first written to a private temporary prefix. The accepted submission and durable job atomically record its exact temporary and final private paths; finalization copies only when needed, deletes the temporary object idempotently, and commits stored metadata with job completion in one Firestore transaction. No public URL is persisted.
+- A continuous-leak acceptance creates at most one pending outbox per aggregate/cadence interval. Sending happens only after commit, failed transport attempts return to pending, delivered state is separate, and a stable notification ID is carried to FCM collapse metadata.
+- Declared request sizes over 6 MiB are rejected before parsing. Missing, malformed, chunked, or dishonest declarations still face field/photo validation and the post-parse total ceiling.
+
+### Concerns
+
+- Production must deploy a scheduled/queued invoker for the exported durable evidence and notification processors so jobs left by a process exit are retried without waiting for a later matching report. The records and processors are recoverable and idempotent; this task does not provision deployment infrastructure.
+- Exactly-once push delivery cannot be guaranteed across a transport-success/metadata-write crash. The outbox lease and stable Android/APNS collapse ID prevent concurrent sends and reduce visible duplicates on retry.
+- No live Firebase project was mutated. Deploy the updated rules and validate the trusted edge strips/overwrites the configured authoritative header before enabling anonymous intake.

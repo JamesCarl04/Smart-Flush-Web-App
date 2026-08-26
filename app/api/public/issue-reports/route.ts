@@ -25,11 +25,15 @@ interface IntakeInput {
 
 interface HandlerDependencies {
   secret: string | undefined;
+  trustedIpHeader?: string;
+  maxRequestBytes?: number;
   now?: () => number;
   submit: (input: IntakeInput) => Promise<PublicIssueReportReceipt>;
 }
 
-async function saveEvidence(
+const DEFAULT_MAX_REQUEST_BYTES = 6 * 1024 * 1024;
+
+async function stageEvidence(
   objectPath: string,
   bytes: Buffer,
   contentType: ValidatedIssueReportPhoto['contentType'],
@@ -44,18 +48,41 @@ async function saveEvidence(
   });
 }
 
+async function finalizeEvidence(
+  tempObjectPath: string,
+  finalObjectPath: string,
+): Promise<void> {
+  const bucket = adminStorage.bucket();
+  const temporary = bucket.file(tempObjectPath);
+  const destination = bucket.file(finalObjectPath);
+  const [destinationExists] = await destination.exists();
+  if (!destinationExists) {
+    const [temporaryExists] = await temporary.exists();
+    if (!temporaryExists) throw new Error('Temporary evidence is unavailable');
+    await temporary.copy(destination);
+  }
+  await temporary.delete({ ignoreNotFound: true });
+}
+
+async function deleteEvidence(objectPath: string): Promise<void> {
+  await adminStorage.bucket().file(objectPath).delete({ ignoreNotFound: true });
+}
+
 async function submitWithFirebase(
   input: IntakeInput,
 ): Promise<PublicIssueReportReceipt> {
   return submitPublicIssueReport({
     db: adminDb as unknown as PublicIssueReportFirestore,
-    saveEvidence,
+    stageEvidence,
+    finalizeEvidence,
+    deleteEvidence,
     notifyAdmins: async (notification) => {
       await sendAdminNotification({
         title: 'Continuous leak reported',
         body: `${notification.deviceName} has a public continuous-leak report (${notification.referenceCode}).`,
         data: {
           issueReportId: notification.issueReportId,
+          notificationId: notification.notificationId,
           deviceId: notification.deviceId,
           category: notification.category,
           referenceCode: notification.referenceCode,
@@ -71,6 +98,39 @@ async function submitWithFirebase(
 function formString(form: FormData, field: string): string | undefined {
   const value = form.get(field);
   return typeof value === 'string' ? value : undefined;
+}
+
+function requestTooLarge(): PublicIssueReportError {
+  return new PublicIssueReportError(
+    'Request is too large',
+    413,
+    'request_too_large',
+  );
+}
+
+function enforceDeclaredRequestSize(headers: Headers, maxBytes: number): void {
+  const declared = headers.get('content-length');
+  if (declared === null) return;
+  if (!/^\d+$/.test(declared.trim())) {
+    throw new PublicIssueReportError(
+      'Invalid request size',
+      400,
+      'invalid_content_length',
+    );
+  }
+  if (Number(declared) > maxBytes) throw requestTooLarge();
+}
+
+function enforceParsedRequestSize(form: FormData, maxBytes: number): void {
+  let bytes = 0;
+  for (const [field, value] of form.entries()) {
+    bytes += Buffer.byteLength(field, 'utf8');
+    bytes +=
+      typeof value === 'string'
+        ? Buffer.byteLength(value, 'utf8')
+        : value.size;
+    if (bytes > maxBytes) throw requestTooLarge();
+  }
 }
 
 function errorResponse(error: PublicIssueReportError): NextResponse {
@@ -91,11 +151,15 @@ export function createPublicIssueReportPostHandler(
   return async (request: Request): Promise<NextResponse> => {
     try {
       const nowMs = (dependencies.now ?? Date.now)();
+      const maxRequestBytes =
+        dependencies.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
+      enforceDeclaredRequestSize(request.headers, maxRequestBytes);
       const fingerprint = createPublicReportFingerprint(
-        extractClientIp(request.headers),
+        extractClientIp(request.headers, dependencies.trustedIpHeader),
         dependencies.secret,
       );
       const form = await request.formData();
+      enforceParsedRequestSize(form, maxRequestBytes);
       const deviceId = formString(form, 'deviceId')?.trim();
       if (!deviceId || !/^[a-zA-Z0-9_-]+$/.test(deviceId)) {
         throw new PublicIssueReportError(
@@ -151,5 +215,6 @@ export function createPublicIssueReportPostHandler(
 
 export const POST = createPublicIssueReportPostHandler({
   secret: process.env.PUBLIC_REPORT_FINGERPRINT_SECRET,
+  trustedIpHeader: process.env.PUBLIC_REPORT_TRUSTED_IP_HEADER,
   submit: submitWithFirebase,
 });

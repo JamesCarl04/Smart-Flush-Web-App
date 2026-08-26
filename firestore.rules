@@ -142,5 +142,13 @@ service cloud.firestore {
     match /publicIssueReportOpenKeys/{openKeyId} {
       allow read, write: if false;
     }
+
+    match /publicIssueReportEvidenceJobs/{jobId} {
+      allow read, write: if false;
+    }
+
+    match /publicIssueReportNotificationOutbox/{jobId} {
+      allow read, write: if false;
+    }
   }
 }

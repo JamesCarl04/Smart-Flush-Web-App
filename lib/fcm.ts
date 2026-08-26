@@ -263,10 +263,17 @@ export async function sendAdminNotification(
   for (let start = 0; start < owners.length; start += FCM_BATCH_SIZE) {
     const chunk = owners.slice(start, start + FCM_BATCH_SIZE);
     try {
+      const notificationId = payload.data.notificationId?.trim();
       const response = await adminMessaging.sendEachForMulticast({
         tokens: chunk.map((owner) => owner.token),
         notification: { title: payload.title, body: payload.body },
         data: payload.data,
+        ...(notificationId
+          ? {
+              android: { collapseKey: notificationId },
+              apns: { headers: { 'apns-collapse-id': notificationId } },
+            }
+          : {}),
       });
       successCount += response.successCount;
       failureCount += response.failureCount;
@@ -288,4 +295,7 @@ export async function sendAdminNotification(
   console.info(
     `[FCM] Administrator notification complete. success=${successCount} failure=${failureCount}`,
   );
+  if (failureCount > 0) {
+    throw new Error('Administrator notification delivery failed');
+  }
 }

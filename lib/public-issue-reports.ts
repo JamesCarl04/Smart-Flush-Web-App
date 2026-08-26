@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 
 export const ISSUE_REPORT_CATEGORIES = [
   'lid_malfunction',
@@ -30,9 +31,13 @@ export interface PublicReportingDevice {
 export type IssueReportEvidence =
   | { state: 'none' }
   | {
-      state: 'pending';
+      state: 'finalization_pending';
       contentType: 'image/jpeg' | 'image/png' | 'image/webp';
       size: number;
+      jobId: string;
+      tempObjectPath: string;
+      finalObjectPath: string;
+      failureCode?: 'storage_unavailable' | 'metadata_write_failed';
     }
   | {
       state: 'stored';
@@ -66,6 +71,8 @@ export interface IssueReportAggregate {
   confirmationCount: number;
   firstReportedAt: unknown;
   lastReportedAt: unknown;
+  lastAdminNotificationEnqueuedAt: unknown | null;
+  pendingAdminNotificationOutboxId: string | null;
   lastAdminNotifiedAt: unknown | null;
   linkedTaskId: string | null;
   evidenceRetention: {
@@ -206,6 +213,15 @@ export interface ValidatedIssueReportPhoto {
   size: number;
 }
 
+export function isIssueReportImageMime(
+  value: unknown,
+): value is ValidatedIssueReportPhoto['contentType'] {
+  return (
+    typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(MIME_MAGIC, value)
+  );
+}
+
 export async function validateIssueReportPhoto(
   file: Pick<File, 'type' | 'size' | 'arrayBuffer'>,
 ): Promise<ValidatedIssueReportPhoto> {
@@ -217,7 +233,7 @@ export async function validateIssueReportPhoto(
     );
   }
 
-  if (!(file.type in MIME_MAGIC)) {
+  if (!isIssueReportImageMime(file.type)) {
     throw new PublicIssueReportError(
       'Photo must be a JPEG, PNG, or WebP image',
       400,
@@ -236,24 +252,41 @@ export async function validateIssueReportPhoto(
 
   return {
     bytes,
-    contentType: file.type as ValidatedIssueReportPhoto['contentType'],
+    contentType: file.type,
     size: bytes.length,
   };
 }
 
-export function extractClientIp(headers: Headers): string | null {
-  const candidates = [
-    headers.get('cf-connecting-ip'),
-    headers.get('x-vercel-forwarded-for'),
-    headers.get('x-real-ip'),
-    headers.get('x-forwarded-for'),
-  ];
+export const TRUSTED_PROXY_IP_HEADERS = [
+  'x-vercel-forwarded-for',
+  'cf-connecting-ip',
+] as const;
 
-  for (const candidate of candidates) {
-    const first = candidate?.split(',')[0]?.trim();
-    if (first) return first;
+export type TrustedProxyIpHeader = (typeof TRUSTED_PROXY_IP_HEADERS)[number];
+
+export function resolveTrustedProxyIpHeader(
+  configured: string | undefined,
+): TrustedProxyIpHeader {
+  const normalized = configured?.trim().toLowerCase() || 'x-vercel-forwarded-for';
+  if (
+    !TRUSTED_PROXY_IP_HEADERS.includes(normalized as TrustedProxyIpHeader)
+  ) {
+    throw new PublicIssueReportError(
+      'Public reporting is temporarily unavailable due to server configuration',
+      503,
+      'invalid_trusted_ip_header',
+    );
   }
-  return null;
+  return normalized as TrustedProxyIpHeader;
+}
+
+export function extractClientIp(
+  headers: Headers,
+  trustedHeader: string | undefined,
+): string | null {
+  const header = resolveTrustedProxyIpHeader(trustedHeader);
+  const value = headers.get(header)?.trim();
+  return value && isIP(value) !== 0 ? value : null;
 }
 
 export function createPublicReportFingerprint(
@@ -291,11 +324,8 @@ export function createCooldownKey(
     .digest('hex');
 }
 
-export function createEvidencePath(
-  aggregateId: string,
-  submissionId: string,
-): string {
-  return `issue-report-evidence/${aggregateId}/${submissionId}/${randomUUID()}`;
+export function createTemporaryEvidencePath(submissionId: string): string {
+  return `issue-report-evidence-temp/${submissionId}/${randomUUID()}`;
 }
 
 export interface PublicIssueReportDocumentSnapshot {
@@ -306,6 +336,7 @@ export interface PublicIssueReportDocumentSnapshot {
 export interface PublicIssueReportDocumentReference {
   readonly id: string;
   collection(name: string): PublicIssueReportCollectionReference;
+  get(): Promise<PublicIssueReportDocumentSnapshot>;
   set(data: Record<string, unknown>, options?: { merge?: boolean }): Promise<void>;
 }
 
@@ -332,6 +363,7 @@ export interface PublicIssueReportFirestore {
 }
 
 export interface AdminIssueReportNotification {
+  notificationId: string;
   issueReportId: string;
   referenceCode: string;
   deviceId: string;
@@ -342,11 +374,16 @@ export interface AdminIssueReportNotification {
 
 export interface SubmitPublicIssueReportOptions {
   db: PublicIssueReportFirestore;
-  saveEvidence: (
+  stageEvidence: (
     objectPath: string,
     bytes: Buffer,
     contentType: ValidatedIssueReportPhoto['contentType'],
   ) => Promise<void>;
+  finalizeEvidence: (
+    tempObjectPath: string,
+    finalObjectPath: string,
+  ) => Promise<void>;
+  deleteEvidence: (objectPath: string) => Promise<void>;
   notifyAdmins: (notification: AdminIssueReportNotification) => Promise<void>;
   timestampFromMillis: (milliseconds: number) => unknown;
   now?: () => number;
@@ -362,6 +399,8 @@ export interface PublicIssueReportReceipt {
   submissionId: string;
   referenceCode: string;
   confirmationCount: number;
+  evidenceJobId?: string;
+  notificationOutboxId?: string;
 }
 
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1_000;
@@ -406,6 +445,32 @@ export async function submitPublicIssueReport(
   const now = options.timestampFromMillis(nowMs);
   const candidateAggregateId = randomUUID();
   const submissionId = randomUUID();
+  const candidateEvidenceJobId = options.photo ? randomUUID() : null;
+  const candidateNotificationOutboxId =
+    options.category === 'continuous_leak' ? randomUUID() : null;
+  const tempObjectPath = options.photo
+    ? createTemporaryEvidencePath(submissionId)
+    : null;
+  const finalObjectNonce = options.photo ? randomUUID() : null;
+  let evidenceStaged = false;
+
+  if (options.photo && tempObjectPath) {
+    try {
+      await options.stageEvidence(
+        tempObjectPath,
+        options.photo.bytes,
+        options.photo.contentType,
+      );
+      evidenceStaged = true;
+    } catch {
+      try {
+        await options.deleteEvidence(tempObjectPath);
+      } catch {
+        console.error('[Public Reports] Temporary evidence cleanup failed');
+      }
+      console.error('[Public Reports] Evidence upload failed');
+    }
+  }
 
   const deviceRef = options.db.collection('devices').doc(options.deviceId);
   const rateRef = options.db
@@ -418,7 +483,9 @@ export async function submitPublicIssueReport(
     .collection('publicIssueReportOpenKeys')
     .doc(createOpenKey(options.deviceId, options.category));
 
-  const committed = await options.db.runTransaction(async (transaction) => {
+  let committed;
+  try {
+    committed = await options.db.runTransaction(async (transaction) => {
     const [deviceSnapshot, rateSnapshot, cooldownSnapshot, openSnapshot] =
       await Promise.all([
         transaction.get(deviceRef),
@@ -476,10 +543,19 @@ export async function submitPublicIssueReport(
 
     const count = nonnegativeInteger(aggregateData?.confirmationCount) + 1;
     const code = requiredString(aggregateData?.referenceCode) ?? referenceCode(aggregateId);
-    const lastNotifiedAt = milliseconds(aggregateData?.lastAdminNotifiedAt);
-    const shouldNotify =
+    const lastNotificationEnqueuedAt = milliseconds(
+      aggregateData?.lastAdminNotificationEnqueuedAt ??
+        aggregateData?.lastAdminNotifiedAt,
+    );
+    const pendingNotificationOutboxId = requiredString(
+      aggregateData?.pendingAdminNotificationOutboxId,
+    );
+    const shouldEnqueueNotification =
       options.category === 'continuous_leak' &&
-      (lastNotifiedAt === null || nowMs - lastNotifiedAt >= DUPLICATE_WINDOW_MS);
+      pendingNotificationOutboxId === null &&
+      candidateNotificationOutboxId !== null &&
+      (lastNotificationEnqueuedAt === null ||
+        nowMs - lastNotificationEnqueuedAt >= DUPLICATE_WINDOW_MS);
     const submissionRef = aggregateRef.collection('submissions').doc(submissionId);
 
     if (aggregateData) {
@@ -488,7 +564,13 @@ export async function submitPublicIssueReport(
         {
           confirmationCount: count,
           lastReportedAt: now,
-          ...(shouldNotify ? { lastAdminNotifiedAt: now } : {}),
+          ...(shouldEnqueueNotification
+            ? {
+                lastAdminNotificationEnqueuedAt: now,
+                pendingAdminNotificationOutboxId:
+                  candidateNotificationOutboxId,
+              }
+            : {}),
         },
         { merge: true },
       );
@@ -503,7 +585,13 @@ export async function submitPublicIssueReport(
         confirmationCount: count,
         firstReportedAt: now,
         lastReportedAt: now,
-        lastAdminNotifiedAt: shouldNotify ? now : null,
+        lastAdminNotificationEnqueuedAt: shouldEnqueueNotification
+          ? now
+          : null,
+        pendingAdminNotificationOutboxId: shouldEnqueueNotification
+          ? candidateNotificationOutboxId
+          : null,
+        lastAdminNotifiedAt: null,
         linkedTaskId: null,
         evidenceRetention: {
           state: 'active',
@@ -521,12 +609,34 @@ export async function submitPublicIssueReport(
       });
     }
 
+    const evidenceJobId =
+      options.photo &&
+      evidenceStaged &&
+      candidateEvidenceJobId &&
+      tempObjectPath &&
+      finalObjectNonce
+        ? candidateEvidenceJobId
+        : null;
+    const finalObjectPath = evidenceJobId
+      ? `issue-report-evidence/${aggregateId}/${submissionId}/${finalObjectNonce}`
+      : null;
     const evidence: IssueReportEvidence = options.photo
-      ? {
-          state: 'pending',
-          contentType: options.photo.contentType,
-          size: options.photo.size,
-        }
+      ? evidenceJobId && tempObjectPath && finalObjectPath
+        ? {
+            state: 'finalization_pending',
+            contentType: options.photo.contentType,
+            size: options.photo.size,
+            jobId: evidenceJobId,
+            tempObjectPath,
+            finalObjectPath,
+          }
+        : {
+            state: 'upload_failed',
+            contentType: options.photo.contentType,
+            size: options.photo.size,
+            failureCode: 'storage_unavailable',
+            failedAt: now,
+          }
       : { state: 'none' };
     const submission: IssueReportSubmission = {
       id: submissionId,
@@ -535,6 +645,52 @@ export async function submitPublicIssueReport(
       submittedAt: now,
     };
     transaction.set(submissionRef, submission as unknown as Record<string, unknown>);
+    if (evidenceJobId && tempObjectPath && finalObjectPath) {
+      transaction.set(
+        options.db.collection('publicIssueReportEvidenceJobs').doc(evidenceJobId),
+        {
+          id: evidenceJobId,
+          status: 'pending',
+          aggregateId,
+          submissionId,
+          tempObjectPath,
+          finalObjectPath,
+          contentType: options.photo?.contentType,
+          size: options.photo?.size,
+          attemptCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      );
+    }
+    const notificationOutboxId =
+      pendingNotificationOutboxId ??
+      (shouldEnqueueNotification ? candidateNotificationOutboxId : null);
+    if (shouldEnqueueNotification && notificationOutboxId) {
+      const notification: AdminIssueReportNotification = {
+        notificationId: notificationOutboxId,
+        issueReportId: aggregateId,
+        referenceCode: code,
+        deviceId: options.deviceId,
+        deviceName: device.name,
+        category: 'continuous_leak',
+        confirmationCount: count,
+      };
+      transaction.set(
+        options.db
+          .collection('publicIssueReportNotificationOutbox')
+          .doc(notificationOutboxId),
+        {
+          id: notificationOutboxId,
+          aggregateId,
+          status: 'pending',
+          notification,
+          attemptCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      );
+    }
     transaction.set(rateRef, {
       windowStartedAt: inCurrentRateWindow
         ? rate.windowStartedAt
@@ -554,63 +710,48 @@ export async function submitPublicIssueReport(
       submissionRef,
       referenceCode: code,
       confirmationCount: count,
-      shouldNotify,
+      evidenceJobId,
+      notificationOutboxId,
       device,
     };
-  });
+    });
+  } catch (error) {
+    if (evidenceStaged && tempObjectPath) {
+      try {
+        await options.deleteEvidence(tempObjectPath);
+      } catch {
+        console.error('[Public Reports] Temporary evidence cleanup failed');
+      }
+    }
+    throw error;
+  }
 
-  if (options.photo) {
-    const objectPath = createEvidencePath(
-      committed.aggregateId,
-      committed.submissionId,
-    );
+  if (committed.evidenceJobId) {
     try {
-      await options.saveEvidence(
-        objectPath,
-        options.photo.bytes,
-        options.photo.contentType,
-      );
-      await committed.submissionRef.set(
-        {
-          evidence: {
-            state: 'stored',
-            contentType: options.photo.contentType,
-            size: options.photo.size,
-            objectPath,
-            storedAt: options.timestampFromMillis((options.now ?? Date.now)()),
-          } satisfies IssueReportEvidence,
-        },
-        { merge: true },
-      );
+      await processIssueReportEvidenceJob({
+        db: options.db,
+        jobId: committed.evidenceJobId,
+        finalizeEvidence: options.finalizeEvidence,
+        deleteEvidence: options.deleteEvidence,
+        timestampFromMillis: options.timestampFromMillis,
+        now: options.now,
+      });
     } catch {
-      await committed.submissionRef.set(
-        {
-          evidence: {
-            state: 'upload_failed',
-            contentType: options.photo.contentType,
-            size: options.photo.size,
-            failureCode: 'storage_unavailable',
-            failedAt: options.timestampFromMillis((options.now ?? Date.now)()),
-          } satisfies IssueReportEvidence,
-        },
-        { merge: true },
-      );
-      console.error('[Public Reports] Evidence upload failed');
+      console.error('[Public Reports] Evidence finalization deferred');
     }
   }
 
-  if (committed.shouldNotify) {
+  if (committed.notificationOutboxId) {
     try {
-      await options.notifyAdmins({
-        issueReportId: committed.aggregateId,
-        referenceCode: committed.referenceCode,
-        deviceId: options.deviceId,
-        deviceName: committed.device.name,
-        category: 'continuous_leak',
-        confirmationCount: committed.confirmationCount,
+      await processIssueReportNotificationOutbox({
+        db: options.db,
+        jobId: committed.notificationOutboxId,
+        notifyAdmins: options.notifyAdmins,
+        timestampFromMillis: options.timestampFromMillis,
+        now: options.now,
       });
     } catch {
-      console.error('[Public Reports] Administrator notification failed');
+      console.error('[Public Reports] Administrator notification deferred');
     }
   }
 
@@ -619,5 +760,240 @@ export async function submitPublicIssueReport(
     submissionId: committed.submissionId,
     referenceCode: committed.referenceCode,
     confirmationCount: committed.confirmationCount,
+    ...(committed.evidenceJobId
+      ? { evidenceJobId: committed.evidenceJobId }
+      : {}),
+    ...(committed.notificationOutboxId
+      ? { notificationOutboxId: committed.notificationOutboxId }
+      : {}),
   };
+}
+
+export interface ProcessEvidenceJobOptions {
+  db: PublicIssueReportFirestore;
+  jobId: string;
+  finalizeEvidence: (
+    tempObjectPath: string,
+    finalObjectPath: string,
+  ) => Promise<void>;
+  deleteEvidence: (objectPath: string) => Promise<void>;
+  timestampFromMillis: (milliseconds: number) => unknown;
+  now?: () => number;
+}
+
+async function recordEvidenceJobFailure(
+  options: ProcessEvidenceJobOptions,
+  failureCode: 'storage_unavailable' | 'metadata_write_failed',
+): Promise<void> {
+  const now = options.timestampFromMillis((options.now ?? Date.now)());
+  const jobRef = options.db
+    .collection('publicIssueReportEvidenceJobs')
+    .doc(options.jobId);
+  await options.db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+    const job = snapshot.data();
+    if (!snapshot.exists || job?.status === 'completed') return;
+    transaction.set(
+      jobRef,
+      {
+        status: 'pending',
+        attemptCount: nonnegativeInteger(job?.attemptCount) + 1,
+        failureCode,
+        lastAttemptAt: now,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  });
+}
+
+export async function processIssueReportEvidenceJob(
+  options: ProcessEvidenceJobOptions,
+): Promise<void> {
+  const jobRef = options.db
+    .collection('publicIssueReportEvidenceJobs')
+    .doc(options.jobId);
+  const snapshot = await jobRef.get();
+  const job = snapshot.data();
+  if (!snapshot.exists || job?.status === 'completed') return;
+
+  const aggregateId = requiredString(job?.aggregateId);
+  const submissionId = requiredString(job?.submissionId);
+  const tempObjectPath = requiredString(job?.tempObjectPath);
+  const finalObjectPath = requiredString(job?.finalObjectPath);
+  const contentType = job?.contentType;
+  const size = nonnegativeInteger(job?.size);
+  if (
+    !aggregateId ||
+    !submissionId ||
+    !tempObjectPath ||
+    !finalObjectPath ||
+    !isIssueReportImageMime(contentType) ||
+    size === 0
+  ) {
+    return;
+  }
+
+  try {
+    await options.finalizeEvidence(tempObjectPath, finalObjectPath);
+  } catch {
+    try {
+      await recordEvidenceJobFailure(options, 'storage_unavailable');
+    } catch {
+      console.error('[Public Reports] Evidence failure-state write failed');
+    }
+    console.error('[Public Reports] Evidence finalization remains pending');
+    return;
+  }
+
+  const completedAt = options.timestampFromMillis((options.now ?? Date.now)());
+  try {
+    await options.db.runTransaction(async (transaction) => {
+      const latest = await transaction.get(jobRef);
+      const latestJob = latest.data();
+      if (!latest.exists || latestJob?.status === 'completed') return;
+      const submissionRef = options.db
+        .collection('issueReports')
+        .doc(aggregateId)
+        .collection('submissions')
+        .doc(submissionId);
+      transaction.set(
+        submissionRef,
+        {
+          evidence: {
+            state: 'stored',
+            contentType,
+            size,
+            objectPath: finalObjectPath,
+            storedAt: completedAt,
+          } satisfies IssueReportEvidence,
+        },
+        { merge: true },
+      );
+      transaction.set(
+        jobRef,
+        {
+          status: 'completed',
+          attemptCount: nonnegativeInteger(latestJob?.attemptCount) + 1,
+          failureCode: null,
+          completedAt,
+          updatedAt: completedAt,
+        },
+        { merge: true },
+      );
+    });
+  } catch {
+    try {
+      await recordEvidenceJobFailure(options, 'metadata_write_failed');
+    } catch {
+      console.error('[Public Reports] Evidence failure-state write failed');
+    }
+    console.error('[Public Reports] Evidence finalization metadata failed');
+  }
+}
+
+export interface ProcessNotificationOutboxOptions {
+  db: PublicIssueReportFirestore;
+  jobId: string;
+  notifyAdmins: (notification: AdminIssueReportNotification) => Promise<void>;
+  timestampFromMillis: (milliseconds: number) => unknown;
+  now?: () => number;
+}
+
+export async function processIssueReportNotificationOutbox(
+  options: ProcessNotificationOutboxOptions,
+): Promise<void> {
+  const nowMs = (options.now ?? Date.now)();
+  const now = options.timestampFromMillis(nowMs);
+  const attemptId = randomUUID();
+  const jobRef = options.db
+    .collection('publicIssueReportNotificationOutbox')
+    .doc(options.jobId);
+  const claimed = await options.db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+    const job = snapshot.data();
+    if (!snapshot.exists || job?.status === 'delivered') return null;
+    const leaseExpiresAt = milliseconds(job?.leaseExpiresAt);
+    if (
+      job?.status === 'sending' &&
+      leaseExpiresAt !== null &&
+      leaseExpiresAt > nowMs
+    ) {
+      return null;
+    }
+    const notification = job?.notification as
+      | AdminIssueReportNotification
+      | undefined;
+    if (!notification || notification.notificationId !== options.jobId) {
+      return null;
+    }
+    transaction.set(
+      jobRef,
+      {
+        status: 'sending',
+        attemptId,
+        attemptCount: nonnegativeInteger(job?.attemptCount) + 1,
+        lastAttemptAt: now,
+        leaseExpiresAt: options.timestampFromMillis(nowMs + 30_000),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    return notification;
+  });
+  if (!claimed) return;
+
+  try {
+    await options.notifyAdmins(claimed);
+  } catch {
+    try {
+      await options.db.runTransaction(async (transaction) => {
+        const latest = await transaction.get(jobRef);
+        const job = latest.data();
+        if (!latest.exists || job?.attemptId !== attemptId) return;
+        transaction.set(
+          jobRef,
+          {
+            status: 'pending',
+            failureCode: 'notification_failed',
+            leaseExpiresAt: null,
+            updatedAt: now,
+          },
+          { merge: true },
+        );
+      });
+    } catch {
+      console.error('[Public Reports] Notification outbox failure-state write failed');
+    }
+    console.error('[Public Reports] Administrator notification failed');
+    return;
+  }
+
+  await options.db.runTransaction(async (transaction) => {
+    const latest = await transaction.get(jobRef);
+    const job = latest.data();
+    if (!latest.exists || job?.attemptId !== attemptId) return;
+    transaction.set(
+      jobRef,
+      {
+        status: 'delivered',
+        deliveredAt: now,
+        leaseExpiresAt: null,
+        failureCode: null,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+    const aggregateId = requiredString(job?.aggregateId);
+    if (aggregateId) {
+      transaction.set(
+        options.db.collection('issueReports').doc(aggregateId),
+        {
+          lastAdminNotifiedAt: now,
+          pendingAdminNotificationOutboxId: null,
+        },
+        { merge: true },
+      );
+    }
+  });
 }

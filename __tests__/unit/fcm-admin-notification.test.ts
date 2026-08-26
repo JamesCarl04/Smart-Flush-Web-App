@@ -41,7 +41,11 @@ describe('reusable administrator-only FCM notification', () => {
     await sendAdminNotification({
       title: 'Continuous leak reported',
       body: 'Main Restroom has a public leak report.',
-      data: { issueReportId: 'report-1', category: 'continuous_leak' },
+      data: {
+        notificationId: 'outbox-attempt-1',
+        issueReportId: 'report-1',
+        category: 'continuous_leak',
+      },
     });
 
     expect(where).toHaveBeenCalledWith('role', '==', 'admin');
@@ -51,7 +55,35 @@ describe('reusable administrator-only FCM notification', () => {
         title: 'Continuous leak reported',
         body: 'Main Restroom has a public leak report.',
       },
-      data: { issueReportId: 'report-1', category: 'continuous_leak' },
+      data: {
+        notificationId: 'outbox-attempt-1',
+        issueReportId: 'report-1',
+        category: 'continuous_leak',
+      },
+      android: { collapseKey: 'outbox-attempt-1' },
+      apns: { headers: { 'apns-collapse-id': 'outbox-attempt-1' } },
     });
+  });
+
+  it('rejects when administrator delivery fails so the durable outbox remains retryable', async () => {
+    const get = jest.fn().mockResolvedValue({
+      docs: [
+        { id: 'admin-1', data: () => ({ role: 'admin', fcmToken: 'admin-token-1' }) },
+      ],
+    });
+    mockCollection.mockReturnValue({ where: jest.fn(() => ({ get })) });
+    mockSendEachForMulticast.mockRejectedValue(new Error('FCM unavailable'));
+
+    await expect(
+      sendAdminNotification({
+        title: 'Continuous leak reported',
+        body: 'Main Restroom has a public leak report.',
+        data: {
+          notificationId: 'outbox-attempt-2',
+          issueReportId: 'report-2',
+          category: 'continuous_leak',
+        },
+      }),
+    ).rejects.toThrow('Administrator notification delivery failed');
   });
 });

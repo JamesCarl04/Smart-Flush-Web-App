@@ -2,6 +2,7 @@ import {
   ISSUE_REPORT_CATEGORIES,
   createPublicReportFingerprint,
   extractClientIp,
+  isIssueReportImageMime,
   sanitizePublicDevice,
   validateIssueReportInput,
   validateIssueReportPhoto,
@@ -10,6 +11,14 @@ import {
 const now = 1_800_000_000_000;
 
 describe('public issue report validation', () => {
+  it('recognizes only the supported durable evidence MIME values', () => {
+    expect(isIssueReportImageMime('image/jpeg')).toBe(true);
+    expect(isIssueReportImageMime('image/png')).toBe(true);
+    expect(isIssueReportImageMime('image/webp')).toBe(true);
+    expect(isIssueReportImageMime('text/plain')).toBe(false);
+    expect(isIssueReportImageMime(null)).toBe(false);
+  });
+
   it('accepts every supported category and trims an optional description', () => {
     for (const category of ISSUE_REPORT_CATEGORIES) {
       expect(
@@ -97,18 +106,18 @@ describe('public issue report validation', () => {
     ).toThrow('unavailable');
   });
 
-  it('extracts the preferred platform IP and fingerprints it without returning the raw value', () => {
+  it('extracts the configured platform IP and fingerprints it without returning the raw value', () => {
     const headers = new Headers({
       'x-forwarded-for': '198.51.100.5, 10.0.0.1',
       'x-real-ip': '198.51.100.4',
-      'x-vercel-forwarded-for': '198.51.100.3, 10.0.0.2',
+      'x-vercel-forwarded-for': '198.51.100.3',
       'cf-connecting-ip': '198.51.100.2',
     });
 
-    const ip = extractClientIp(headers);
+    const ip = extractClientIp(headers, 'x-vercel-forwarded-for');
     const fingerprint = createPublicReportFingerprint(ip, 'test-secret');
 
-    expect(ip).toBe('198.51.100.2');
+    expect(ip).toBe('198.51.100.3');
     expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(fingerprint).not.toContain('198.51.100.2');
     expect(() => createPublicReportFingerprint(ip, '')).toThrow('configuration');
