@@ -120,5 +120,27 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isSupervisor();
     }
+
+    // Anonymous issue-report intake is server-only. Administrator moderation
+    // also goes through authenticated Admin SDK endpoints, never direct clients.
+    match /issueReports/{reportId} {
+      allow read, write: if false;
+
+      match /submissions/{submissionId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /publicIssueReportRateLimits/{fingerprintId} {
+      allow read, write: if false;
+    }
+
+    match /publicIssueReportCooldowns/{cooldownId} {
+      allow read, write: if false;
+    }
+
+    match /publicIssueReportOpenKeys/{openKeyId} {
+      allow read, write: if false;
+    }
   }
 }

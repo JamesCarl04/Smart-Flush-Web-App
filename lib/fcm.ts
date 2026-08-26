@@ -22,6 +22,12 @@ interface TaskNotificationPayload {
   };
 }
 
+export interface AdminNotificationPayload {
+  title: string;
+  body: string;
+  data: Record<string, string>;
+}
+
 function readStringField(
   data: Record<string, unknown> | undefined,
   field: string,
@@ -116,6 +122,22 @@ async function readTaskPoolTokens(): Promise<TokenOwner[]> {
     if (token) {
       owners.push({ uid: doc.id, token });
     }
+  }
+
+  return owners;
+}
+
+async function readAdminTokens(): Promise<TokenOwner[]> {
+  const snapshot = await adminDb
+    .collection('users')
+    .where('role', '==', 'admin')
+    .get();
+  const owners: TokenOwner[] = [];
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const token = readStringField(data, 'fcmToken');
+    if (token) owners.push({ uid: doc.id, token });
   }
 
   return owners;
@@ -225,4 +247,45 @@ export async function sendTaskNotification(
   }
 
   await sendToManyTokens(task, owners);
+}
+
+export async function sendAdminNotification(
+  payload: AdminNotificationPayload,
+): Promise<void> {
+  const owners = await readAdminTokens();
+  if (owners.length === 0) {
+    console.info('[FCM] No administrator FCM tokens found. success=0 failure=0');
+    return;
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  for (let start = 0; start < owners.length; start += FCM_BATCH_SIZE) {
+    const chunk = owners.slice(start, start + FCM_BATCH_SIZE);
+    try {
+      const response = await adminMessaging.sendEachForMulticast({
+        tokens: chunk.map((owner) => owner.token),
+        notification: { title: payload.title, body: payload.body },
+        data: payload.data,
+      });
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      await Promise.all(
+        response.responses.map((sendResponse, index) =>
+          !sendResponse.success &&
+          sendResponse.error &&
+          isStaleTokenError(sendResponse.error)
+            ? removeFcmToken(chunk[index])
+            : Promise.resolve(),
+        ),
+      );
+    } catch {
+      failureCount += chunk.length;
+    }
+  }
+
+  console.info(
+    `[FCM] Administrator notification complete. success=${successCount} failure=${failureCount}`,
+  );
 }

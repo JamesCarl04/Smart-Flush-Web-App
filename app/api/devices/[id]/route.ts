@@ -10,6 +10,7 @@ interface RouteParams {
 
 interface UpdateDeviceBody {
   name?: string;
+  publicReportingEnabled?: boolean;
   description?: string;
   building?: string;
   floor?: string;
@@ -34,7 +35,14 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: doc.data() });
+    const data = doc.data() ?? {};
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...data,
+        publicReportingEnabled: data.publicReportingEnabled !== false,
+      },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] GET/:id error:', error);
@@ -51,11 +59,26 @@ export async function PUT(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
     const { id } = await params;
 
     const body = (await request.json()) as UpdateDeviceBody;
     const updates: UpdateDeviceBody = {};
+
+    if (
+      body.publicReportingEnabled !== undefined &&
+      typeof body.publicReportingEnabled !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'publicReportingEnabled must be boolean' },
+        { status: 400 },
+      );
+    }
+
+    if (body.publicReportingEnabled !== undefined) {
+      await requireAdmin(user);
+      updates.publicReportingEnabled = body.publicReportingEnabled;
+    }
 
     if (body.name !== undefined) {
       const trimmedName = body.name.trim();
@@ -119,7 +142,14 @@ export async function PUT(
     );
     const updated = await docRef.get();
 
-    return NextResponse.json({ success: true, data: updated.data() });
+    const updatedData = updated.data() ?? {};
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updatedData,
+        publicReportingEnabled: updatedData.publicReportingEnabled !== false,
+      },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Devices] PUT/:id error:', error);

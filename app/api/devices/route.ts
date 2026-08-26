@@ -6,6 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 interface CreateDeviceBody {
   name: string;
+  publicReportingEnabled?: boolean;
   building?: string;
   floor?: string;
   location?: string;
@@ -19,7 +20,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     await verifyAuthToken(request);
 
     const snapshot = await adminDb.collection('devices').get();
-    const devices = snapshot.docs.map((doc) => doc.data());
+    const devices = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        ...data,
+        publicReportingEnabled: data.publicReportingEnabled !== false,
+      };
+    });
 
     return NextResponse.json({ success: true, data: devices });
   } catch (error) {
@@ -47,10 +54,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    if (
+      body.publicReportingEnabled !== undefined &&
+      typeof body.publicReportingEnabled !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'publicReportingEnabled must be boolean' },
+        { status: 400 },
+      );
+    }
+
     const docRef = adminDb.collection('devices').doc();
     const device = {
       id: docRef.id,
       name: body.name.trim(),
+      publicReportingEnabled: body.publicReportingEnabled ?? true,
       building: body.building?.trim() || 'SDCA Annex Building',
       floor: body.floor?.trim() || '4th Floor',
       location: body.location?.trim() || '4th Floor Restroom Zone',

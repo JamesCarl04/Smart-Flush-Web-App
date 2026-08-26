@@ -16,6 +16,7 @@ export interface User {
 export interface Device {
   id: string;
   name: string;
+  publicReportingEnabled?: boolean;
   status: 'online' | 'offline';
   firmwareVersion: string;
   lastSeen: number;
