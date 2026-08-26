@@ -25,6 +25,7 @@ class MemoryStore implements AutomationStore {
   failDispatch = false;
   failAcknowledgeOnce = false;
   dispatchGate: Promise<void> | null = null;
+  afterDispatchCommit: (() => Promise<void>) | null = null;
 
   async getEnabledRules(): Promise<AutomationRule[]> { return this.rules.filter((rule) => rule.enabled); }
   async getRule(id: string): Promise<AutomationRule | null> { return this.rules.find((rule) => rule.id === id) ?? null; }
@@ -42,14 +43,18 @@ class MemoryStore implements AutomationStore {
       this.pendingEvents = this.pendingEvents.filter((event) => event.eventId !== eventId);
     }
     if (outcome === 'created') this.createdTasks.push({ rule, cycleCount });
+    if (rule.trigger === 'no_water_after_flush') {
+      const state = await this.getNoWaterState(deviceId);
+      this.noWater.set(deviceId, { ...state, dryCycles: 0 });
+      if (this.afterDispatchCommit) await this.afterDispatchCommit();
+    }
     return outcome;
   }
   async createAlert(_deviceId: string, trigger: AutomationRule['trigger']): Promise<void> { this.alerts.push(trigger); }
   async getNoWaterState(deviceId: string) { const state = this.noWater.get(deviceId) ?? { pending: false, dueAtMs: null, dryCycles: 0 }; const attempts = this.pendingDryAttempts.get(deviceId) ?? []; return { ...state, pending: attempts.length > 0, dueAtMs: attempts[0] ?? null }; }
   async setNoWaterPending(deviceId: string, dueAtMs: number): Promise<void> { const state = await this.getNoWaterState(deviceId); this.pendingDryAttempts.set(deviceId, [dueAtMs]); this.noWater.set(deviceId, { ...state, pending: true, dueAtMs }); }
-  async clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void> { const state = await this.getNoWaterState(deviceId); this.pendingDryAttempts.delete(deviceId); this.noWater.set(deviceId, { pending: false, dueAtMs: null, dryCycles: resetDryCycles ? 0 : state.dryCycles }); }
+  async clearNoWaterPending(deviceId: string): Promise<void> { const state = await this.getNoWaterState(deviceId); this.pendingDryAttempts.delete(deviceId); this.noWater.set(deviceId, { pending: false, dueAtMs: null, dryCycles: state.dryCycles }); }
   async consumePendingDryCycle(deviceId: string, nowMs: number): Promise<number | null> { const state = await this.getNoWaterState(deviceId); const attempts = this.pendingDryAttempts.get(deviceId) ?? []; const due = attempts.filter((dueAtMs) => dueAtMs <= nowMs); if (due.length === 0) return null; const remaining = attempts.filter((dueAtMs) => dueAtMs > nowMs); this.pendingDryAttempts.set(deviceId, remaining); this.dryCycleClaims += due.length; const next = state.dryCycles + due.length; this.noWater.set(deviceId, { pending: remaining.length > 0, dueAtMs: remaining[0] ?? null, dryCycles: next }); return next; }
-  async resetDryCycles(deviceId: string): Promise<void> { const state = await this.getNoWaterState(deviceId); this.noWater.set(deviceId, { ...state, dryCycles: 0 }); }
   async recordPositiveFlow(deviceId: string): Promise<void> {
     const state = this.pump.get(deviceId);
     if (state?.active) this.pump.set(deviceId, { ...state, hadFlow: true });
@@ -311,6 +316,29 @@ describe('TelemetryAutomationEngine', () => {
     now = 8_000;
     await engine.processDueNoWaterCheck('toilet-a');
 
+    expect((await store.getNoWaterState('toilet-a')).dryCycles).toBe(1);
+  });
+
+  it('preserves a later due dry count consumed after the task transaction commits', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'no-water', trigger: 'no_water_after_flush', threshold: 1, waterWaitSeconds: 8 })];
+    let now = 0;
+    const engine = new TelemetryAutomationEngine(store, { now: () => now, schedule: () => undefined });
+
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+    now = 1_000;
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+    store.afterDispatchCommit = async () => {
+      now = 9_000;
+      await store.consumePendingDryCycle('toilet-a', now);
+    };
+
+    now = 8_000;
+    await engine.processDueNoWaterCheck('toilet-a');
+
+    expect(store.createdTasks).toHaveLength(1);
     expect((await store.getNoWaterState('toilet-a')).dryCycles).toBe(1);
   });
 

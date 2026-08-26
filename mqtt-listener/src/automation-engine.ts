@@ -49,9 +49,8 @@ export interface AutomationStore {
   createAlert(deviceId: string, trigger: AutomationRuleTrigger): Promise<void>;
   getNoWaterState(deviceId: string): Promise<NoWaterState>;
   setNoWaterPending(deviceId: string, dueAtMs: number): Promise<void>;
-  clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void>;
+  clearNoWaterPending(deviceId: string): Promise<void>;
   consumePendingDryCycle(deviceId: string, nowMs: number): Promise<number | null>;
-  resetDryCycles(deviceId: string): Promise<void>;
   recordPositiveFlow(deviceId: string): Promise<void>;
   recordPumpTransition(
     deviceId: string,
@@ -203,7 +202,7 @@ export class TelemetryAutomationEngine {
     if (!state.pending || state.dueAtMs === null || state.dueAtMs > this.now()) return;
     const rules = await this.enabledRules('no_water_after_flush');
     if (rules.length === 0) {
-      await this.store.clearNoWaterPending(deviceId, false);
+      await this.store.clearNoWaterPending(deviceId);
       return;
     }
     const dryCycles = await this.store.consumePendingDryCycle(
@@ -212,9 +211,7 @@ export class TelemetryAutomationEngine {
     );
     if (dryCycles === null) return;
     for (const rule of rules) {
-      if (dryCycles >= rule.threshold && await this.dispatch(rule, deviceId)) {
-        await this.store.resetDryCycles(deviceId);
-      }
+      if (dryCycles >= rule.threshold) await this.dispatch(rule, deviceId);
     }
   }
 
@@ -339,12 +336,11 @@ class FirestoreAutomationStore implements AutomationStore {
     }, { merge: true });
   }
 
-  async clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void> {
+  async clearNoWaterPending(deviceId: string): Promise<void> {
     await this.stateRef(deviceId).set({
       pendingWaterCheck: false,
       noWaterDueAt: null,
       pendingDryAttemptDueAt: [],
-      ...(resetDryCycles ? { noWaterConsecutiveCycles: 0 } : {}),
     }, { merge: true });
   }
 
@@ -370,10 +366,6 @@ class FirestoreAutomationStore implements AutomationStore {
       }, { merge: true });
       return next;
     });
-  }
-
-  async resetDryCycles(deviceId: string): Promise<void> {
-    await this.stateRef(deviceId).set({ noWaterConsecutiveCycles: 0 }, { merge: true });
   }
 
   async recordPositiveFlow(deviceId: string): Promise<void> {
