@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import { syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
 
 interface ApproveBody {
   taskId?: unknown;
@@ -46,21 +47,21 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       const task = snapshot.data() ?? {};
       const isRoutineMaintenance = task.automationTrigger === 'maintenance_due';
-      if (isRoutineMaintenance && task.status !== 'completed') {
+      const isCompleted = task.completedAt != null || task.status === 'completed';
+      if (isRoutineMaintenance && !isCompleted) {
         return 'routine_not_completed' as const;
       }
 
-      // Approval is deliberately idempotent. This is what prevents a repeated
-      // request from resetting a newly accumulated cycle count a second time.
-      if (task.inspectionStatus === 'approved') return 'already_approved' as const;
+      const alreadyApproved = task.inspectionStatus === 'approved';
 
       const timestamp = FieldValue.serverTimestamp();
-      if (isRoutineMaintenance) {
+      let counterRef: FirebaseFirestore.DocumentReference | null = null;
+      if (isRoutineMaintenance && !alreadyApproved) {
         if (typeof task.deviceId !== 'string' || !task.deviceId.trim()) {
           return 'missing_device' as const;
         }
 
-        const counterRef = adminDb
+        counterRef = adminDb
           .collection('devices')
           .doc(task.deviceId.trim())
           .collection('maintenanceCounters')
@@ -68,19 +69,31 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Read the counter in the same transaction so reset and approval retry
         // together if another writer changes the document concurrently.
         await transaction.get(counterRef);
-        transaction.set(
-          counterRef,
-          {
-            flushCycleCount: 0,
-            lastResetAt: timestamp,
-            lastResetBy: supervisorUid,
-            lastResetTaskId: taskId,
-          },
-          { merge: true },
-        );
       }
 
+      if (isCompleted) {
+        const assignees = new Set<string>([
+          ...(typeof task.assignedTo === 'string' && task.assignedTo.trim() ? [task.assignedTo.trim()] : []),
+          ...(Array.isArray(task.assignedToIds)
+            ? task.assignedToIds.filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+            : []),
+        ]);
+        await syncTechniciansAfterTaskRelease(transaction, assignees, taskId, timestamp);
+      }
+
+      if (counterRef) {
+        transaction.set(counterRef, {
+          flushCycleCount: 0,
+          lastResetAt: timestamp,
+          lastResetBy: supervisorUid,
+          lastResetTaskId: taskId,
+        }, { merge: true });
+      }
+
+      if (alreadyApproved) return 'already_approved' as const;
+
       transaction.update(taskRef, {
+        ...(task.completedAt != null && task.status !== 'completed' ? { status: 'completed' } : {}),
         inspectionStatus: 'approved',
         inspectedBy: supervisorUid,
         inspectedByName: supervisorName,

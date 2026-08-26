@@ -10,6 +10,8 @@ import {
   withDashboardTaskStatus,
   withMaintenanceUserStatus,
 } from '@/lib/task-status';
+import { shouldClearAutomationGuard, syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
+import { Timestamp } from 'firebase-admin/firestore';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -205,7 +207,37 @@ export async function PATCH(
       );
     }
 
-    await taskRef.update(updates);
+    if ('assignedToIds' in updates) {
+      await adminDb.runTransaction(async (transaction) => {
+        const fresh = await transaction.get(taskRef);
+        if (!fresh.exists) return;
+        const data = fresh.data() ?? {};
+        const previous = new Set<string>([
+          ...(typeof data.assignedTo === 'string' && data.assignedTo.trim() ? [data.assignedTo.trim()] : []),
+          ...(Array.isArray(data.assignedToIds)
+            ? data.assignedToIds.filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+            : []),
+        ]);
+        const next = new Set((updates.assignedToIds as string[]) ?? []);
+        const now = Timestamp.now();
+        await syncTechniciansAfterTaskRelease(
+          transaction,
+          Array.from(previous).filter((uid) => !next.has(uid)),
+          id,
+          now,
+        );
+        transaction.update(taskRef, { ...updates, updatedAt: now });
+        for (const uid of next) {
+          transaction.set(adminDb.collection('users').doc(uid), {
+            currentTaskId: id,
+            isAvailable: false,
+            updatedAt: now,
+          }, { merge: true });
+        }
+      });
+    } else {
+      await taskRef.update(updates);
+    }
 
     const updatedSnapshot = await taskRef.get();
     const task = serializeTaskData(
@@ -270,23 +302,29 @@ export async function DELETE(
       );
     }
 
-    const batch = adminDb.batch();
-    batch.delete(taskRef);
-
-    // Universal maintenance cleanup: Find all users holding this task as currentTaskId
-    const usersHoldingTask = await adminDb
-      .collection('users')
-      .where('currentTaskId', '==', id)
-      .get();
-
-    usersHoldingTask.docs.forEach((userDoc) => {
-      batch.update(userDoc.ref, {
-        currentTaskId: null,
-        isAvailable: true,
-      });
+    await adminDb.runTransaction(async (transaction) => {
+      const freshTask = await transaction.get(taskRef);
+      if (!freshTask.exists) return;
+      const data = freshTask.data() ?? {};
+      const holders = await transaction.get(
+        adminDb.collection('users').where('currentTaskId', '==', id),
+      );
+      const assigneeIds = new Set<string>([
+        ...(typeof data.assignedTo === 'string' && data.assignedTo.trim() ? [data.assignedTo.trim()] : []),
+        ...(Array.isArray(data.assignedToIds)
+          ? data.assignedToIds.filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+          : []),
+        ...holders.docs.map((doc) => doc.id),
+      ]);
+      const guardRef = typeof data.deviceId === 'string' && typeof data.automationTrigger === 'string'
+        ? adminDb.collection('automationTaskGuards').doc(`${data.deviceId}--${data.automationTrigger}`)
+        : null;
+      const guardSnapshot = guardRef ? await transaction.get(guardRef) : null;
+      const now = Timestamp.now();
+      await syncTechniciansAfterTaskRelease(transaction, assigneeIds, id, now);
+      transaction.delete(taskRef);
+      if (guardRef && shouldClearAutomationGuard(id, guardSnapshot?.data())) transaction.delete(guardRef);
     });
-
-    await batch.commit();
 
     return NextResponse.json({ success: true, data: { id } });
   } catch (error) {

@@ -8,7 +8,9 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start:prod": "node dist/index.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "reconcile": "ts-node src/reconcile-automation-state.ts",
+    "reconcile:apply": "ts-node src/reconcile-automation-state.ts --apply"
   },
   "dependencies": {
     "mqtt": "^5.15.0",

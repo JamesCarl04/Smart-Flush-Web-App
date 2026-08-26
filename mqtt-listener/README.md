@@ -55,6 +55,22 @@ npm run dev
 | `MAINTENANCE_ALERT_CHECK_INTERVAL_MS` | Optional. Minimum gap between maintenance-threshold checks (default: `60000`) |
 | `AUTOMATION_RULES_CACHE_MS` | Optional. Cache window for `automationRules` reads (default: `60000`) |
 
+## Automation State Reconciliation
+
+Run the reconciliation command after deploying lifecycle changes or when auditing legacy data. It is dry-run by default and prints stale task statuses, invalid technician availability/current-task links, and guards pointing to missing or completed tasks:
+
+```bash
+npm run reconcile
+```
+
+Apply exactly the reported repairs with the explicit apply command:
+
+```bash
+npm run reconcile:apply
+```
+
+The script preserves task and alert history. Apply mode only normalizes stale completion status, technician linkage, and guard linkage/pending fields.
+
 ## MQTT Topics
 
 ### Subscribed (ESP32 → Railway → Firestore)

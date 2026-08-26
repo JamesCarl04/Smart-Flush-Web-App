@@ -4,6 +4,8 @@ const updateDeviceLastSeen = jest.fn();
 const handleCompletedFlow = jest.fn();
 const handleUltrasonic = jest.fn();
 const handlePumpEvent = jest.fn();
+const processDueNoWaterCheck = jest.fn();
+const processPendingThresholdEvents = jest.fn();
 const recordHeartbeat = jest.fn();
 
 jest.mock('mqtt', () => ({ __esModule: true, default: { connect: jest.fn() } }));
@@ -26,10 +28,12 @@ jest.mock('./automation-engine', () => ({
     handleCompletedFlow,
     handleUltrasonic,
     handlePumpEvent,
+    processDueNoWaterCheck,
+    processPendingThresholdEvents,
   }),
 }));
 
-import { handleMessage } from './mqtt-client';
+import { handleMessage, handleMessageSafely, processPendingAutomationState } from './mqtt-client';
 
 describe('MQTT automation routing', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -56,5 +60,27 @@ describe('MQTT automation routing', () => {
     expect(recordHeartbeat).toHaveBeenCalledWith('toilet-01');
     expect(handleUltrasonic).toHaveBeenCalledWith('toilet-01', ultrasonic);
     expect(handlePumpEvent).toHaveBeenCalledWith('toilet-01', { status: 'active', timestamp: 2 });
+  });
+
+  it('contains a Firestore failure at one message boundary and processes the next message', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    updateDeviceLastSeen.mockRejectedValueOnce(new Error('index unavailable')).mockResolvedValue(undefined);
+
+    await handleMessageSafely('toilet/events/pump', Buffer.from('{"status":"active"}'));
+    await handleMessageSafely('toilet/events/pump', Buffer.from('{"status":"inactive"}'));
+
+    expect(handlePumpEvent).toHaveBeenCalledTimes(1);
+    expect(handlePumpEvent).toHaveBeenCalledWith('toilet-01', { status: 'inactive' });
+    consoleError.mockRestore();
+  });
+
+  it('continues pending-state recovery when one state query fails', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    processDueNoWaterCheck.mockRejectedValueOnce(new Error('query failed'));
+
+    await processPendingAutomationState();
+
+    expect(processPendingThresholdEvents).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
   });
 });

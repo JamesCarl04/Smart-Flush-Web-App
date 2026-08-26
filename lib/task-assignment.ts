@@ -85,6 +85,7 @@ export interface AvailableTechnician {
   email: string | null;
   shift?: string | null;
   workload: number;
+  lastAutoAssignedAt: number | null;
 }
 
 /**
@@ -97,10 +98,13 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
       adminDb
         .collection('tasks')
         .where('status', 'in', [
+          'unassigned',
           'assigned',
           'acknowledged',
           'pending',
           'rechecking',
+          'flagged',
+          'reassignment_needed',
         ])
         .get()
         .catch(() => ({ docs: [] })),
@@ -109,6 +113,7 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
     const activeTaskByPerson = new Set<string>();
     for (const doc of activeTasksSnapshot.docs) {
       const data = doc.data();
+      if (data.completedAt != null) continue;
       const assignedTo =
         typeof data.assignedTo === 'string' ? data.assignedTo.trim() : null;
       if (assignedTo) {
@@ -126,8 +131,8 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
     const available: AvailableTechnician[] = [];
     for (const doc of usersSnapshot.docs) {
       const data = doc.data();
-      const isOnline = data.isOnline !== false && data.status !== 'offline';
-      const isAvailable = !activeTaskByPerson.has(doc.id) && isOnline;
+      const isOnline = data.isOnline !== false && data.status !== 'offline' && data.status !== 'inactive';
+      const isAvailable = data.isActive !== false && data.isAvailable !== false && !activeTaskByPerson.has(doc.id) && isOnline;
 
       if (isAvailable) {
         const email = typeof data.email === 'string' ? data.email.trim() : null;
@@ -143,12 +148,16 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
           email,
           shift: typeof data.shift === 'string' ? data.shift : null,
           workload: 0,
+          lastAutoAssignedAt: data.lastAutoAssignedAt && typeof data.lastAutoAssignedAt.toMillis === 'function'
+            ? data.lastAutoAssignedAt.toMillis()
+            : null,
         });
       }
     }
 
     return available.sort(
       (left, right) =>
+        (left.lastAutoAssignedAt ?? 0) - (right.lastAutoAssignedAt ?? 0) ||
         left.workload - right.workload ||
         left.displayName.localeCompare(right.displayName),
     );

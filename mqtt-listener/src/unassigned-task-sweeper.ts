@@ -5,10 +5,13 @@ import { chooseAvailableMaintenancePersonnel } from './task-service';
 import type { TaskDoc } from './task-types';
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
+  'unassigned',
   'assigned',
   'acknowledged',
   'pending',
   'rechecking',
+  'flagged',
+  'reassignment_needed',
 ] as const;
 
 const RETRY_MS = readPositiveIntEnv('AUTOMATION_UNASSIGNED_RETRY_MS', 60_000);
@@ -55,7 +58,6 @@ async function retryOneTask(taskId: string, now: Timestamp): Promise<RetryResult
       data?.status !== 'unassigned' ||
       data.assignedTo !== null ||
       data.isBroadcast !== false ||
-      typeof data.automationTrigger !== 'string' ||
       eligibleAt === null ||
       eligibleAt > now.toMillis()
     ) {
@@ -138,16 +140,20 @@ export async function sweepUnassignedAutomationTasks(): Promise<{
   let assigned = 0;
   let rescheduled = 0;
   for (const candidate of snapshot.docs) {
-    const result = await retryOneTask(candidate.id, now);
-    if (result.outcome === 'assigned' && result.task) {
-      assigned += 1;
-      try {
-        await sendTaskNotification(result.task);
-      } catch (error) {
-        console.error('[AutomationRetry] FCM failed after assignment:', error);
+    try {
+      const result = await retryOneTask(candidate.id, now);
+      if (result.outcome === 'assigned' && result.task) {
+        assigned += 1;
+        try {
+          await sendTaskNotification(result.task);
+        } catch (error) {
+          console.error('[AutomationRetry] FCM failed after assignment:', error);
+        }
+      } else if (result.outcome === 'rescheduled') {
+        rescheduled += 1;
       }
-    } else if (result.outcome === 'rescheduled') {
-      rescheduled += 1;
+    } catch (error) {
+      console.error(`[AutomationRetry] Failed to process task ${candidate.id}:`, error);
     }
   }
 

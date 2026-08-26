@@ -22,6 +22,7 @@ jest.mock('firebase-admin/firestore', () => ({
 
 import {
   createAutomatedTaskAndNotify,
+  dispatchAutomatedTaskAndNotify,
   findAvailableMaintenancePersonnel,
 } from './task-service';
 import type { TaskDoc } from './task-types';
@@ -123,15 +124,21 @@ describe('automated listener task dispatch', () => {
         { id: 'busy', data: { isOnline: true, isActive: true } },
         { id: 'offline', data: { isOnline: false, isActive: true } },
         { id: 'inactive', data: { isOnline: true, isActive: false } },
+        { id: 'unavailable', data: { isOnline: true, isActive: true, isAvailable: false } },
+        { id: 'stale-done', data: { isOnline: true, isActive: true } },
       ]),
     );
     tasksQuery.get.mockResolvedValue(
-      snapshot([{ id: 'task-busy', data: { assignedTo: 'busy', status: 'assigned' } }]),
+      snapshot([
+        { id: 'task-busy', data: { assignedTo: 'busy', status: 'assigned', completedAt: null } },
+        { id: 'task-stale', data: { assignedTo: 'stale-done', status: 'pending', completedAt: { toMillis: () => 700 } } },
+      ]),
     );
 
     await expect(findAvailableMaintenancePersonnel()).resolves.toEqual([
       expect.objectContaining({ uid: 'idle-a' }),
       expect.objectContaining({ uid: 'idle-z' }),
+      expect.objectContaining({ uid: 'stale-done' }),
       expect.objectContaining({ uid: 'recent' }),
     ]);
   });
@@ -178,10 +185,12 @@ describe('automated listener task dispatch', () => {
     const existingTask = guardedAutomationTask('assigned');
     setUpExistingGuard(transaction, existingTask);
 
-    await expect(createAutomatedTaskAndNotify(automationInput)).resolves.toBe(existingTask);
+    await expect(createAutomatedTaskAndNotify(automationInput)).resolves.toEqual(expect.objectContaining({
+      id: existingTask.id, occurrenceCount: 2,
+    }));
 
-    expect(transaction.set).not.toHaveBeenCalled();
-    expect(transaction.update).not.toHaveBeenCalled();
+    expect(transaction.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pending: false }), { merge: true });
+    expect(transaction.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ occurrenceCount: 2 }));
     expect(mockSendTaskNotification).not.toHaveBeenCalled();
   });
 
@@ -190,10 +199,12 @@ describe('automated listener task dispatch', () => {
     const existingTask = guardedAutomationTask('unassigned');
     setUpExistingGuard(transaction, existingTask);
 
-    await expect(createAutomatedTaskAndNotify(automationInput)).resolves.toBe(existingTask);
+    await expect(createAutomatedTaskAndNotify(automationInput)).resolves.toEqual(expect.objectContaining({
+      id: existingTask.id, occurrenceCount: 2,
+    }));
 
-    expect(transaction.set).not.toHaveBeenCalled();
-    expect(transaction.update).not.toHaveBeenCalled();
+    expect(transaction.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pending: false }), { merge: true });
+    expect(transaction.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ occurrenceCount: 2 }));
     expect(mockSendTaskNotification).not.toHaveBeenCalled();
   });
 
@@ -239,5 +250,27 @@ describe('automated listener task dispatch', () => {
       expect.objectContaining({ id: 'task-3', status: 'assigned' }),
     );
     expect(transaction.set).toHaveBeenCalledWith(taskRef, expect.anything());
+  });
+
+  it('durably records a threshold event when a completed task is still cooling down', async () => {
+    const guardRef = { id: 'guard' };
+    const taskRef = { id: 'existing-task' };
+    const transaction = { get: jest.fn(), set: jest.fn(), update: jest.fn() };
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') return { doc: jest.fn(() => taskRef) };
+      if (name === 'automationTaskGuards') return { doc: jest.fn(() => guardRef) };
+      return { doc: jest.fn() };
+    });
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get
+      .mockResolvedValueOnce({ exists: true, data: () => ({ taskId: 'existing-task', nextEligibleAt: { toMillis: () => 600_000 } }) })
+      .mockResolvedValueOnce({ data: () => ({ ...guardedAutomationTask('assigned'), completedAt: { toMillis: () => 100_000 }, status: 'pending' }) });
+
+    await expect(dispatchAutomatedTaskAndNotify(automationInput)).resolves.toEqual({ outcome: 'pending' });
+    expect(transaction.set).toHaveBeenCalledWith(guardRef, expect.objectContaining({
+      pending: true,
+      nextEligibleAt: expect.objectContaining({ toMillis: expect.any(Function) }),
+    }), { merge: true });
+    expect(mockSendTaskNotification).not.toHaveBeenCalled();
   });
 });

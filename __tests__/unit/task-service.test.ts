@@ -1,7 +1,9 @@
 const mockTaskSet = jest.fn();
+const mockTransactionSet = jest.fn();
 
 jest.mock('@/lib/firebase-admin', () => ({
   adminDb: {
+    runTransaction: jest.fn(async (callback) => callback({ set: mockTransactionSet })),
     collection: jest.fn((name: string) => ({
       doc: jest.fn(() =>
         name === 'tasks'
@@ -21,7 +23,7 @@ jest.mock('@/lib/fcm', () => ({ sendTaskNotification: jest.fn() }));
 import { createTaskDocument, serializeTaskSnapshot } from '@/lib/task-service';
 
 describe('createTaskDocument', () => {
-  beforeEach(() => mockTaskSet.mockReset());
+  beforeEach(() => { mockTaskSet.mockReset(); mockTransactionSet.mockReset(); });
 
   it('persists an unassigned automation task as a team broadcast for mobile sync', async () => {
     await createTaskDocument({
@@ -33,7 +35,8 @@ describe('createTaskDocument', () => {
       createdBy: 'system:automation_rule',
     });
 
-    expect(mockTaskSet).toHaveBeenCalledWith(
+    expect(mockTransactionSet).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({
         id: 'task-1',
         status: 'unassigned',

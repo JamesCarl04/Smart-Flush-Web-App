@@ -6,19 +6,16 @@ import type {
   CreateTaskInput,
   TaskDoc,
 } from './task-types';
+import { normalizeRepeatIntervalMinutes, planThresholdDispatch } from './automation-policy';
 
 const ACTIVE_ASSIGNMENT_STATUSES = [
+  'unassigned',
   'assigned',
   'acknowledged',
   'pending',
   'rechecking',
-] as const;
-
-const ACTIVE_AUTOMATION_TASK_STATUSES = [
-  ...ACTIVE_ASSIGNMENT_STATUSES,
-  'unassigned',
-  'reassignment_needed',
   'flagged',
+  'reassignment_needed',
 ] as const;
 
 const AUTOMATION_RETRY_MS = readPositiveIntEnv(
@@ -55,12 +52,6 @@ function isActiveAssignmentStatus(value: unknown): boolean {
   );
 }
 
-function isActiveAutomationTaskStatus(value: unknown): boolean {
-  return (ACTIVE_AUTOMATION_TASK_STATUSES as readonly string[]).includes(
-    typeof value === 'string' ? value : '',
-  );
-}
-
 function activeAssigneeIds(
   docs: Array<{ data: () => Record<string, unknown> }>,
 ): Set<string> {
@@ -68,7 +59,7 @@ function activeAssigneeIds(
 
   for (const doc of docs) {
     const data = doc.data();
-    if (!isActiveAssignmentStatus(data.status)) {
+    if (!isActiveAssignmentStatus(data.status) || timestampToMillis(data.completedAt) !== null) {
       continue;
     }
 
@@ -99,6 +90,7 @@ export function chooseAvailableMaintenancePersonnel(
       return (
         data.isOnline !== false &&
         data.isActive !== false &&
+        data.isAvailable !== false &&
         data.status !== 'offline' &&
         data.status !== 'inactive' &&
         !busyUids.has(user.id)
@@ -154,6 +146,7 @@ export async function createTaskDocument(
     acknowledgedAt: null,
     completedAt: null,
     createdBy: input.createdBy,
+    taskOrigin: input.taskOrigin ?? 'manual',
   };
 
   await docRef.set(task);
@@ -180,7 +173,20 @@ export async function createTaskAndNotify(
 export async function createAutomatedTaskAndNotify(
   input: CreateAutomatedTaskInput,
 ): Promise<TaskDoc> {
-  const result = await adminDb.runTransaction(async (transaction) => {
+  const result = await dispatchAutomatedTaskAndNotify(input);
+  if (!result.task) throw new Error('Automation event persisted for later dispatch');
+  return result.task;
+}
+
+export interface AutomatedDispatchResult {
+  outcome: 'created' | 'merged' | 'pending';
+  task?: TaskDoc;
+}
+
+export async function dispatchAutomatedTaskAndNotify(
+  input: CreateAutomatedTaskInput,
+): Promise<AutomatedDispatchResult> {
+  const result = await adminDb.runTransaction(async (transaction): Promise<AutomatedDispatchResult> => {
     const now = Timestamp.now();
     const tasks = adminDb.collection('tasks');
     const users = adminDb.collection('users');
@@ -189,15 +195,57 @@ export async function createAutomatedTaskAndNotify(
       .doc(`${input.deviceId}--${input.automationTrigger}`);
     const guardSnapshot = await transaction.get(guardRef);
 
+    let guardedTask: TaskDoc | undefined;
     if (guardSnapshot.exists) {
       const taskId = guardSnapshot.data()?.taskId;
       if (typeof taskId === 'string' && taskId) {
         const existingTaskSnapshot = await transaction.get(tasks.doc(taskId));
-        const existingTask = existingTaskSnapshot.data() as TaskDoc | undefined;
-        if (existingTask && isActiveAutomationTaskStatus(existingTask.status)) {
-          return { task: existingTask, created: false };
-        }
+        guardedTask = existingTaskSnapshot.data() as TaskDoc | undefined;
       }
+    }
+
+    const guardData = typeof guardSnapshot.data === 'function' ? guardSnapshot.data() ?? {} : {};
+    const plan = planThresholdDispatch({
+      nowMs: now.toMillis(),
+      nextEligibleAtMs: timestampToMillis(guardData.nextEligibleAt),
+      guardedTask: guardedTask ? {
+        id: guardedTask.id,
+        status: guardedTask.status,
+        completedAtMs: timestampToMillis(guardedTask.completedAt),
+      } : null,
+    });
+    const resetCounter = input.automationTrigger === 'maintenance_due'
+      ? { routineCycleCount: 0 }
+      : input.automationTrigger === 'no_water_after_flush'
+        ? { noWaterConsecutiveCycles: 0, pendingWaterCheck: false, noWaterDueAt: null }
+        : {};
+    const stateRef = Object.keys(resetCounter).length > 0 ? automationStateRef(input) : null;
+    if (stateRef) await transaction.get(stateRef);
+
+    if (plan.kind === 'merge' && guardedTask) {
+      const taskRef = tasks.doc(guardedTask.id);
+      const occurrenceCount = Number.isFinite((guardedTask as TaskDoc & { occurrenceCount?: number }).occurrenceCount)
+        ? Number((guardedTask as TaskDoc & { occurrenceCount?: number }).occurrenceCount) + 1
+        : 2;
+      transaction.update(taskRef, { occurrenceCount, latestOccurrenceAt: now, updatedAt: now });
+      transaction.set(guardRef, { pending: false, pendingAt: null, pendingCycleCount: null, updatedAt: now }, { merge: true });
+      if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
+      return { outcome: 'merged', task: { ...guardedTask, occurrenceCount, latestOccurrenceAt: now } as TaskDoc };
+    }
+
+    if (plan.kind === 'pending') {
+      transaction.set(guardRef, {
+        deviceId: input.deviceId,
+        automationTrigger: input.automationTrigger,
+        automationRuleId: input.automationRuleId,
+        pending: true,
+        pendingAt: now,
+        pendingCycleCount: input.cycleCountAtTrigger ?? null,
+        nextEligibleAt: Timestamp.fromMillis(plan.eligibleAtMs),
+        updatedAt: now,
+      }, { merge: true });
+      if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
+      return { outcome: 'pending' };
     }
 
     const [usersSnapshot, activeTasksSnapshot] = await Promise.all([
@@ -227,7 +275,10 @@ export async function createAutomatedTaskAndNotify(
       assignedAt: assigned ? now : null,
       acknowledgedAt: null,
       completedAt: null,
+      occurrenceCount: 1,
+      latestOccurrenceAt: now,
       createdBy: 'system:mqtt',
+      taskOrigin: 'automation',
       automationRuleId: input.automationRuleId,
       automationTrigger: input.automationTrigger,
       requiresSupervisorAssignment: !assigned,
@@ -245,8 +296,17 @@ export async function createAutomatedTaskAndNotify(
       taskId: task.id,
       deviceId: input.deviceId,
       automationTrigger: input.automationTrigger,
+      automationRuleId: input.automationRuleId,
+      pending: false,
+      pendingAt: null,
+      pendingCycleCount: null,
+      lastDispatchAt: now,
+      nextEligibleAt: Timestamp.fromMillis(
+        now.toMillis() + normalizeRepeatIntervalMinutes(input.repeatIntervalMinutes) * 60_000,
+      ),
       updatedAt: now,
     });
+    if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
     if (technician) {
       transaction.update(users.doc(technician.uid), {
         lastAutoAssignedAt: now,
@@ -256,10 +316,10 @@ export async function createAutomatedTaskAndNotify(
       });
     }
 
-    return { task, created: true };
+    return { task, outcome: 'created' };
   });
 
-  if (result.created) {
+  if (result.outcome === 'created' && result.task) {
     try {
       await sendTaskNotification(result.task);
     } catch (error) {
@@ -267,5 +327,11 @@ export async function createAutomatedTaskAndNotify(
     }
   }
 
-  return result.task;
+  return result;
+}
+
+function automationStateRef(input: CreateAutomatedTaskInput) {
+  return adminDb.collection('devices').doc(input.deviceId).collection('automationState').doc(
+    input.automationTrigger === 'no_water_after_flush' ? 'waterNoFlow' : 'runtime',
+  );
 }

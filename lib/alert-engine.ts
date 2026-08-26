@@ -3,9 +3,7 @@
 // Called from mqtt-client.ts after every inbound message.
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { createTaskAndNotify } from '@/lib/task-service';
-import { findAvailableMaintenancePersonnel } from '@/lib/task-assignment';
-import type { TaskTriggerType } from '@/lib/task-types';
+import { getRepeatIntervalMinutes } from '@/lib/automation-rule-config';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +15,7 @@ interface AutomationRule {
   threshold: number;
   action: string;
   enabled: boolean;
+  repeatIntervalMinutes?: number;
 }
 
 interface WaterflowPayload {
@@ -35,8 +34,6 @@ type MqttPayload = WaterflowPayload | UVPayload | Record<string, unknown>;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Checks if a rule's action specifies dispatching a task to maintenance personnel */
@@ -52,30 +49,9 @@ export function isSendTaskAction(action?: string): boolean {
   );
 }
 
-/** Maps rule trigger/alert types to supported TaskTriggerType */
-function mapToTaskTriggerType(triggerOrType: string): TaskTriggerType {
-  const norm = triggerOrType.toLowerCase();
-  if (norm.includes('sensor')) {
-    return 'sensor_fault';
-  }
-  if (norm.includes('uv_cycle') || norm.includes('uv_complete')) {
-    return 'uv_complete';
-  }
-  if (norm.includes('hardware') || norm.includes('pump')) {
-    return 'hardware_failure';
-  }
-  if (norm.includes('flush_count')) {
-    return 'flush_count';
-  }
-  if (norm.includes('water_overuse')) {
-    return 'water_overuse';
-  }
-  return 'maintenance';
-}
-
 /** Returns true if an alert of this type was already created within the debounce window */
-async function isDebounced(alertType: string, deviceId: string): Promise<boolean> {
-  const cutoff = Timestamp.fromMillis(Date.now() - DEBOUNCE_MS);
+async function isDebounced(alertType: string, deviceId: string, repeatIntervalMinutes: unknown): Promise<boolean> {
+  const cutoff = Timestamp.fromMillis(Date.now() - getRepeatIntervalMinutes(repeatIntervalMinutes) * 60_000);
   const snap = await adminDb
     .collection('alerts')
     .where('deviceId', '==', deviceId)
@@ -86,44 +62,12 @@ async function isDebounced(alertType: string, deviceId: string): Promise<boolean
   return !snap.empty;
 }
 
-/** Checks if an active uncompleted task already exists for this device to prevent duplicate task spam */
-async function hasActiveTaskForDevice(
-  deviceId: string,
-  triggerType?: TaskTriggerType,
-): Promise<boolean> {
-  try {
-    let query = adminDb
-      .collection('tasks')
-      .where('deviceId', '==', deviceId)
-      .where('status', 'in', [
-        'pending',
-        'unassigned',
-        'assigned',
-        'acknowledged',
-        'reassignment_needed',
-        'rechecking',
-      ]);
-
-    if (triggerType) {
-      query = query.where('triggerType', '==', triggerType);
-    }
-
-    const snap = await query.limit(1).get();
-    return !snap.empty;
-  } catch (err) {
-    console.warn('[AlertEngine] hasActiveTaskForDevice check warning:', err);
-    return false;
-  }
-}
-
-/** Creates an alert document in Firestore and optionally dispatches an automated task to available maintenance */
-async function createAlertAndMaybeTask(params: {
+/** Creates an audit alert. Transactional automation task dispatch belongs to the listener. */
+async function createAuditAlert(params: {
   type: string;
   message: string;
   severity: 'low' | 'medium' | 'high';
   deviceId: string;
-  isHardwareFailure?: boolean;
-  shouldDispatchTask?: boolean;
 }): Promise<void> {
   const docRef = adminDb.collection('alerts').doc();
   await docRef.set({
@@ -139,57 +83,6 @@ async function createAlertAndMaybeTask(params: {
     `[AlertEngine] Created alert: ${params.type} — ${params.message}`,
   );
 
-  // Automatically dispatch a debounced task when specified or on critical hardware failure
-  const shouldCreate =
-    params.shouldDispatchTask ||
-    (params.isHardwareFailure && params.severity === 'high');
-
-  if (shouldCreate) {
-    const taskTrigger = mapToTaskTriggerType(params.type);
-    const hasActiveTask = await hasActiveTaskForDevice(params.deviceId, taskTrigger);
-
-    if (!hasActiveTask) {
-      try {
-        // Query active, on-duty technicians who have no active task
-        const availableTechnicians = await findAvailableMaintenancePersonnel();
-
-        let assignedTo: string | null = null;
-        let assignedToIds: string[] = [];
-
-        if (availableTechnicians.length > 0) {
-          const primaryTech = availableTechnicians[0];
-          assignedTo = primaryTech.id;
-          assignedToIds = [primaryTech.id];
-          console.log(
-            `[AlertEngine] Auto-assigning task to available technician: ${primaryTech.displayName} (${primaryTech.id})`,
-          );
-        } else {
-          console.log(
-            `[AlertEngine] All technicians currently occupied. Created unassigned broadcast task for pool.`,
-          );
-        }
-
-        await createTaskAndNotify({
-          deviceId: params.deviceId,
-          triggerType: taskTrigger,
-          message: params.message,
-          assignedTo,
-          assignedToIds,
-          createdBy: 'system:automation_rule',
-        });
-
-        console.log(
-          `[AlertEngine] Successfully dispatched automated task for ${params.deviceId} (trigger: ${taskTrigger})`,
-        );
-      } catch (err) {
-        console.error('[AlertEngine] Failed to create automated task:', err);
-      }
-    } else {
-      console.log(
-        `[AlertEngine] Suppressed duplicate task: Active task already pending for ${params.deviceId} (${taskTrigger})`,
-      );
-    }
-  }
 }
 
 /** Count today's flushEvents for a given deviceId */
@@ -234,15 +127,13 @@ export async function evaluateAlerts(
             ? `Hardware Alert on ${deviceId}: ${raw.reason}`
             : `Water pump / sensor failure detected on ${deviceId}. No water flow during flush cycle.`;
 
-        const debounced = await isDebounced(alertType, deviceId);
+        const debounced = await isDebounced(alertType, deviceId, undefined);
         if (!debounced) {
-          await createAlertAndMaybeTask({
+          await createAuditAlert({
             type: alertType,
             message,
             severity: 'high',
             deviceId,
-            isHardwareFailure: true,
-            shouldDispatchTask: true,
           });
         }
         return;
@@ -277,8 +168,6 @@ async function evaluateRule(
   let alertType = rule.trigger;
   let message = rule.action;
   let severity: 'low' | 'medium' | 'high' = 'medium';
-  let isHardwareFailure = false;
-  const shouldDispatchTask = isSendTaskAction(rule.action);
 
   switch (rule.trigger) {
     case 'uv_cycle_failed': {
@@ -288,7 +177,6 @@ async function evaluateRule(
           triggered = true;
           message = `UV sterilisation cycle failed to complete on ${deviceId}. Inspect UV-C emitter.`;
           severity = 'high';
-          isHardwareFailure = true;
         }
       }
       break;
@@ -343,15 +231,13 @@ async function evaluateRule(
   }
 
   if (triggered) {
-    const debounced = await isDebounced(alertType, deviceId);
+    const debounced = await isDebounced(alertType, deviceId, rule.repeatIntervalMinutes);
     if (!debounced) {
-      await createAlertAndMaybeTask({
+      await createAuditAlert({
         type: alertType,
         message,
         severity,
         deviceId,
-        isHardwareFailure,
-        shouldDispatchTask,
       });
     } else {
       console.log(`[AlertEngine] Debounced alert: ${alertType} for ${deviceId}`);

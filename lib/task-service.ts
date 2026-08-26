@@ -135,6 +135,13 @@ export function serializeTaskData(
       Number.isFinite(data.cycleCountAtTrigger)
         ? data.cycleCountAtTrigger
         : undefined,
+    occurrenceCount: typeof data.occurrenceCount === 'number' && Number.isFinite(data.occurrenceCount)
+      ? data.occurrenceCount : undefined,
+    latestOccurrenceAt: timestampToMillis(data.latestOccurrenceAt),
+    taskOrigin:
+      data.taskOrigin === 'automation' || data.taskOrigin === 'manual' || data.taskOrigin === 'public_report'
+        ? data.taskOrigin
+        : undefined,
     createdAt: timestampToMillis(data.createdAt),
     assignedAt: timestampToMillis(data.assignedAt),
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),
@@ -213,10 +220,11 @@ export async function createTaskDocument(
     console.warn('[task-service] Could not fetch device doc for metadata:', err);
   }
 
-  const isAssigned = Boolean(
-    (input.assignedTo && input.assignedTo.trim()) ||
-    input.assignedToIds.length > 0,
-  );
+  const assignedToIds = Array.from(new Set([
+    ...input.assignedToIds,
+    ...(input.assignedTo?.trim() ? [input.assignedTo.trim()] : []),
+  ]));
+  const isAssigned = assignedToIds.length > 0;
 
   const task: TaskDoc = {
     id: docRef.id,
@@ -228,8 +236,8 @@ export async function createTaskDocument(
     triggerType: input.triggerType,
     message: input.message,
     status: isAssigned ? 'assigned' : 'unassigned',
-    assignedTo: input.assignedTo,
-    assignedToIds: input.assignedToIds,
+    assignedTo: assignedToIds.length === 1 ? assignedToIds[0] : null,
+    assignedToIds,
     isBroadcast: !isAssigned,
     assignmentType: isAssigned ? 'individual' : 'broadcast',
     createdAt: now,
@@ -239,9 +247,19 @@ export async function createTaskDocument(
     acknowledgedBy: {},
     completedBy: {},
     createdBy: input.createdBy,
+    taskOrigin: input.taskOrigin ?? 'manual',
   };
 
-  await docRef.set(task);
+  await adminDb.runTransaction(async (transaction) => {
+    transaction.set(docRef, task);
+    for (const uid of assignedToIds) {
+      transaction.set(adminDb.collection('users').doc(uid), {
+        currentTaskId: task.id,
+        isAvailable: false,
+        updatedAt: now,
+      }, { merge: true });
+    }
+  });
   return task;
 }
 
@@ -249,6 +267,10 @@ export async function createTaskAndNotify(
   input: CreateTaskInput,
 ): Promise<TaskDoc> {
   const task = await createTaskDocument(input);
-  await sendTaskNotification(task, task.assignedTo, task.assignedToIds);
+  try {
+    await sendTaskNotification(task, task.assignedTo, task.assignedToIds);
+  } catch (error) {
+    console.error('[task-service] FCM failed after task transaction committed:', error);
+  }
   return task;
 }

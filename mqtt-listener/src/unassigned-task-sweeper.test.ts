@@ -142,4 +142,29 @@ describe('unassigned automation task sweeper', () => {
     expect(transaction.update).not.toHaveBeenCalled();
     expect(mockSendTaskNotification).not.toHaveBeenCalled();
   });
+
+  it('retries a generic non-broadcast task without an automation trigger', async () => {
+    const taskData = {
+      deviceId: 'toilet-01', triggerType: 'manual', taskOrigin: 'public_report', message: 'Reported issue.',
+      status: 'unassigned', assignedTo: null, assignedToIds: [], isBroadcast: false,
+      autoAssignmentEligibleAt: { toMillis: () => 60_000 },
+      createdAt: {}, updatedAt: {}, assignedAt: null, acknowledgedAt: null, completedAt: null,
+      createdBy: 'public-report', requiresSupervisorAssignment: true,
+    };
+    const dueQuery = setUpDueQuery(taskData);
+    const taskRef = { id: 'task-1' };
+    const techRef = { id: 'tech-idle' };
+    const transaction = { get: jest.fn(), update: jest.fn() };
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') return { ...dueQuery, doc: jest.fn(() => taskRef) };
+      return { doc: jest.fn(() => techRef), where: jest.fn(() => ({ id: 'users-query' })) };
+    });
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get
+      .mockResolvedValueOnce({ exists: true, id: 'task-1', data: () => taskData })
+      .mockResolvedValueOnce(snapshot([{ id: 'tech-idle', data: { isOnline: true, isActive: true, isAvailable: true } }]))
+      .mockResolvedValueOnce(snapshot([]));
+
+    await expect(sweepUnassignedAutomationTasks()).resolves.toEqual({ scanned: 1, assigned: 1, rescheduled: 0 });
+  });
 });

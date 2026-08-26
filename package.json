@@ -16,7 +16,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:security": "npm audit --audit-level=moderate && echo 'Security checks passed'",
     "railway:listener:build": "npm --prefix mqtt-listener install && npm --prefix mqtt-listener run build",
-    "railway:listener:start": "npm --prefix mqtt-listener run start:prod"
+    "railway:listener:start": "npm --prefix mqtt-listener run start:prod",
+    "automation:reconcile": "npm --prefix mqtt-listener run reconcile",
+    "automation:reconcile:apply": "npm --prefix mqtt-listener run reconcile:apply"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

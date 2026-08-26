@@ -57,7 +57,7 @@ jest.mock('@/lib/task-assignment', () => ({
 
 import { evaluateAlerts, isSendTaskAction } from '@/lib/alert-engine';
 
-describe('alert-engine automation dispatch', () => {
+describe('legacy web alert auditing', () => {
   beforeEach(() => {
     rules = [];
     flushCount = 0;
@@ -75,14 +75,25 @@ describe('alert-engine automation dispatch', () => {
     expect(isSendTaskAction('Send Warning Email')).toBe(false);
   });
 
+  it('keeps the legacy web evaluator alert-only so listener transactions remain task authority', async () => {
+    rules = [{
+      id: 'water-rule', group: 'system_alert', trigger: 'water_overuse', threshold: 2,
+      action: 'Send Task to Available Maintenance', enabled: true, repeatIntervalMinutes: 1,
+    }];
+
+    await evaluateAlerts('toilet/sensors/waterflow', { volume: 8 }, 'toilet-01');
+
+    expect(mockCreateTaskAndNotify).not.toHaveBeenCalled();
+  });
+
   it.each([
-    ['flush_count_exceeded', 'toilet/sensors/waterflow', { volume: 1 }, 'flush_count'],
-    ['water_overuse', 'toilet/sensors/waterflow', { volume: 8 }, 'water_overuse'],
-    ['uv_cycle_failed', 'toilet/events/uv', { completed: false }, 'uv_complete'],
-    ['maintenance_due', 'toilet/events/pump', { status: 'ok' }, 'maintenance'],
+    ['flush_count_exceeded', 'toilet/sensors/waterflow', { volume: 1 }],
+    ['water_overuse', 'toilet/sensors/waterflow', { volume: 8 }],
+    ['uv_cycle_failed', 'toilet/events/uv', { completed: false }],
+    ['maintenance_due', 'toilet/events/pump', { status: 'ok' }],
   ] as const)(
-    'dispatches a %s rule as a %s mobile task',
-    async (trigger, topic, payload, expectedTriggerType) => {
+    'records a %s audit alert without bypassing listener task guards',
+    async (trigger, topic, payload) => {
       rules = [
         {
           id: `${trigger}-rule`,
@@ -97,19 +108,11 @@ describe('alert-engine automation dispatch', () => {
 
       await evaluateAlerts(topic, payload, 'toilet-01');
 
-      expect(mockCreateTaskAndNotify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          deviceId: 'toilet-01',
-          triggerType: expectedTriggerType,
-          assignedTo: 'tech-idle',
-          assignedToIds: ['tech-idle'],
-          createdBy: 'system:automation_rule',
-        }),
-      );
+      expect(mockCreateTaskAndNotify).not.toHaveBeenCalled();
     },
   );
 
-  it('leaves a task unassigned when every maintenance technician is busy', async () => {
+  it('keeps the legacy action alias alert-only when every technician is busy', async () => {
     rules = [
       {
         id: 'water-rule',
@@ -124,12 +127,10 @@ describe('alert-engine automation dispatch', () => {
 
     await evaluateAlerts('toilet/sensors/waterflow', { volume: 8 }, 'toilet-01');
 
-    expect(mockCreateTaskAndNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ assignedTo: null, assignedToIds: [] }),
-    );
+    expect(mockCreateTaskAndNotify).not.toHaveBeenCalled();
   });
 
-  it('does not dispatch a duplicate task while the same device and trigger already have active work', async () => {
+  it('does not dispatch from the web evaluator when related active work exists', async () => {
     rules = [
       {
         id: 'water-rule',

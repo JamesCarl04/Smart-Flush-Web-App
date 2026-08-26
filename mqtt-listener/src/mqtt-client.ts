@@ -114,9 +114,26 @@ export async function handleMessage(topic: string, raw: Buffer): Promise<void> {
   }
 }
 
-/** Re-evaluates Firestore-persisted no-water state after process restarts. */
+export async function handleMessageSafely(topic: string, raw: Buffer): Promise<void> {
+  try {
+    await handleMessage(topic, raw);
+  } catch (error) {
+    console.error(`[${ts()}] [MQTT] Message processing failed on ${topic}:`, error);
+  }
+}
+
+/** Re-evaluates all Firestore-persisted automation state after restarts. */
 export async function processPendingAutomationState(): Promise<void> {
-  await automationEngine.processDueNoWaterCheck(DEVICE_ID);
+  try {
+    await automationEngine.processDueNoWaterCheck(DEVICE_ID);
+  } catch (error) {
+    console.error('[Automation] No-water recovery failed:', error);
+  }
+  try {
+    await automationEngine.processPendingThresholdEvents();
+  } catch (error) {
+    console.error('[Automation] Pending-threshold recovery failed:', error);
+  }
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -169,10 +186,7 @@ export function getMqttClient(): MqttClient {
 
   client.on('message', (topic, message) => {
     messageQueue = messageQueue
-      .then(() => handleMessage(topic, message))
-      .catch((error) => {
-        console.error(`[${ts()}] [MQTT] Message processing failed:`, error);
-      });
+      .then(() => handleMessageSafely(topic, message));
   });
 
   client.on('error', (error) => {

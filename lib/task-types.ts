@@ -32,6 +32,7 @@ export const AUTOMATION_TRIGGERS = [
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 export type AssignmentSource = 'initial_auto' | 'supervisor' | 'retry_auto';
+export type TaskOrigin = 'automation' | 'manual' | 'public_report';
 
 export interface TaskDoc {
   id: string;
@@ -55,6 +56,9 @@ export interface TaskDoc {
   requiresSupervisorAssignment?: boolean;
   autoAssignmentEligibleAt?: Timestamp | null;
   cycleCountAtTrigger?: number;
+  occurrenceCount?: number;
+  latestOccurrenceAt?: Timestamp | null;
+  taskOrigin?: TaskOrigin;
   createdAt: Timestamp;
   assignedAt?: Timestamp | null;
   acknowledgedAt: Timestamp | null;
@@ -98,6 +102,9 @@ export interface TaskApiData {
   requiresSupervisorAssignment?: boolean;
   autoAssignmentEligibleAt?: number | null;
   cycleCountAtTrigger?: number;
+  occurrenceCount?: number;
+  latestOccurrenceAt?: number | null;
+  taskOrigin?: TaskOrigin;
   createdAt: number | null;
   assignedAt?: number | null;
   acknowledgedAt: number | null;
@@ -137,6 +144,7 @@ export interface CreateTaskInput {
   assignedTo: string | null;
   assignedToIds: string[];
   createdBy: string;
+  taskOrigin?: TaskOrigin;
 }
 
 export function isTaskStatus(value: unknown): value is TaskStatus {

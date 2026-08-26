@@ -33,6 +33,7 @@ export const AUTOMATION_TRIGGERS = [
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 
 export type AssignmentSource = 'initial_auto' | 'supervisor' | 'retry_auto';
+export type TaskOrigin = 'automation' | 'manual' | 'public_report';
 
 export interface TaskDoc {
   id: string;
@@ -56,6 +57,9 @@ export interface TaskDoc {
   assignmentSource?: AssignmentSource;
   autoAssignmentEligibleAt?: Timestamp | null;
   cycleCountAtTrigger?: number;
+  occurrenceCount?: number;
+  latestOccurrenceAt?: Timestamp;
+  taskOrigin?: TaskOrigin;
 }
 
 export interface CreateTaskInput {
@@ -65,6 +69,7 @@ export interface CreateTaskInput {
   assignedTo?: string | null;
   assignedToIds?: string[];
   createdBy: string;
+  taskOrigin?: TaskOrigin;
 }
 
 export interface CreateAutomatedTaskInput {
@@ -75,4 +80,5 @@ export interface CreateAutomatedTaskInput {
   message: string;
   cycleCountAtTrigger?: number;
   assignmentSource?: Extract<AssignmentSource, 'initial_auto' | 'retry_auto'>;
+  repeatIntervalMinutes?: number;
 }

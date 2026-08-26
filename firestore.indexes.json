@@ -25,6 +25,14 @@
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "automationTaskGuards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pending", "order": "ASCENDING" },
+        { "fieldPath": "nextEligibleAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
+import { Timestamp } from 'firebase-admin/firestore';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import { syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
 
 interface ReassignBody {
   taskId?: unknown;
@@ -43,40 +44,28 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const taskRef = adminDb.collection('tasks').doc(taskId);
-    const snapshot = await taskRef.get();
-    if (!snapshot.exists) {
-      return NextResponse.json(
-        { success: false, error: 'Task not found' },
-        { status: 404 },
+    const outcome = await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(taskRef);
+      if (!snapshot.exists) return { kind: 'not_found' as const };
+      const taskData = snapshot.data() ?? {};
+      if (taskData.completedAt != null || taskData.status === 'completed') return { kind: 'completed' as const };
+      if (taskData.status === 'acknowledged' || taskData.status === 'rechecking') return { kind: 'in_progress' as const };
+      const previousAssigneeUids = new Set<string>([
+        ...(typeof taskData.assignedTo === 'string' && taskData.assignedTo.trim()
+          ? [taskData.assignedTo.trim()]
+          : []),
+        ...(Array.isArray(taskData.assignedToIds)
+          ? taskData.assignedToIds.filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+          : []),
+      ]);
+      const now = Timestamp.now();
+      await syncTechniciansAfterTaskRelease(
+        transaction,
+        Array.from(previousAssigneeUids).filter((uid) => uid !== newAssigneeUid),
+        taskId,
+        now,
       );
-    }
-
-    const taskData = snapshot.data();
-    if (taskData?.status === 'completed') {
-      return NextResponse.json(
-        { success: false, error: 'Cannot reassign a task that has already been completed.' },
-        { status: 400 },
-      );
-    }
-
-    if (taskData?.status === 'acknowledged' || taskData?.status === 'rechecking') {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Cannot reassign task: Work is currently in progress on-site by the technician.',
-        },
-        { status: 400 },
-      );
-    }
-
-    const previousAssigneeUid =
-      typeof taskData?.assignedTo === 'string' && taskData.assignedTo.trim().length > 0
-        ? taskData.assignedTo.trim()
-        : null;
-
-    const updates: Promise<unknown>[] = [
-      taskRef.update({
+      transaction.update(taskRef, {
         assignedTo: newAssigneeUid,
         assignedToIds: [newAssigneeUid],
         status: 'assigned',
@@ -89,40 +78,43 @@ export async function POST(request: Request): Promise<NextResponse> {
         supervisorUid,
         acknowledgedAt: null,
         acknowledgedBy: {},
-        reassignCount: FieldValue.increment(1),
-        assignedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }),
-      adminDb
-        .collection('users')
-        .doc(newAssigneeUid)
-        .set(
-          {
-            currentTaskId: taskId,
-            isAvailable: false,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        ),
-    ];
-
-    if (previousAssigneeUid && previousAssigneeUid !== newAssigneeUid) {
-      updates.push(
-        adminDb
-          .collection('users')
-          .doc(previousAssigneeUid)
-          .set(
-            {
-              currentTaskId: null,
-              isAvailable: true,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-          ),
+        reassignCount: Number(taskData.reassignCount ?? 0) + 1,
+        assignedAt: now,
+        updatedAt: now,
+      });
+      transaction.set(adminDb.collection('users').doc(newAssigneeUid), {
+        currentTaskId: taskId,
+        isAvailable: false,
+        updatedAt: now,
+      }, { merge: true });
+      return { kind: 'updated' as const, taskData };
+    });
+    if (outcome.kind === 'not_found') {
+      return NextResponse.json(
+        { success: false, error: 'Task not found' },
+        { status: 404 },
       );
     }
 
-    await Promise.all(updates);
+    if (outcome.kind === 'completed') {
+      return NextResponse.json(
+        { success: false, error: 'Cannot reassign a task that has already been completed.' },
+        { status: 400 },
+      );
+    }
+
+    if (outcome.kind === 'in_progress') {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Cannot reassign task: Work is currently in progress on-site by the technician.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const taskData = outcome.taskData;
 
     // Dispatch FCM notification to the newly assigned technician
     try {

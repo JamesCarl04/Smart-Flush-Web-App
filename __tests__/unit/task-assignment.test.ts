@@ -23,12 +23,17 @@ describe('findAvailableMaintenancePersonnel', () => {
           { id: 'available', data: () => ({ displayName: 'Ava', isOnline: true }) },
           { id: 'busy', data: () => ({ name: 'Ben', isOnline: true }) },
           { id: 'offline', data: () => ({ name: 'Ollie', status: 'offline' }) },
+          { id: 'stale-done', data: () => ({ name: 'Stale', isOnline: true }) },
         ],
       })
-      .mockResolvedValueOnce({ docs: [{ data: () => ({ assignedTo: 'busy' }) }] });
+      .mockResolvedValueOnce({ docs: [
+        { data: () => ({ assignedTo: 'busy', completedAt: null }) },
+        { data: () => ({ assignedTo: 'stale-done', status: 'pending', completedAt: { toMillis: () => 1 } }) },
+      ] });
 
     await expect(findAvailableMaintenancePersonnel()).resolves.toEqual([
       expect.objectContaining({ id: 'available', displayName: 'Ava' }),
+      expect.objectContaining({ id: 'stale-done', displayName: 'Stale' }),
     ]);
   });
 });

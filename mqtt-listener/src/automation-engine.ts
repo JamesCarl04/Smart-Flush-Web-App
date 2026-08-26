@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from './firebase-admin';
-import { createAutomatedTaskAndNotify } from './task-service';
+import { dispatchAutomatedTaskAndNotify } from './task-service';
+import { normalizeRepeatIntervalMinutes } from './automation-policy';
 import type { AutomationTrigger, TaskTriggerType } from './task-types';
 
 export type AutomationRuleTrigger =
@@ -17,6 +18,7 @@ export interface AutomationRule {
   action: string;
   enabled: boolean;
   waterWaitSeconds?: number;
+  repeatIntervalMinutes?: number;
 }
 
 export interface NoWaterState {
@@ -25,24 +27,28 @@ export interface NoWaterState {
   dryCycles: number;
 }
 
+export interface PumpTransitionResult {
+  transitionedToActive: boolean;
+  completedCycle: boolean;
+  routineCycleCount: number;
+}
+
 export interface AutomationStore {
   getEnabledRules(): Promise<AutomationRule[]>;
   getRule(id: string): Promise<AutomationRule | null>;
-  hasActiveTask(deviceId: string, trigger: AutomationRuleTrigger): Promise<boolean>;
-  isDebounced(deviceId: string, trigger: AutomationRuleTrigger): Promise<boolean>;
-  createTask(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<void>;
+  dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<'created' | 'merged' | 'pending'>;
   createAlert(deviceId: string, trigger: AutomationRuleTrigger): Promise<void>;
   getNoWaterState(deviceId: string): Promise<NoWaterState>;
   setNoWaterPending(deviceId: string, dueAtMs: number): Promise<void>;
   clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void>;
   consumePendingDryCycle(deviceId: string, nowMs: number): Promise<number | null>;
   resetDryCycles(deviceId: string): Promise<void>;
+  recordPumpTransition(deviceId: string, status: 'active' | 'inactive'): Promise<PumpTransitionResult>;
+  getPendingThresholdEvents(nowMs: number): Promise<Array<{ ruleId: string; deviceId: string; cycleCount?: number }>>;
+  getInvalidUltrasonicSince(deviceId: string): Promise<number | null>;
+  setInvalidUltrasonicSince(deviceId: string, value: number | null): Promise<void>;
 }
 
-const ACTIVE_TASK_STATUSES = [
-  'unassigned', 'assigned', 'pending', 'acknowledged', 'rechecking', 'flagged', 'reassignment_needed',
-];
-const DEBOUNCE_MS = 10 * 60 * 1000;
 const HEARTBEAT_FRESH_MS = 60_000;
 const TASK_ACTIONS = new Set([
   'Send Task to Available Maintenance',
@@ -93,7 +99,6 @@ function taskContract(rule: AutomationRule): {
 }
 
 export class TelemetryAutomationEngine {
-  private readonly invalidUltrasonicSince = new Map<string, number>();
   private readonly heartbeats = new Map<string, number>();
   private readonly now: () => number;
   private readonly schedule: (callback: () => void, delayMs: number) => void;
@@ -119,43 +124,52 @@ export class TelemetryAutomationEngine {
   ): Promise<void> {
     const now = this.now();
     if (!isInvalidUltrasonic(payload)) {
-      this.invalidUltrasonicSince.delete(deviceId);
+      await this.store.setInvalidUltrasonicSince(deviceId, null);
       return;
     }
 
     const heartbeatAt = this.heartbeats.get(deviceId);
     if (heartbeatAt === undefined || now - heartbeatAt > HEARTBEAT_FRESH_MS) return;
 
-    const startedAt = this.invalidUltrasonicSince.get(deviceId) ?? now;
-    this.invalidUltrasonicSince.set(deviceId, startedAt);
+    const persistedSince = await this.store.getInvalidUltrasonicSince(deviceId);
+    const startedAt = persistedSince ?? now;
+    if (persistedSince === null) await this.store.setInvalidUltrasonicSince(deviceId, startedAt);
     for (const rule of await this.enabledRules('ultrasonic_sensor_fault')) {
-      if (now - startedAt >= rule.threshold * 1000) await this.dispatch(rule, deviceId);
+      if (now - startedAt >= rule.threshold * 1000 && await this.dispatch(rule, deviceId)) {
+        await this.store.setInvalidUltrasonicSince(deviceId, now);
+      }
     }
   }
 
   async handleCompletedFlow(
     deviceId: string,
     payload: { volume: number; duration: number; unit: string },
-    flushCycleCount: number,
+    _flushCycleCount: number,
   ): Promise<void> {
     await this.clearPendingNoWater(deviceId);
     for (const rule of await this.enabledRules('water_overuse')) {
       if (payload.volume > rule.threshold) await this.dispatch(rule, deviceId);
     }
-    for (const rule of await this.enabledRules('maintenance_due')) {
-      if (flushCycleCount >= rule.threshold) await this.dispatch(rule, deviceId, flushCycleCount);
-    }
   }
 
   async handlePumpEvent(deviceId: string, payload: { status?: unknown }): Promise<void> {
-    if (payload.status !== 'active') return;
-    const rule = (await this.enabledRules('no_water_after_flush'))[0];
-    if (!rule) return;
-    const state = await this.store.getNoWaterState(deviceId);
-    if (state.pending) return;
-    const dueAtMs = this.now() + (isFinitePositive(rule.waterWaitSeconds) ? rule.waterWaitSeconds : 8) * 1000;
-    await this.store.setNoWaterPending(deviceId, dueAtMs);
-    this.schedule(() => { void this.processDueNoWaterCheck(deviceId); }, dueAtMs - this.now());
+    if (payload.status !== 'active' && payload.status !== 'inactive') return;
+    const transition = await this.store.recordPumpTransition(deviceId, payload.status);
+    if (transition.transitionedToActive) {
+      const rule = (await this.enabledRules('no_water_after_flush'))[0];
+      if (rule) {
+        const dueAtMs = this.now() + (isFinitePositive(rule.waterWaitSeconds) ? rule.waterWaitSeconds : 8) * 1000;
+        await this.store.setNoWaterPending(deviceId, dueAtMs);
+        this.schedule(() => { void this.processDueNoWaterCheck(deviceId); }, dueAtMs - this.now());
+      }
+    }
+    if (transition.completedCycle) {
+      for (const rule of await this.enabledRules('maintenance_due')) {
+        if (transition.routineCycleCount >= rule.threshold) {
+          await this.dispatch(rule, deviceId, transition.routineCycleCount);
+        }
+      }
+    }
   }
 
   async processDueNoWaterCheck(deviceId: string): Promise<void> {
@@ -179,6 +193,26 @@ export class TelemetryAutomationEngine {
     }
   }
 
+  async processPendingThresholdEvents(): Promise<void> {
+    let pending: Array<{ ruleId: string; deviceId: string; cycleCount?: number }>;
+    try {
+      pending = await this.store.getPendingThresholdEvents(this.now());
+    } catch (error) {
+      console.error('[Automation] Pending threshold query failed:', error);
+      return;
+    }
+    for (const event of pending) {
+      try {
+        const rule = await this.store.getRule(event.ruleId);
+        if (rule && isRunnableRule(rule) && TASK_ACTIONS.has(rule.action)) {
+          await this.dispatch(rule, event.deviceId, event.cycleCount);
+        }
+      } catch (error) {
+        console.error(`[Automation] Pending threshold dispatch failed for ${event.deviceId}/${event.ruleId}:`, error);
+      }
+    }
+  }
+
   private async clearPendingNoWater(deviceId: string): Promise<void> {
     const state = await this.store.getNoWaterState(deviceId);
     if (state.pending) await this.store.clearNoWaterPending(deviceId, true);
@@ -197,9 +231,7 @@ export class TelemetryAutomationEngine {
   ): Promise<boolean> {
     const current = await this.store.getRule(cachedRule.id);
     if (!current || current.trigger !== cachedRule.trigger || !isRunnableRule(current) || !TASK_ACTIONS.has(current.action)) return false;
-    if (await this.store.hasActiveTask(deviceId, current.trigger)) return false;
-    if (await this.store.isDebounced(deviceId, current.trigger)) return false;
-    await this.store.createTask(current, deviceId, cycleCount);
+    await this.store.dispatchThreshold(current, deviceId, cycleCount);
     await this.store.createAlert(deviceId, current.trigger);
     return true;
   }
@@ -222,36 +254,18 @@ class FirestoreAutomationStore implements AutomationStore {
     return doc.exists ? ({ id: doc.id, ...doc.data() } as AutomationRule) : null;
   }
 
-  async hasActiveTask(deviceId: string, trigger: AutomationRuleTrigger): Promise<boolean> {
-    const snapshot = await adminDb.collection('tasks')
-      .where('deviceId', '==', deviceId)
-      .where('automationTrigger', '==', trigger)
-      .where('status', 'in', ACTIVE_TASK_STATUSES)
-      .limit(1)
-      .get();
-    return !snapshot.empty;
-  }
-
-  async isDebounced(deviceId: string, trigger: AutomationRuleTrigger): Promise<boolean> {
-    const snapshot = await adminDb.collection('alerts')
-      .where('deviceId', '==', deviceId)
-      .where('type', '==', trigger)
-      .where('timestamp', '>=', Timestamp.fromMillis(this.now() - DEBOUNCE_MS))
-      .limit(1)
-      .get();
-    return !snapshot.empty;
-  }
-
-  async createTask(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<void> {
+  async dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<'created' | 'merged' | 'pending'> {
     const contract = taskContract(rule);
-    await createAutomatedTaskAndNotify({
+    const result = await dispatchAutomatedTaskAndNotify({
       deviceId,
       triggerType: contract.triggerType,
       automationRuleId: rule.id,
       automationTrigger: contract.automationTrigger,
       message: contract.message,
+      repeatIntervalMinutes: normalizeRepeatIntervalMinutes(rule.repeatIntervalMinutes),
       ...(cycleCount === undefined ? {} : { cycleCountAtTrigger: cycleCount }),
     });
+    return result.outcome;
   }
 
   async createAlert(deviceId: string, trigger: AutomationRuleTrigger): Promise<void> {
@@ -304,8 +318,59 @@ class FirestoreAutomationStore implements AutomationStore {
     await this.stateRef(deviceId).set({ noWaterConsecutiveCycles: 0 }, { merge: true });
   }
 
+  async recordPumpTransition(deviceId: string, status: 'active' | 'inactive'): Promise<PumpTransitionResult> {
+    const ref = this.runtimeStateRef(deviceId);
+    return adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      const data = snapshot.data() ?? {};
+      const wasActive = data.pumpActive === true;
+      const currentCount = Number.isFinite(data.routineCycleCount) ? Number(data.routineCycleCount) : 0;
+      if (status === 'active') {
+        if (!wasActive) transaction.set(ref, { pumpActive: true, pumpTransitionUpdatedAt: Timestamp.now() }, { merge: true });
+        return { transitionedToActive: !wasActive, completedCycle: false, routineCycleCount: currentCount };
+      }
+      if (!wasActive) return { transitionedToActive: false, completedCycle: false, routineCycleCount: currentCount };
+      const nextCount = currentCount + 1;
+      transaction.set(ref, { pumpActive: false, routineCycleCount: nextCount, pumpTransitionUpdatedAt: Timestamp.now() }, { merge: true });
+      return { transitionedToActive: false, completedCycle: true, routineCycleCount: nextCount };
+    });
+  }
+
+  async getPendingThresholdEvents(nowMs: number): Promise<Array<{ ruleId: string; deviceId: string; cycleCount?: number }>> {
+    const snapshot = await adminDb.collection('automationTaskGuards')
+      .where('pending', '==', true)
+      .where('nextEligibleAt', '<=', Timestamp.fromMillis(nowMs))
+      .limit(50)
+      .get();
+    return snapshot.docs.flatMap((doc) => {
+      const data = doc.data();
+      if (typeof data.automationRuleId !== 'string' || typeof data.deviceId !== 'string') return [];
+      return [{
+        ruleId: data.automationRuleId,
+        deviceId: data.deviceId,
+        ...(typeof data.pendingCycleCount === 'number' ? { cycleCount: data.pendingCycleCount } : {}),
+      }];
+    });
+  }
+
+  async getInvalidUltrasonicSince(deviceId: string): Promise<number | null> {
+    const snapshot = await this.runtimeStateRef(deviceId).get();
+    return timestampMillis(snapshot.data()?.invalidUltrasonicSince);
+  }
+
+  async setInvalidUltrasonicSince(deviceId: string, value: number | null): Promise<void> {
+    await this.runtimeStateRef(deviceId).set({
+      invalidUltrasonicSince: value === null ? null : Timestamp.fromMillis(value),
+      invalidUltrasonicUpdatedAt: Timestamp.now(),
+    }, { merge: true });
+  }
+
   private stateRef(deviceId: string) {
     return adminDb.collection('devices').doc(deviceId).collection('automationState').doc('waterNoFlow');
+  }
+
+  private runtimeStateRef(deviceId: string) {
+    return adminDb.collection('devices').doc(deviceId).collection('automationState').doc('runtime');
   }
 
   private now(): number { return Date.now(); }

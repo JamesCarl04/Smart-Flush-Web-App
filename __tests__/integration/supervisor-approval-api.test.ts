@@ -125,4 +125,19 @@ describe('supervisor task approval', () => {
     expect(transaction.set).not.toHaveBeenCalled();
     expect(transaction.get).toHaveBeenCalledTimes(1);
   });
+
+  it('repairs a stale active status when completedAt proves completion', async () => {
+    const { taskRef } = configureRefs();
+    const transaction = { get: jest.fn(), update: jest.fn(), set: jest.fn() };
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ status: 'pending', completedAt: { toMillis: () => 100 }, automationTrigger: 'water_overuse' }),
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(transaction.update).toHaveBeenCalledWith(taskRef, expect.objectContaining({ status: 'completed' }));
+  });
 });
