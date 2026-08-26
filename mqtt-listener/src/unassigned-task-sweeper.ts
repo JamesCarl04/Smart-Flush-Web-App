@@ -55,6 +55,7 @@ async function retryOneTask(taskId: string, now: Timestamp): Promise<RetryResult
     // A supervisor assignment, cancellation, or a newer retry always wins.
     if (
       !taskSnapshot.exists ||
+      data?.completedAt != null ||
       data?.status !== 'unassigned' ||
       data.assignedTo !== null ||
       data.isBroadcast !== false ||

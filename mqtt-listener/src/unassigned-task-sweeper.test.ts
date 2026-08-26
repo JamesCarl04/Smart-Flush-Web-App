@@ -167,4 +167,29 @@ describe('unassigned automation task sweeper', () => {
 
     await expect(sweepUnassignedAutomationTasks()).resolves.toEqual({ scanned: 1, assigned: 1, rescheduled: 0 });
   });
+
+  it('never retries a task with completedAt even when its legacy status is unassigned', async () => {
+    const taskData = {
+      deviceId: 'toilet-01', triggerType: 'manual', message: 'Already done.',
+      status: 'unassigned', assignedTo: null, assignedToIds: [], isBroadcast: false,
+      autoAssignmentEligibleAt: { toMillis: () => 60_000 },
+      completedAt: { toMillis: () => 90_000 },
+    };
+    const dueQuery = setUpDueQuery(taskData);
+    const taskRef = { id: 'task-1' };
+    const transaction = { get: jest.fn(), update: jest.fn() };
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') return { ...dueQuery, doc: jest.fn(() => taskRef) };
+      return { doc: jest.fn(), where: jest.fn(() => ({ id: 'users-query' })) };
+    });
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get
+      .mockResolvedValueOnce({ exists: true, id: 'task-1', data: () => taskData })
+      .mockResolvedValueOnce(snapshot([{ id: 'tech-idle', data: { isOnline: true, isActive: true } }]))
+      .mockResolvedValueOnce(snapshot([]));
+
+    await expect(sweepUnassignedAutomationTasks()).resolves.toEqual({ scanned: 1, assigned: 0, rescheduled: 0 });
+    expect(transaction.update).not.toHaveBeenCalled();
+    expect(mockSendTaskNotification).not.toHaveBeenCalled();
+  });
 });

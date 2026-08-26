@@ -15,7 +15,10 @@ jest.mock('@/lib/firebase-admin', () => ({
 }));
 
 jest.mock('firebase-admin/firestore', () => ({
-  Timestamp: { now: jest.fn(() => 'now') },
+  Timestamp: {
+    now: jest.fn(() => ({ toMillis: () => 120_000 })),
+    fromMillis: jest.fn((value: number) => ({ toMillis: () => value })),
+  },
 }));
 
 jest.mock('@/lib/fcm', () => ({ sendTaskNotification: jest.fn() }));
@@ -25,7 +28,7 @@ import { createTaskDocument, serializeTaskSnapshot } from '@/lib/task-service';
 describe('createTaskDocument', () => {
   beforeEach(() => { mockTaskSet.mockReset(); mockTransactionSet.mockReset(); });
 
-  it('persists an unassigned automation task as a team broadcast for mobile sync', async () => {
+  it('persists unassigned work as non-broadcast with timed retry eligibility', async () => {
     await createTaskDocument({
       deviceId: 'toilet-01',
       triggerType: 'water_overuse',
@@ -40,10 +43,13 @@ describe('createTaskDocument', () => {
       expect.objectContaining({
         id: 'task-1',
         status: 'unassigned',
-        isBroadcast: true,
-        assignmentType: 'broadcast',
+        isBroadcast: false,
+        requiresSupervisorAssignment: true,
+        autoAssignmentEligibleAt: expect.objectContaining({ toMillis: expect.any(Function) }),
       }),
     );
+    const task = mockTransactionSet.mock.calls[0][1] as { autoAssignmentEligibleAt: { toMillis(): number } };
+    expect(task.autoAssignmentEligibleAt.toMillis()).toBe(180_000);
   });
 });
 

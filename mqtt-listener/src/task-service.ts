@@ -214,9 +214,10 @@ export async function dispatchAutomatedTaskAndNotify(
         completedAtMs: timestampToMillis(guardedTask.completedAt),
       } : null,
     });
-    const resetCounter = input.automationTrigger === 'maintenance_due'
-      ? { routineCycleCount: 0 }
-      : input.automationTrigger === 'no_water_after_flush'
+    // Routine threshold recording and reset happen atomically with the pump
+    // transition. Rewriting that counter here could erase cycles committed by
+    // a concurrent transition while this dispatch transaction retries.
+    const resetCounter = input.automationTrigger === 'no_water_after_flush'
         ? { noWaterConsecutiveCycles: 0, pendingWaterCheck: false, noWaterDueAt: null }
         : {};
     const stateRef = Object.keys(resetCounter).length > 0 ? automationStateRef(input) : null;

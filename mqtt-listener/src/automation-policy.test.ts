@@ -1,5 +1,6 @@
 import {
   normalizeRepeatIntervalMinutes,
+  planRoutineCycle,
   planThresholdDispatch,
 } from './automation-policy';
 
@@ -45,5 +46,22 @@ describe('automation dispatch policy', () => {
       nextEligibleAtMs: 600_000,
       guardedTask: null,
     })).toEqual({ kind: 'create' });
+  });
+
+  it('atomically converts an exact routine threshold crossing into durable events and resets the counter', () => {
+    expect(planRoutineCycle(4, [
+      { ruleId: 'routine-five', threshold: 5 },
+      { ruleId: 'routine-ten', threshold: 10 },
+    ])).toEqual({
+      routineCycleCount: 0,
+      pendingEvents: [{ ruleId: 'routine-five', cycleCount: 5 }],
+    });
+  });
+
+  it('retains the increment when no routine threshold is crossed', () => {
+    expect(planRoutineCycle(4, [{ ruleId: 'routine-ten', threshold: 10 }])).toEqual({
+      routineCycleCount: 5,
+      pendingEvents: [],
+    });
   });
 });

@@ -17,13 +17,15 @@ class MemoryStore implements AutomationStore {
   readonly debounced = new Set<string>();
   readonly noWater = new Map<string, { pending: boolean; dueAtMs: number | null; dryCycles: number }>();
   dryCycleClaims = 0;
-  readonly pump = new Map<string, { active: boolean; routineCycleCount: number }>();
-  pendingEvents: Array<{ ruleId: string; deviceId: string; cycleCount?: number }> = [];
+  readonly pump = new Map<string, { active: boolean; routineCycleCount: number; hadFlow: boolean }>();
+  pendingEvents: Array<{ eventId?: string; ruleId: string; deviceId: string; cycleCount?: number }> = [];
   readonly invalidSince = new Map<string, number>();
+  failDispatch = false;
 
   async getEnabledRules(): Promise<AutomationRule[]> { return this.rules.filter((rule) => rule.enabled); }
   async getRule(id: string): Promise<AutomationRule | null> { return this.rules.find((rule) => rule.id === id) ?? null; }
   async dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<'created' | 'merged' | 'pending'> {
+    if (this.failDispatch) throw new Error('dispatch unavailable');
     if (this.active.has(`${deviceId}:${rule.trigger}`)) return 'merged';
     if (this.debounced.has(`${deviceId}:${rule.trigger}`)) return 'pending';
     this.createdTasks.push({ rule, cycleCount });
@@ -35,18 +37,46 @@ class MemoryStore implements AutomationStore {
   async clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void> { const state = await this.getNoWaterState(deviceId); this.noWater.set(deviceId, { pending: false, dueAtMs: null, dryCycles: resetDryCycles ? 0 : state.dryCycles }); }
   async consumePendingDryCycle(deviceId: string, nowMs: number): Promise<number | null> { const state = this.noWater.get(deviceId) ?? { pending: false, dueAtMs: null, dryCycles: 0 }; if (!state.pending || state.dueAtMs === null || state.dueAtMs > nowMs) return null; this.dryCycleClaims += 1; const next = state.dryCycles + 1; this.noWater.set(deviceId, { pending: false, dueAtMs: null, dryCycles: next }); return next; }
   async resetDryCycles(deviceId: string): Promise<void> { const state = await this.getNoWaterState(deviceId); this.noWater.set(deviceId, { ...state, dryCycles: 0 }); }
-  async recordPumpTransition(deviceId: string, status: 'active' | 'inactive') {
-    const state = this.pump.get(deviceId) ?? { active: false, routineCycleCount: 0 };
+  async recordPositiveFlow(deviceId: string): Promise<void> {
+    const state = this.pump.get(deviceId);
+    if (state?.active) this.pump.set(deviceId, { ...state, hadFlow: true });
+    const noWater = await this.getNoWaterState(deviceId);
+    this.noWater.set(deviceId, { ...noWater, pending: false, dueAtMs: null, dryCycles: 0 });
+  }
+  async recordPumpTransition(
+    deviceId: string,
+    status: 'active' | 'inactive',
+    options: { nowMs: number; routineRules: Array<{ ruleId: string; threshold: number }>; noWaterWaitMs: number | null },
+  ) {
+    const state = this.pump.get(deviceId) ?? { active: false, routineCycleCount: 0, hadFlow: false };
     if (status === 'active') {
-      this.pump.set(deviceId, { ...state, active: true });
-      return { transitionedToActive: !state.active, completedCycle: false, routineCycleCount: state.routineCycleCount };
+      if (!state.active) this.pump.set(deviceId, { ...state, active: true, hadFlow: false });
+      return { transitionedToActive: !state.active, completedCycle: false, routineCycleCount: state.routineCycleCount, pendingThresholdEvents: [], noWaterDueAtMs: null };
     }
-    if (!state.active) return { transitionedToActive: false, completedCycle: false, routineCycleCount: state.routineCycleCount };
-    const next = { active: false, routineCycleCount: state.routineCycleCount + 1 };
+    if (!state.active) return { transitionedToActive: false, completedCycle: false, routineCycleCount: state.routineCycleCount, pendingThresholdEvents: [], noWaterDueAtMs: null };
+    const cycleCount = state.routineCycleCount + 1;
+    const crossed = options.routineRules.filter((item) => cycleCount >= item.threshold);
+    const next = { active: false, routineCycleCount: crossed.length > 0 ? 0 : cycleCount, hadFlow: false };
     this.pump.set(deviceId, next);
-    return { transitionedToActive: false, completedCycle: true, routineCycleCount: next.routineCycleCount };
+    const pendingThresholdEvents = crossed.map((item, index) => ({
+      eventId: `event-${this.pendingEvents.length + index + 1}`,
+      ruleId: item.ruleId,
+      deviceId,
+      cycleCount,
+    }));
+    this.pendingEvents.push(...pendingThresholdEvents);
+    let noWaterDueAtMs: number | null = null;
+    const noWater = await this.getNoWaterState(deviceId);
+    if (state.hadFlow) {
+      this.noWater.set(deviceId, { pending: false, dueAtMs: null, dryCycles: 0 });
+    } else if (options.noWaterWaitMs !== null && !noWater.pending) {
+      noWaterDueAtMs = options.nowMs + options.noWaterWaitMs;
+      this.noWater.set(deviceId, { ...noWater, pending: true, dueAtMs: noWaterDueAtMs });
+    }
+    return { transitionedToActive: false, completedCycle: true, routineCycleCount: next.routineCycleCount, pendingThresholdEvents, noWaterDueAtMs };
   }
   async getPendingThresholdEvents() { return this.pendingEvents; }
+  async acknowledgePendingThresholdEvent(eventId: string): Promise<void> { this.pendingEvents = this.pendingEvents.filter((event) => event.eventId !== eventId); }
   async getInvalidUltrasonicSince(deviceId: string) { return this.invalidSince.get(deviceId) ?? null; }
   async setInvalidUltrasonicSince(deviceId: string, value: number | null) {
     if (value === null) this.invalidSince.delete(deviceId); else this.invalidSince.set(deviceId, value);
@@ -147,12 +177,14 @@ describe('TelemetryAutomationEngine', () => {
     await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     expect(await store.getNoWaterState('toilet-a')).toEqual({ pending: false, dueAtMs: null, dryCycles: 0 });
 
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     now = 8_000;
     await engine.processDueNoWaterCheck('toilet-a');
-    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     now = 9_000;
     await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     now = 17_000;
     await engine.processDueNoWaterCheck('toilet-a');
 
@@ -166,6 +198,7 @@ describe('TelemetryAutomationEngine', () => {
     let now = 0;
     const engine = new TelemetryAutomationEngine(store, { now: () => now, schedule: () => undefined });
     await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
     now = 8_000;
 
     await Promise.all([
@@ -190,6 +223,76 @@ describe('TelemetryAutomationEngine', () => {
     await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
 
     expect(store.createdTasks).toEqual([{ rule: store.rules[0], cycleCount: 1 }]);
+  });
+
+  it('does not start a dry-flow timer until an active pump attempt completes', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'no-water', trigger: 'no_water_after_flush', threshold: 2, waterWaitSeconds: 8 })];
+    let now = 0;
+    const engine = new TelemetryAutomationEngine(store, { now: () => now, schedule: () => undefined });
+
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    now = 20_000;
+    await engine.processDueNoWaterCheck('toilet-a');
+
+    expect(await store.getNoWaterState('toilet-a')).toEqual({ pending: false, dueAtMs: null, dryCycles: 0 });
+
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+    expect(await store.getNoWaterState('toilet-a')).toEqual({ pending: true, dueAtMs: 28_000, dryCycles: 0 });
+  });
+
+  it('preserves an unresolved dry-flow check when another attempt completes', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'no-water', trigger: 'no_water_after_flush', threshold: 2, waterWaitSeconds: 8 })];
+    let now = 0;
+    const engine = new TelemetryAutomationEngine(store, { now: () => now, schedule: () => undefined });
+
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+    now = 1_000;
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+
+    expect((await store.getNoWaterState('toilet-a')).dueAtMs).toBe(8_000);
+  });
+
+  it('recovers a routine threshold event persisted before dispatch failed', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'routine', group: 'maintenance', trigger: 'maintenance_due', threshold: 1 })];
+    store.failDispatch = true;
+    const engine = new TelemetryAutomationEngine(store, { schedule: () => undefined });
+
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await expect(engine.handlePumpEvent('toilet-a', { status: 'inactive' })).rejects.toThrow('dispatch unavailable');
+    expect(store.pendingEvents).toEqual([expect.objectContaining({ ruleId: 'routine', deviceId: 'toilet-a', cycleCount: 1 })]);
+
+    store.failDispatch = false;
+    await new TelemetryAutomationEngine(store).processPendingThresholdEvents();
+    expect(store.createdTasks).toEqual([{ rule: store.rules[0], cycleCount: 1 }]);
+    expect(store.pendingEvents).toEqual([]);
+  });
+
+  it('catches and logs rejected Firestore work from a scheduled callback', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'no-water', trigger: 'no_water_after_flush', threshold: 2, waterWaitSeconds: 8 })];
+    let scheduled: (() => void) | undefined;
+    const engine = new TelemetryAutomationEngine(store, {
+      now: () => 0,
+      schedule: (callback) => { scheduled = callback; },
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await engine.handlePumpEvent('toilet-a', { status: 'active' });
+    await engine.handlePumpEvent('toilet-a', { status: 'inactive' });
+    jest.spyOn(store, 'getNoWaterState').mockRejectedValueOnce(new Error('firestore unavailable'));
+    scheduled?.();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Scheduled no-water check failed'),
+      expect.any(Error),
+    );
+    errorSpy.mockRestore();
   });
 
   it('preserves the active pump transition across an engine restart', async () => {

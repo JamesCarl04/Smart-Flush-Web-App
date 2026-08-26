@@ -11,6 +11,13 @@ import {
   type TaskTriggerType,
 } from '@/lib/task-types';
 
+const UNASSIGNED_RETRY_MS = readPositiveIntEnv('AUTOMATION_UNASSIGNED_RETRY_MS', 60_000);
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 function timestampToMillis(value: unknown): number | null {
   if (!value) {
     return null;
@@ -238,8 +245,12 @@ export async function createTaskDocument(
     status: isAssigned ? 'assigned' : 'unassigned',
     assignedTo: assignedToIds.length === 1 ? assignedToIds[0] : null,
     assignedToIds,
-    isBroadcast: !isAssigned,
-    assignmentType: isAssigned ? 'individual' : 'broadcast',
+    isBroadcast: false,
+    ...(isAssigned ? { assignmentType: 'individual' as const } : {}),
+    requiresSupervisorAssignment: !isAssigned,
+    autoAssignmentEligibleAt: isAssigned
+      ? null
+      : Timestamp.fromMillis(now.toMillis() + UNASSIGNED_RETRY_MS),
     createdAt: now,
     assignedAt: isAssigned ? now : null,
     acknowledgedAt: null,

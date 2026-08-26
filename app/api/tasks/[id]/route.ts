@@ -163,9 +163,7 @@ export async function PATCH(
       updates.assignedToIds = assignment.assignedToIds;
       updates.status = 'pending';
       updates.acknowledgedAt = null;
-      updates.completedAt = null;
       updates.acknowledgedBy = {};
-      updates.completedBy = {};
     }
 
     if (Object.keys(updates).length === 0) {
@@ -196,6 +194,13 @@ export async function PATCH(
       );
     }
 
+    if (existingTask.completedAt !== null || existingTask.status === 'completed') {
+      return NextResponse.json(
+        { success: false, error: 'Completed tasks are locked.' },
+        { status: 409 },
+      );
+    }
+
     if (existingTask.status !== 'pending') {
       return NextResponse.json(
         {
@@ -207,11 +212,21 @@ export async function PATCH(
       );
     }
 
-    if ('assignedToIds' in updates) {
-      await adminDb.runTransaction(async (transaction) => {
+    const updateOutcome = await adminDb.runTransaction(async (transaction) => {
         const fresh = await transaction.get(taskRef);
-        if (!fresh.exists) return;
+        if (!fresh.exists) return 'not-found' as const;
         const data = fresh.data() ?? {};
+        const freshTask = serializeTaskData(fresh.id, data as Record<string, unknown>);
+        if (!canManageTask(role, user.uid, freshTask)) return 'forbidden' as const;
+        if (freshTask.completedAt !== null || freshTask.status === 'completed') return 'terminal' as const;
+        if (freshTask.status !== 'pending') return 'locked' as const;
+        const now = Timestamp.now();
+
+        if (!('assignedToIds' in updates)) {
+          transaction.update(taskRef, { ...updates, updatedAt: now });
+          return 'updated' as const;
+        }
+
         const previous = new Set<string>([
           ...(typeof data.assignedTo === 'string' && data.assignedTo.trim() ? [data.assignedTo.trim()] : []),
           ...(Array.isArray(data.assignedToIds)
@@ -219,7 +234,6 @@ export async function PATCH(
             : []),
         ]);
         const next = new Set((updates.assignedToIds as string[]) ?? []);
-        const now = Timestamp.now();
         await syncTechniciansAfterTaskRelease(
           transaction,
           Array.from(previous).filter((uid) => !next.has(uid)),
@@ -234,9 +248,21 @@ export async function PATCH(
             updatedAt: now,
           }, { merge: true });
         }
+        return 'updated' as const;
       });
-    } else {
-      await taskRef.update(updates);
+
+    if (updateOutcome !== 'updated') {
+      const errors = {
+        'not-found': { status: 404, error: 'Task not found' },
+        forbidden: { status: 403, error: 'Forbidden' },
+        terminal: { status: 409, error: 'Completed tasks are locked.' },
+        locked: {
+          status: 400,
+          error: 'Only pending tasks can be modified. Acknowledged or completed tasks are locked.',
+        },
+      } as const;
+      const result = errors[updateOutcome];
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
 
     const updatedSnapshot = await taskRef.get();

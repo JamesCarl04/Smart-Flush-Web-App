@@ -30,3 +30,22 @@ export function planThresholdDispatch(input: {
   }
   return { kind: 'create' };
 }
+
+export interface RoutineThreshold {
+  ruleId: string;
+  threshold: number;
+}
+
+export function planRoutineCycle(
+  currentCount: number,
+  rules: RoutineThreshold[],
+): { routineCycleCount: number; pendingEvents: Array<{ ruleId: string; cycleCount: number }> } {
+  const cycleCount = (Number.isFinite(currentCount) && currentCount >= 0 ? currentCount : 0) + 1;
+  const pendingEvents = rules
+    .filter((rule) => Number.isInteger(rule.threshold) && rule.threshold > 0 && cycleCount >= rule.threshold)
+    .map((rule) => ({ ruleId: rule.ruleId, cycleCount }));
+  return {
+    routineCycleCount: pendingEvents.length > 0 ? 0 : cycleCount,
+    pendingEvents,
+  };
+}

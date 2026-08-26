@@ -1,4 +1,9 @@
-import { classifyAutomationRepairs } from './reconciliation';
+import {
+  classifyAutomationRepairs,
+  revalidateGuardRepair,
+  revalidateTaskRepair,
+  revalidateTechnicianRepair,
+} from './reconciliation';
 
 describe('automation reconciliation classification', () => {
   it('classifies stale completion, invalid technician state, and stale guards without deleting history', () => {
@@ -28,5 +33,30 @@ describe('automation reconciliation classification', () => {
         { id: 'guard-complete', clearTask: true, clearPending: false },
       ],
     });
+  });
+
+  it('unions assignedTo with assignedToIds even when the array exists but is empty', () => {
+    expect(classifyAutomationRepairs({
+      tasks: [{
+        id: 'active', status: 'assigned', completedAtMs: null,
+        assignedTo: 'tech-1', assignedToIds: [],
+      }],
+      technicians: [{ id: 'tech-1', currentTaskId: null, isAvailable: true }],
+      guards: [],
+    }).technicianRepairs).toEqual([
+      { id: 'tech-1', currentTaskId: 'active', isAvailable: false },
+    ]);
+  });
+
+  it('drops stale repair plans when current documents no longer violate the invariant', () => {
+    expect(revalidateTaskRepair({ id: 'task-1', status: 'completed', completedAtMs: 1 })).toBeNull();
+    expect(revalidateTechnicianRepair(
+      { id: 'tech-1', currentTaskId: 'task-1', isAvailable: false },
+      [{ id: 'task-1', status: 'assigned', completedAtMs: null, assignedTo: 'tech-1', assignedToIds: [] }],
+    )).toBeNull();
+    expect(revalidateGuardRepair(
+      { id: 'guard-1', taskId: 'task-1' },
+      { id: 'task-1', status: 'assigned', completedAtMs: null },
+    )).toBeNull();
   });
 });
