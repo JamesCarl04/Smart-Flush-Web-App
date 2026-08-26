@@ -19,10 +19,47 @@ describe('automation rule configuration', () => {
         trigger: 'no_water_after_flush',
         threshold: 2,
         waterWaitSeconds: 8,
+        repeatIntervalMinutes: 10,
         action: 'Send Task to Available Maintenance',
       },
     });
   });
+
+  it.each([1, 10, 1440])(
+    'accepts a whole repeat interval of %d minutes',
+    (repeatIntervalMinutes) => {
+      expect(
+        validateAutomationRule({
+          group: 'system_alert',
+          trigger: 'ultrasonic_sensor_fault',
+          threshold: 10,
+          action: 'Send Warning Email',
+          repeatIntervalMinutes,
+        }),
+      ).toEqual({
+        success: true,
+        data: expect.objectContaining({ repeatIntervalMinutes }),
+      });
+    },
+  );
+
+  it.each([0, 1.5, 1441, '10', true, null, Number.NaN])(
+    'rejects an invalid repeat interval of %p',
+    (repeatIntervalMinutes) => {
+      expect(
+        validateAutomationRule({
+          group: 'system_alert',
+          trigger: 'ultrasonic_sensor_fault',
+          threshold: 10,
+          action: 'Send Warning Email',
+          repeatIntervalMinutes,
+        }),
+      ).toEqual({
+        success: false,
+        error: expect.stringContaining('repeatIntervalMinutes'),
+      });
+    },
+  );
 
   it.each([
     ['ultrasonic_sensor_fault', 'system_alert', 4, 'threshold'],

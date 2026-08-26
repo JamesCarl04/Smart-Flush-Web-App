@@ -61,5 +61,16 @@ describe('configuration automation-rule form', () => {
     expect(
       screen.getByText(/Wait this long after each flush before checking for water flow/),
     ).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Repeat interval')).toHaveValue('10');
+    expect(screen.getByRole('option', { name: '1 minute', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '10 minutes', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Custom', hidden: true })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Repeat interval'), {
+      target: { value: 'custom' },
+    });
+    expect(screen.getByLabelText('Custom repeat interval (minutes)')).toHaveAttribute('min', '1');
+    expect(screen.getByLabelText('Custom repeat interval (minutes)')).toHaveAttribute('max', '1440');
   });
 });

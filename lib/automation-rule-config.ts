@@ -5,6 +5,7 @@ export const AUTOMATION_ACTIONS = [
 ] as const;
 
 export const MAINTENANCE_ACTION_ALIAS = 'Create Maintenance Ticket';
+export const DEFAULT_REPEAT_INTERVAL_MINUTES = 10;
 
 export type AutomationAction = (typeof AUTOMATION_ACTIONS)[number];
 export type AutomationActionInput =
@@ -107,6 +108,7 @@ export type AutomationRuleInput = {
   threshold: unknown;
   action: unknown;
   waterWaitSeconds?: unknown;
+  repeatIntervalMinutes?: unknown;
 };
 
 export type ValidAutomationRule = {
@@ -115,6 +117,7 @@ export type ValidAutomationRule = {
   threshold: number;
   action: AutomationAction;
   waterWaitSeconds?: number;
+  repeatIntervalMinutes: number;
 };
 
 export type AutomationRuleValidationResult =
@@ -138,6 +141,19 @@ export function normalizeAutomationAction(
   return AUTOMATION_ACTIONS.includes(action as AutomationAction)
     ? (action as AutomationAction)
     : undefined;
+}
+
+export function isTaskDispatchAction(action: unknown): boolean {
+  return normalizeAutomationAction(action) === 'Send Task to Available Maintenance';
+}
+
+export function getRepeatIntervalMinutes(value: unknown): number {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 1440
+    ? value
+    : DEFAULT_REPEAT_INTERVAL_MINUTES;
 }
 
 function validateNumericSetting(
@@ -194,6 +210,24 @@ export function validateAutomationRule(
   );
   if ('error' in threshold) return { success: false, error: threshold.error };
 
+  const repeatIntervalMinutes = validateNumericSetting(
+    'repeatIntervalMinutes',
+    input.repeatIntervalMinutes === undefined
+      ? DEFAULT_REPEAT_INTERVAL_MINUTES
+      : input.repeatIntervalMinutes,
+    {
+      label: 'Repeat interval',
+      helperText: 'Set the minimum time between repeated rule actions.',
+      unit: 'minutes',
+      min: 1,
+      max: 1440,
+      integer: true,
+    },
+  );
+  if ('error' in repeatIntervalMinutes) {
+    return { success: false, error: repeatIntervalMinutes.error };
+  }
+
   if (!config.waterWaitSeconds) {
     if (input.waterWaitSeconds !== undefined) {
       return {
@@ -209,6 +243,7 @@ export function validateAutomationRule(
         trigger: input.trigger as AutomationRuleTrigger,
         threshold: threshold.value,
         action,
+        repeatIntervalMinutes: repeatIntervalMinutes.value,
       },
     };
   }
@@ -234,6 +269,7 @@ export function validateAutomationRule(
       threshold: threshold.value,
       action,
       waterWaitSeconds: waterWaitSeconds.value,
+      repeatIntervalMinutes: repeatIntervalMinutes.value,
     },
   };
 }

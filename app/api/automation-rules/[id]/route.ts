@@ -1,9 +1,13 @@
 // app/api/automation-rules/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
-import { validateAutomationRule } from '@/lib/automation-rule-config';
+import {
+  getRepeatIntervalMinutes,
+  isTaskDispatchAction,
+  validateAutomationRule,
+} from '@/lib/automation-rule-config';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,6 +21,7 @@ interface UpdateRuleBody {
   action?: unknown;
   enabled?: unknown;
   waterWaitSeconds?: unknown;
+  repeatIntervalMinutes?: unknown;
 }
 
 // PUT /api/automation-rules/:id — update (enable/disable, threshold, etc.)
@@ -25,7 +30,8 @@ export async function PUT(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
     const { id } = await params;
 
     const rawBody: unknown = await request.json();
@@ -83,6 +89,7 @@ export async function PUT(
       'threshold',
       'action',
       'waterWaitSeconds',
+      'repeatIntervalMinutes',
     ].some((field) => hasField(field as keyof UpdateRuleBody));
 
     if (hasRuleConfigurationUpdate) {
@@ -99,6 +106,10 @@ export async function PUT(
               existingRule.waterWaitSeconds,
             )
           : undefined,
+        repeatIntervalMinutes: valueOrExisting(
+          'repeatIntervalMinutes',
+          existingRule.repeatIntervalMinutes,
+        ),
       });
       if (!validation.success) {
         return NextResponse.json(
@@ -113,6 +124,9 @@ export async function PUT(
         updates.threshold = validation.data.threshold;
       }
       if (body.action !== undefined) updates.action = validation.data.action;
+      if (body.repeatIntervalMinutes !== undefined) {
+        updates.repeatIntervalMinutes = validation.data.repeatIntervalMinutes;
+      }
       if (targetIsNoWater) {
         if (
           validation.data.waterWaitSeconds !== undefined &&
@@ -132,10 +146,49 @@ export async function PUT(
       );
     }
 
-    await docRef.update(updates);
-    const updated = await docRef.get();
+    const targetAction = updates.action ?? existingRule.action;
+    const targetTrigger = updates.trigger ?? existingRule.trigger;
+    const targetEnabled = updates.enabled ?? (existingRule.enabled === true);
+    if (targetEnabled && isTaskDispatchAction(targetAction)) {
+      const updated = await adminDb.runTransaction(async (transaction) => {
+        const matchingRules = adminDb
+          .collection('automationRules')
+          .where('trigger', '==', targetTrigger);
+        const matchingSnapshot = await transaction.get(matchingRules);
+        const hasConflict = matchingSnapshot.docs.some((rule) => {
+          if (rule.id === id) return false;
+          const existing = rule.data() as Record<string, unknown>;
+          return existing.enabled === true && isTaskDispatchAction(existing.action);
+        });
+        if (hasConflict) return false;
 
-    return NextResponse.json({ success: true, data: updated.data() });
+        transaction.update(docRef, updates);
+        return true;
+      });
+      if (!updated) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'An enabled task-dispatch rule already exists for this trigger',
+          },
+          { status: 409 },
+        );
+      }
+    } else {
+      await docRef.update(updates);
+    }
+    const updated = await docRef.get();
+    const updatedData = updated.data() as Record<string, unknown>;
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updatedData,
+        repeatIntervalMinutes: getRepeatIntervalMinutes(
+          updatedData.repeatIntervalMinutes,
+        ),
+      },
+    });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[AutomationRules] PUT error:', error);
@@ -152,7 +205,8 @@ export async function DELETE(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
     const { id } = await params;
 
     const docRef = adminDb.collection('automationRules').doc(id);

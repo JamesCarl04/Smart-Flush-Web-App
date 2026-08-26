@@ -1,10 +1,20 @@
-import { POST } from '@/app/api/automation-rules/route';
-import { PUT } from '@/app/api/automation-rules/[id]/route';
+import { GET, POST } from '@/app/api/automation-rules/route';
+import { DELETE, PUT } from '@/app/api/automation-rules/[id]/route';
+import { POST as resetCounter } from '@/app/api/automation-rules/[id]/reset-counter/route';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
+
+jest.mock('@/lib/firebase-admin', () => ({
+  adminDb: {
+    collection: jest.fn(),
+    runTransaction: jest.fn(),
+  },
+}));
 
 jest.mock('@/lib/auth-helpers', () => ({
   verifyAuthToken: jest.fn().mockResolvedValue({ uid: 'admin-1' }),
+  requireAdmin: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('firebase-admin/firestore', () => ({
@@ -18,6 +28,8 @@ type RuleDocument = {
   get: jest.Mock;
   set: jest.Mock;
   update: jest.Mock;
+  delete?: jest.Mock;
+  collection?: jest.Mock;
 };
 
 const collection = adminDb.collection as jest.Mock;
@@ -37,7 +49,10 @@ describe('automation rule API validation', () => {
 
   it('rejects unsupported trigger values before creating a Firestore rule', async () => {
     const set = jest.fn();
-    collection.mockReturnValue({ doc: jest.fn(() => ({ id: 'rule-1', set })) });
+    collection.mockReturnValue({
+      doc: jest.fn(() => ({ id: 'rule-1', set })),
+      where: jest.fn(() => ({ get: jest.fn() })),
+    });
 
     const response = await POST(
       jsonRequest('POST', {
@@ -57,7 +72,13 @@ describe('automation rule API validation', () => {
 
   it('persists canonical no-water defaults when the alias action is submitted', async () => {
     const set = jest.fn().mockResolvedValue(undefined);
-    collection.mockReturnValue({ doc: jest.fn(() => ({ id: 'rule-1', set })) });
+    collection.mockReturnValue({
+      doc: jest.fn(() => ({ id: 'rule-1', set })),
+      where: jest.fn(() => ({ get: jest.fn() })),
+    });
+    (adminDb.runTransaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({ get: jest.fn().mockResolvedValue({ docs: [] }), set }),
+    );
 
     const response = await POST(
       jsonRequest('POST', {
@@ -71,14 +92,211 @@ describe('automation rule API validation', () => {
 
     expect(response.status).toBe(201);
     expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'rule-1' }),
       expect.objectContaining({
         group: 'system_alert',
         trigger: 'no_water_after_flush',
         threshold: 2,
         waterWaitSeconds: 8,
+        repeatIntervalMinutes: 10,
         action: 'Send Task to Available Maintenance',
       }),
     );
+  });
+
+  it.each([0, 1.5, 1441, '10', true, null])(
+    'rejects an invalid repeat interval at the server boundary: %p',
+    async (repeatIntervalMinutes) => {
+      const set = jest.fn();
+      collection.mockReturnValue({ doc: jest.fn(() => ({ id: 'rule-1', set })) });
+
+      const response = await POST(
+        jsonRequest('POST', {
+          name: 'Interval validation',
+          group: 'system_alert',
+          trigger: 'ultrasonic_sensor_fault',
+          threshold: 10,
+          action: 'Send Warning Email',
+          repeatIntervalMinutes,
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(set).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a non-admin mutation before creating a rule', async () => {
+    (requireAdmin as jest.Mock).mockRejectedValueOnce(
+      new Response(
+        JSON.stringify({ success: false, error: 'Forbidden: admin only' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const set = jest.fn();
+    collection.mockReturnValue({ doc: jest.fn(() => ({ id: 'rule-1', set })) });
+
+    const response = await POST(
+      jsonRequest('POST', {
+        name: 'Unauthorized rule',
+        group: 'system_alert',
+        trigger: 'ultrasonic_sensor_fault',
+        threshold: 10,
+        action: 'Send Warning Email',
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('requires an administrator for every rule mutation while allowing authenticated reads', async () => {
+    const ruleDocument: RuleDocument = {
+      get: jest.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'rule-1',
+          group: 'maintenance',
+          trigger: 'maintenance_due',
+          threshold: 200,
+          action: 'Send Warning Email',
+          enabled: true,
+        }),
+      }),
+      set: jest.fn(),
+      update: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({ set: jest.fn().mockResolvedValue(undefined) })),
+      })),
+    };
+    const get = jest.fn().mockResolvedValue({ docs: [{ data: () => ({ id: 'legacy-1' }) }] });
+    collection.mockReturnValue({
+      doc: jest.fn(() => ruleDocument),
+      orderBy: jest.fn(() => ({ get })),
+    });
+
+    const listResponse = await GET(new Request('http://localhost/api/automation-rules'));
+    expect(listResponse.status).toBe(200);
+    expect(verifyAuthToken).toHaveBeenCalled();
+    expect(requireAdmin).not.toHaveBeenCalled();
+
+    await POST(jsonRequest('POST', {
+      name: 'Administrator-only rule',
+      group: 'system_alert',
+      trigger: 'ultrasonic_sensor_fault',
+      threshold: 10,
+      action: 'Send Warning Email',
+    }));
+
+    await PUT(jsonRequest('PUT', { enabled: false }), {
+      params: Promise.resolve({ id: 'rule-1' }),
+    });
+    await DELETE(new Request('http://localhost/api/automation-rules/rule-1', { method: 'DELETE' }), {
+      params: Promise.resolve({ id: 'rule-1' }),
+    });
+    await resetCounter(new Request('http://localhost/api/automation-rules/rule-1/reset-counter', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }), { params: Promise.resolve({ id: 'rule-1' }) });
+
+    expect(requireAdmin).toHaveBeenCalledTimes(4);
+  });
+
+  it('returns legacy rules with the default repeat interval on GET', async () => {
+    const get = jest.fn().mockResolvedValue({
+      docs: [{ data: () => ({ id: 'legacy-1', name: 'Legacy rule' }) }],
+    });
+    collection.mockReturnValue({ orderBy: jest.fn(() => ({ get })) });
+
+    const response = await GET(new Request('http://localhost/api/automation-rules'));
+    const body = (await response.json()) as { data: Array<{ repeatIntervalMinutes: number }> };
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual([{ id: 'legacy-1', name: 'Legacy rule', repeatIntervalMinutes: 10 }]);
+  });
+
+  it('atomically rejects a second enabled task-dispatch rule for the same trigger', async () => {
+    const docRef = { id: 'rule-2', set: jest.fn() };
+    const transaction = {
+      get: jest.fn().mockResolvedValue({
+        docs: [{
+          id: 'rule-1',
+          data: () => ({
+            trigger: 'water_overuse',
+            action: 'Create Maintenance Ticket',
+            enabled: true,
+          }),
+        }],
+      }),
+      set: jest.fn(),
+    };
+    collection.mockReturnValue({
+      doc: jest.fn(() => docRef),
+      where: jest.fn(() => ({ where: jest.fn(() => ({ get: jest.fn() })) })),
+    });
+    (adminDb.runTransaction as jest.Mock).mockImplementation(async (callback) => callback(transaction));
+
+    const response = await POST(
+      jsonRequest('POST', {
+        name: 'Duplicate task rule',
+        group: 'system_alert',
+        trigger: 'water_overuse',
+        threshold: 12,
+        action: 'Send Task to Available Maintenance',
+        enabled: true,
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'An enabled task-dispatch rule already exists for this trigger',
+    });
+    expect(transaction.set).not.toHaveBeenCalled();
+  });
+
+  it('atomically rejects enabling a task-dispatch rule when its trigger already has one', async () => {
+    const ruleDocument: RuleDocument = {
+      get: jest.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'rule-2',
+          name: 'Disabled task rule',
+          group: 'system_alert',
+          trigger: 'water_overuse',
+          threshold: 12,
+          action: 'Send Task to Available Maintenance',
+          enabled: false,
+        }),
+      }),
+      set: jest.fn(),
+      update: jest.fn(),
+    };
+    const transaction = {
+      get: jest.fn().mockResolvedValue({
+        docs: [{
+          id: 'rule-1',
+          data: () => ({
+            trigger: 'water_overuse',
+            action: 'Create Maintenance Ticket',
+            enabled: true,
+          }),
+        }],
+      }),
+      update: jest.fn(),
+    };
+    collection.mockReturnValue({
+      doc: jest.fn(() => ruleDocument),
+      where: jest.fn(() => ({ get: jest.fn() })),
+    });
+    (adminDb.runTransaction as jest.Mock).mockImplementation(async (callback) => callback(transaction));
+
+    const response = await PUT(jsonRequest('PUT', { enabled: true }), {
+      params: Promise.resolve({ id: 'rule-2' }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(transaction.update).not.toHaveBeenCalled();
   });
 
   it('rejects a maintenance threshold outside its configured range on update', async () => {

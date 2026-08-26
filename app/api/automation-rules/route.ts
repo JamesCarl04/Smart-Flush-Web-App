@@ -1,9 +1,13 @@
 // app/api/automation-rules/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
-import { validateAutomationRule } from '@/lib/automation-rule-config';
+import {
+  getRepeatIntervalMinutes,
+  isTaskDispatchAction,
+  validateAutomationRule,
+} from '@/lib/automation-rule-config';
 
 interface CreateRuleBody {
   name?: unknown;
@@ -13,6 +17,7 @@ interface CreateRuleBody {
   action?: unknown;
   enabled?: unknown;
   waterWaitSeconds?: unknown;
+  repeatIntervalMinutes?: unknown;
 }
 
 // GET /api/automation-rules — list all
@@ -25,7 +30,15 @@ export async function GET(request: Request): Promise<NextResponse> {
       .get();
     return NextResponse.json({
       success: true,
-      data: snap.docs.map((d) => d.data()),
+      data: snap.docs.map((d) => {
+        const rule = d.data() as Record<string, unknown>;
+        return {
+          ...rule,
+          repeatIntervalMinutes: getRepeatIntervalMinutes(
+            rule.repeatIntervalMinutes,
+          ),
+        };
+      }),
     });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
@@ -40,7 +53,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 // POST /api/automation-rules — create
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
 
     const rawBody: unknown = await request.json();
     if (
@@ -54,7 +68,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
     const body = rawBody as CreateRuleBody;
-    const { name, group, trigger, threshold, action, enabled, waterWaitSeconds } = body;
+    const {
+      name,
+      group,
+      trigger,
+      threshold,
+      action,
+      enabled,
+      waterWaitSeconds,
+      repeatIntervalMinutes,
+    } = body;
     const trimmedName = typeof name === 'string' ? name.trim() : '';
 
     if (
@@ -89,6 +112,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       threshold,
       action,
       waterWaitSeconds,
+      repeatIntervalMinutes,
     });
     if (!validation.success) {
       return NextResponse.json(
@@ -98,13 +122,42 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const docRef = adminDb.collection('automationRules').doc();
-    await docRef.set({
+    const ruleData = {
       id: docRef.id,
       name: trimmedName,
       ...validation.data,
       enabled: enabled ?? true,
       createdAt: FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (ruleData.enabled && isTaskDispatchAction(ruleData.action)) {
+      const created = await adminDb.runTransaction(async (transaction) => {
+        const matchingRules = adminDb
+          .collection('automationRules')
+          .where('trigger', '==', ruleData.trigger);
+        const matchingSnapshot = await transaction.get(matchingRules);
+        const hasConflict = matchingSnapshot.docs.some((rule) => {
+          const existing = rule.data() as Record<string, unknown>;
+          return existing.enabled === true && isTaskDispatchAction(existing.action);
+        });
+        if (hasConflict) return false;
+
+        transaction.set(docRef, ruleData);
+        return true;
+      });
+
+      if (!created) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'An enabled task-dispatch rule already exists for this trigger',
+          },
+          { status: 409 },
+        );
+      }
+    } else {
+      await docRef.set(ruleData);
+    }
 
     return NextResponse.json(
       { success: true, data: { id: docRef.id } },

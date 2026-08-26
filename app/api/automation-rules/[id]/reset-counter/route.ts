@@ -3,7 +3,7 @@
 // Reads the rule's trigger field and resets the corresponding maintenanceCounter to 0.
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -27,7 +27,8 @@ export async function POST(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
     const { id } = await params;
 
     // Fetch the rule to find what deviceId and trigger it relates to

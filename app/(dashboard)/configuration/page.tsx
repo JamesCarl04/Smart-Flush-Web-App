@@ -57,6 +57,7 @@ type Rule = {
   trigger: string;
   threshold: number;
   waterWaitSeconds?: number;
+  repeatIntervalMinutes: number;
   basis: string;
   action: string;
   enabled: boolean;
@@ -67,6 +68,7 @@ type RuleFormState = {
   trigger: AutomationRuleTrigger;
   threshold: string;
   waterWaitSeconds: string;
+  repeatIntervalMinutes: string;
   action: string;
 };
 
@@ -77,6 +79,7 @@ interface RuleDoc {
   trigger: string;
   threshold: number;
   waterWaitSeconds?: number;
+  repeatIntervalMinutes?: number;
   action: string;
   enabled: boolean;
 }
@@ -174,6 +177,7 @@ const DEFAULT_RULE_FORM: RuleFormState = {
   trigger: 'ultrasonic_sensor_fault',
   threshold: '10',
   waterWaitSeconds: '',
+  repeatIntervalMinutes: '10',
   action: RULE_ACTION_OPTIONS[0],
 };
 
@@ -196,13 +200,15 @@ function getRuleBasis(
   trigger: string,
   threshold: number,
   waterWaitSeconds?: number,
+  repeatIntervalMinutes = 10,
 ): string {
   const config = getAutomationRuleDefinition(trigger);
   if (config) {
     const thresholdBasis = `${config.threshold.label}: ${threshold} ${config.threshold.unit}`;
-    return waterWaitSeconds === undefined
+    const basis = waterWaitSeconds === undefined
       ? thresholdBasis
       : `${thresholdBasis}; water wait: ${waterWaitSeconds} seconds`;
+    return `${basis}; repeats: ${repeatIntervalMinutes} minutes`;
   }
 
   if (trigger === 'uv_cycle_failed') {
@@ -286,6 +292,7 @@ function validateRuleForm(ruleForm: RuleFormState): string | null {
       ruleForm.trigger === 'no_water_after_flush'
         ? Number(ruleForm.waterWaitSeconds)
         : undefined,
+    repeatIntervalMinutes: Number(ruleForm.repeatIntervalMinutes),
     action: ruleForm.action,
   });
 
@@ -431,10 +438,12 @@ export default function ConfigurationPage() {
           trigger: rule.trigger,
           threshold: rule.threshold,
           waterWaitSeconds: rule.waterWaitSeconds,
+          repeatIntervalMinutes: rule.repeatIntervalMinutes ?? 10,
           basis: getRuleBasis(
             rule.trigger,
             rule.threshold,
             rule.waterWaitSeconds,
+            rule.repeatIntervalMinutes ?? 10,
           ),
           action: getRuleActionLabel(rule.action),
           enabled: rule.enabled,
@@ -638,6 +647,7 @@ export default function ConfigurationPage() {
       trigger,
       threshold: String(config.threshold.default ?? ''),
       waterWaitSeconds: String(config.waterWaitSeconds?.default ?? ''),
+      repeatIntervalMinutes: '10',
       action:
         group === 'maintenance'
           ? RULE_ACTION_OPTIONS[2]
@@ -680,6 +690,7 @@ export default function ConfigurationPage() {
           ...(ruleForm.trigger === 'no_water_after_flush'
             ? { waterWaitSeconds: Number(ruleForm.waterWaitSeconds) }
             : {}),
+          repeatIntervalMinutes: Number(ruleForm.repeatIntervalMinutes),
           action: ruleForm.action,
           enabled: true,
         }),
@@ -1485,6 +1496,7 @@ export default function ConfigurationPage() {
                     waterWaitSeconds: String(
                       config.waterWaitSeconds?.default ?? '',
                     ),
+                    repeatIntervalMinutes: '10',
                   }));
                 }}
               >
@@ -1557,6 +1569,63 @@ export default function ConfigurationPage() {
                   </p>
                 </div>
               )}
+
+              <div>
+                <label
+                  htmlFor="rule-repeat-interval"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5"
+                >
+                  Repeat interval
+                </label>
+                <select
+                  id="rule-repeat-interval"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  value={
+                    ruleForm.repeatIntervalMinutes === '1' ||
+                    ruleForm.repeatIntervalMinutes === '10'
+                      ? ruleForm.repeatIntervalMinutes
+                      : 'custom'
+                  }
+                  onChange={(event) =>
+                    setRuleForm((currentForm) => ({
+                      ...currentForm,
+                      repeatIntervalMinutes:
+                        event.target.value === 'custom'
+                          ? currentForm.repeatIntervalMinutes === '1' ||
+                            currentForm.repeatIntervalMinutes === '10'
+                            ? ''
+                            : currentForm.repeatIntervalMinutes
+                          : event.target.value,
+                    }))
+                  }
+                >
+                  <option value="1">1 minute</option>
+                  <option value="10">10 minutes</option>
+                  <option value="custom">Custom</option>
+                </select>
+                {ruleForm.repeatIntervalMinutes !== '1' &&
+                  ruleForm.repeatIntervalMinutes !== '10' && (
+                    <input
+                      id="rule-custom-repeat-interval"
+                      aria-label="Custom repeat interval (minutes)"
+                      type="number"
+                      min={1}
+                      max={1440}
+                      step={1}
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      value={ruleForm.repeatIntervalMinutes}
+                      onChange={(event) =>
+                        setRuleForm((currentForm) => ({
+                          ...currentForm,
+                          repeatIntervalMinutes: event.target.value,
+                        }))
+                      }
+                    />
+                  )}
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Choose how often this rule may repeat. Custom values must be whole minutes from 1 to 1440.
+                </p>
+              </div>
 
               <div>
                 <label
