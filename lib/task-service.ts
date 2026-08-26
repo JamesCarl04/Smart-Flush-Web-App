@@ -107,6 +107,34 @@ export function serializeTaskData(
     status: statusOrPending(data.status),
     assignedTo: nullableString(data.assignedTo),
     assignedToIds: stringArray(data.assignedToIds),
+    isBroadcast: data.isBroadcast === true,
+    assignmentType:
+      data.assignmentType === 'broadcast' ||
+      data.assignmentType === 'individual' ||
+      data.assignmentType === 'team'
+        ? data.assignmentType
+        : undefined,
+    automationRuleId: nullableString(data.automationRuleId) ?? undefined,
+    automationTrigger:
+      data.automationTrigger === 'ultrasonic_sensor_fault' ||
+      data.automationTrigger === 'water_overuse' ||
+      data.automationTrigger === 'no_water_after_flush' ||
+      data.automationTrigger === 'maintenance_due'
+        ? data.automationTrigger
+        : undefined,
+    assignmentSource:
+      data.assignmentSource === 'initial_auto' ||
+      data.assignmentSource === 'supervisor' ||
+      data.assignmentSource === 'retry_auto'
+        ? data.assignmentSource
+        : undefined,
+    requiresSupervisorAssignment: data.requiresSupervisorAssignment === true,
+    autoAssignmentEligibleAt: timestampToMillis(data.autoAssignmentEligibleAt),
+    cycleCountAtTrigger:
+      typeof data.cycleCountAtTrigger === 'number' &&
+      Number.isFinite(data.cycleCountAtTrigger)
+        ? data.cycleCountAtTrigger
+        : undefined,
     createdAt: timestampToMillis(data.createdAt),
     assignedAt: timestampToMillis(data.assignedAt),
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),

@@ -33,6 +33,14 @@ import { useDeviceStatus } from '@/hooks/useDeviceStatus';
 import { apiFetch } from '@/lib/api-client';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { getErrorMessage } from '@/lib/error-utils';
+import {
+  AUTOMATION_ACTIONS,
+  AUTOMATION_RULE_CONFIG,
+  getAutomationRuleDefinition,
+  type AutomationRuleDefinition,
+  type AutomationRuleTrigger,
+  validateAutomationRule,
+} from '@/lib/automation-rule-config';
 
 type TimingConfig = {
   pumpDuration: number;
@@ -48,6 +56,7 @@ type Rule = {
   name: string;
   trigger: string;
   threshold: number;
+  waterWaitSeconds?: number;
   basis: string;
   action: string;
   enabled: boolean;
@@ -55,9 +64,9 @@ type Rule = {
 
 type RuleFormState = {
   name: string;
-  group: RuleGroup;
-  trigger: string;
+  trigger: AutomationRuleTrigger;
   threshold: string;
+  waterWaitSeconds: string;
   action: string;
 };
 
@@ -67,6 +76,7 @@ interface RuleDoc {
   name: string;
   trigger: string;
   threshold: number;
+  waterWaitSeconds?: number;
   action: string;
   enabled: boolean;
 }
@@ -150,33 +160,25 @@ const SDCA_FLOOR_RESTROOMS: Record<string, string[]> = {
   ],
 };
 
-const RULE_ACTION_OPTIONS = [
-  'Send Warning Email',
-  'Disable Subsystem',
-  'Send Task to Available Maintenance',
-] as const;
+const RULE_ACTION_OPTIONS = AUTOMATION_ACTIONS;
 
-const RULE_TRIGGER_OPTIONS = [
-  { value: 'flush_count_exceeded', label: 'Flush Count Exceeded' },
-  { value: 'water_overuse', label: 'Water Overuse' },
-  { value: 'uv_cycle_failed', label: 'UV Cycle Failed' },
-  { value: 'maintenance_due', label: 'Maintenance Due' },
-] as const;
+const RULE_TRIGGER_OPTIONS = (
+  Object.entries(AUTOMATION_RULE_CONFIG) as [
+    AutomationRuleTrigger,
+    AutomationRuleDefinition,
+  ][]
+).map(([value, config]) => ({ value, label: config.label }));
 
 const DEFAULT_RULE_FORM: RuleFormState = {
   name: '',
-  group: 'alerts',
-  trigger: 'flush_count_exceeded',
-  threshold: '100',
+  trigger: 'ultrasonic_sensor_fault',
+  threshold: '10',
+  waterWaitSeconds: '',
   action: RULE_ACTION_OPTIONS[0],
 };
 
 function toUiRuleGroup(group: string): RuleGroup {
   return group === 'maintenance' ? 'maintenance' : 'alerts';
-}
-
-function toBackendRuleGroup(group: RuleGroup): string {
-  return group === 'maintenance' ? 'maintenance' : 'system_alert';
 }
 
 function getRuleActionLabel(action: string): string {
@@ -187,13 +189,22 @@ function getRuleActionLabel(action: string): string {
 }
 
 function getRuleTriggerLabel(trigger: string): string {
-  return (
-    RULE_TRIGGER_OPTIONS.find((option) => option.value === trigger)?.label ??
-    trigger.replaceAll('_', ' ')
-  );
+  return getAutomationRuleDefinition(trigger)?.label ?? trigger.replaceAll('_', ' ');
 }
 
-function getRuleBasis(trigger: string, threshold: number): string {
+function getRuleBasis(
+  trigger: string,
+  threshold: number,
+  waterWaitSeconds?: number,
+): string {
+  const config = getAutomationRuleDefinition(trigger);
+  if (config) {
+    const thresholdBasis = `${config.threshold.label}: ${threshold} ${config.threshold.unit}`;
+    return waterWaitSeconds === undefined
+      ? thresholdBasis
+      : `${thresholdBasis}; water wait: ${waterWaitSeconds} seconds`;
+  }
+
   if (trigger === 'uv_cycle_failed') {
     return 'Triggers when a UV cycle fails to complete';
   }
@@ -203,6 +214,18 @@ function getRuleBasis(trigger: string, threshold: number): string {
   }
 
   return `Threshold: ${threshold}`;
+}
+
+function getRuleSettingConstraint(setting: AutomationRuleDefinition['threshold']): string {
+  if (setting.positive) {
+    return `Enter a positive value in ${setting.unit}.`;
+  }
+
+  if (setting.max === undefined) {
+    return `Minimum: ${setting.min} ${setting.unit}.`;
+  }
+
+  return `Allowed range: ${setting.min}–${setting.max} ${setting.unit}.`;
 }
 
 function validateDeviceName(name: string): string | null {
@@ -252,12 +275,21 @@ function validateRuleForm(ruleForm: RuleFormState): string | null {
     return 'Rule name is required.';
   }
 
-  const threshold = Number(ruleForm.threshold);
-  if (!Number.isFinite(threshold) || threshold < 0) {
-    return 'Rule threshold must be a valid number greater than or equal to 0.';
-  }
+  const config = getAutomationRuleDefinition(ruleForm.trigger);
+  if (!config) return 'Rule trigger is not supported.';
 
-  return null;
+  const validation = validateAutomationRule({
+    group: config.group,
+    trigger: ruleForm.trigger,
+    threshold: Number(ruleForm.threshold),
+    waterWaitSeconds:
+      ruleForm.trigger === 'no_water_after_flush'
+        ? Number(ruleForm.waterWaitSeconds)
+        : undefined,
+    action: ruleForm.action,
+  });
+
+  return validation.success ? null : validation.error;
 }
 
 function getRuleModal(): HTMLDialogElement | null {
@@ -269,13 +301,7 @@ function getRuleModal(): HTMLDialogElement | null {
 export default function ConfigurationPage() {
   const { user } = useAuth();
   const { ultrasonicDistance } = useSensorData();
-  const {
-    status: deviceStatus,
-    connected,
-    reason: deviceReason,
-    lastSeen,
-    loading: deviceLoading,
-  } = useDeviceStatus(DEFAULT_DEVICE_ID);
+  const { connected, loading: deviceLoading } = useDeviceStatus(DEFAULT_DEVICE_ID);
 
   const [mounted, setMounted] = useState(false);
   const [deviceName, setDeviceName] = useState(DEFAULT_DEVICE_NAME);
@@ -404,7 +430,12 @@ export default function ConfigurationPage() {
           name: rule.name,
           trigger: rule.trigger,
           threshold: rule.threshold,
-          basis: getRuleBasis(rule.trigger, rule.threshold),
+          waterWaitSeconds: rule.waterWaitSeconds,
+          basis: getRuleBasis(
+            rule.trigger,
+            rule.threshold,
+            rule.waterWaitSeconds,
+          ),
           action: getRuleActionLabel(rule.action),
           enabled: rule.enabled,
         })),
@@ -597,9 +628,16 @@ export default function ConfigurationPage() {
   };
 
   const openRuleModal = (group: RuleGroup = activeRuleTab) => {
+    const trigger: AutomationRuleTrigger =
+      group === 'maintenance'
+        ? 'maintenance_due'
+        : 'ultrasonic_sensor_fault';
+    const config = AUTOMATION_RULE_CONFIG[trigger];
     setRuleForm({
       ...DEFAULT_RULE_FORM,
-      group,
+      trigger,
+      threshold: String(config.threshold.default ?? ''),
+      waterWaitSeconds: String(config.waterWaitSeconds?.default ?? ''),
       action:
         group === 'maintenance'
           ? RULE_ACTION_OPTIONS[2]
@@ -624,15 +662,24 @@ export default function ConfigurationPage() {
       return;
     }
 
+    const config = getAutomationRuleDefinition(ruleForm.trigger);
+    if (!config) {
+      toast.error('Rule trigger is not supported.');
+      return;
+    }
+
     setCreatingRule(true);
     try {
       await apiFetch('/api/automation-rules', user, {
         method: 'POST',
         body: JSON.stringify({
           name: ruleForm.name.trim(),
-          group: toBackendRuleGroup(ruleForm.group),
+          group: config.group,
           trigger: ruleForm.trigger,
           threshold: Number(ruleForm.threshold),
+          ...(ruleForm.trigger === 'no_water_after_flush'
+            ? { waterWaitSeconds: Number(ruleForm.waterWaitSeconds) }
+            : {}),
           action: ruleForm.action,
           enabled: true,
         }),
@@ -728,6 +775,8 @@ export default function ConfigurationPage() {
     ultrasonicDistance !== undefined &&
     ultrasonicDistance > 0 &&
     ultrasonicDistance <= threshold;
+
+  const selectedRuleConfig = AUTOMATION_RULE_CONFIG[ruleForm.trigger];
 
   const currentGroupRules = rules.filter(
     (rule) => rule.group === activeRuleTab,
@@ -1415,63 +1464,55 @@ export default function ConfigurationPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Category
-                </label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  value={ruleForm.group}
-                  onChange={(event) =>
-                    setRuleForm((currentForm) => ({
-                      ...currentForm,
-                      group: event.target.value as RuleGroup,
-                      action:
-                        event.target.value === 'maintenance'
-                          ? RULE_ACTION_OPTIONS[2]
-                          : currentForm.action === RULE_ACTION_OPTIONS[2]
-                            ? RULE_ACTION_OPTIONS[0]
-                            : currentForm.action,
-                    }))
-                  }
-                >
-                  <option value="alerts">System Alerts</option>
-                  <option value="maintenance">Hardware Maintenance</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Trigger Condition
-                </label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  value={ruleForm.trigger}
-                  onChange={(event) =>
-                    setRuleForm((currentForm) => ({
-                      ...currentForm,
-                      trigger: event.target.value,
-                    }))
-                  }
-                >
-                  {RULE_TRIGGER_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label
+                htmlFor="rule-trigger"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5"
+              >
+                Trigger Condition
+              </label>
+              <select
+                id="rule-trigger"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                value={ruleForm.trigger}
+                onChange={(event) => {
+                  const trigger = event.target.value as AutomationRuleTrigger;
+                  const config = AUTOMATION_RULE_CONFIG[trigger];
+                  setRuleForm((currentForm) => ({
+                    ...currentForm,
+                    trigger,
+                    threshold: String(config.threshold.default ?? ''),
+                    waterWaitSeconds: String(
+                      config.waterWaitSeconds?.default ?? '',
+                    ),
+                  }));
+                }}
+              >
+                {RULE_TRIGGER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                Category: {selectedRuleConfig.group === 'maintenance' ? 'Hardware Maintenance' : 'System Alerts'}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Threshold / Limit
+                <label
+                  htmlFor="rule-threshold"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5"
+                >
+                  {selectedRuleConfig.threshold.label}
                 </label>
                 <input
+                  id="rule-threshold"
                   type="number"
-                  min="0"
+                  min={selectedRuleConfig.threshold.min}
+                  max={selectedRuleConfig.threshold.max}
+                  step={selectedRuleConfig.threshold.integer ? 1 : 'any'}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   value={ruleForm.threshold}
                   onChange={(event) =>
@@ -1481,13 +1522,51 @@ export default function ConfigurationPage() {
                     }))
                   }
                 />
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  {selectedRuleConfig.threshold.helperText} {getRuleSettingConstraint(selectedRuleConfig.threshold)}
+                  {selectedRuleConfig.threshold.default !== undefined &&
+                    ` Default: ${selectedRuleConfig.threshold.default} ${selectedRuleConfig.threshold.unit}.`}
+                </p>
               </div>
 
+              {selectedRuleConfig.waterWaitSeconds && (
+                <div>
+                  <label
+                    htmlFor="rule-water-wait-seconds"
+                    className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5"
+                  >
+                    {selectedRuleConfig.waterWaitSeconds.label}
+                  </label>
+                  <input
+                    id="rule-water-wait-seconds"
+                    type="number"
+                    min={selectedRuleConfig.waterWaitSeconds.min}
+                    max={selectedRuleConfig.waterWaitSeconds.max}
+                    step={1}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    value={ruleForm.waterWaitSeconds}
+                    onChange={(event) =>
+                      setRuleForm((currentForm) => ({
+                        ...currentForm,
+                        waterWaitSeconds: event.target.value,
+                      }))
+                    }
+                  />
+                  <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    {selectedRuleConfig.waterWaitSeconds.helperText} {getRuleSettingConstraint(selectedRuleConfig.waterWaitSeconds)} Default: {selectedRuleConfig.waterWaitSeconds.default} {selectedRuleConfig.waterWaitSeconds.unit}.
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                <label
+                  htmlFor="rule-action"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5"
+                >
                   Action to Trigger
                 </label>
                 <select
+                  id="rule-action"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   value={ruleForm.action}
                   onChange={(event) =>

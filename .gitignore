@@ -29,6 +29,8 @@ dist/
 !*/package-lock.json
 !railway.json
 !**/railway.json
+!firebase.json
+!firestore.indexes.json
 !tsconfig.json
 !next.config.json
 !SmartFlush.postman_collection.json
@@ -47,6 +49,7 @@ mqtt-listener.err
 mqtt-listener.dev.log
 mqtt-listener.dev.err
 .local-runtime/
+.superpowers/
 
 # Misc
 .DS_Store

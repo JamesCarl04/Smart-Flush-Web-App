@@ -16,6 +16,7 @@ interface TaskActionDoc {
   assignedToIds?: unknown;
   acknowledgedBy?: Record<string, unknown>;
   completedBy?: Record<string, unknown>;
+  isBroadcast?: unknown;
 }
 
 export async function POST(
@@ -45,6 +46,15 @@ export async function POST(
           : null,
       assignedToIds: normalizeAssignedToIds(task.assignedToIds),
     };
+    if (
+      assignment.assignedTo === null &&
+      assignment.assignedToIds.length === 0
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Task must be assigned before completion' },
+        { status: 403 },
+      );
+    }
     const requiredUserIds = await listRequiredTaskUserIds(assignment);
     if (!requiredUserIds.includes(user.uid)) {
       return NextResponse.json(

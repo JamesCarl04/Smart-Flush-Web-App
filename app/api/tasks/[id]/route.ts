@@ -82,7 +82,8 @@ export async function GET(
 
     if (
       role === 'maintenance' &&
-      !isAssignedToUser(task, user.uid)
+      !isAssignedToUser(task, user.uid) &&
+      task.isBroadcast !== true
     ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },

@@ -33,8 +33,14 @@ if (!admin.apps.length) {
         }),
       });
     } else {
-      console.warn(
-        '[Firebase Admin] Initialization skipped due to missing environment variables.',
+      const missing = [
+        !projectId && 'FIREBASE_ADMIN_PROJECT_ID',
+        !clientEmail && 'FIREBASE_ADMIN_CLIENT_EMAIL',
+        !privateKey && 'FIREBASE_ADMIN_PRIVATE_KEY',
+      ].filter(Boolean).join(', ');
+      console.error(
+        `[Firebase Admin] Server configuration is incomplete. Missing: ${missing}. ` +
+          'Add these variables to the linked Vercel project for Production and Preview environments, then redeploy.',
       );
     }
   } catch (error) {

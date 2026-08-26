@@ -3,14 +3,16 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
+import { validateAutomationRule } from '@/lib/automation-rule-config';
 
 interface CreateRuleBody {
-  name: string;
-  group: string;
-  trigger: string;
-  threshold: number;
-  action: string;
-  enabled: boolean;
+  name?: unknown;
+  group?: unknown;
+  trigger?: unknown;
+  threshold?: unknown;
+  action?: unknown;
+  enabled?: unknown;
+  waterWaitSeconds?: unknown;
 }
 
 // GET /api/automation-rules — list all
@@ -40,9 +42,20 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     await verifyAuthToken(request);
 
-    const body = (await request.json()) as Partial<CreateRuleBody>;
-    const { name, group, trigger, threshold, action, enabled } = body;
-    const trimmedName = name?.trim();
+    const rawBody: unknown = await request.json();
+    if (
+      !rawBody ||
+      typeof rawBody !== 'object' ||
+      Array.isArray(rawBody)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Request body must be an object' },
+        { status: 400 },
+      );
+    }
+    const body = rawBody as CreateRuleBody;
+    const { name, group, trigger, threshold, action, enabled, waterWaitSeconds } = body;
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
 
     if (
       !trimmedName ||
@@ -60,12 +73,26 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    if (!Number.isFinite(threshold) || threshold < 0) {
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
       return NextResponse.json(
         {
           success: false,
-          error: 'threshold must be a valid number greater than or equal to 0',
+          error: 'enabled must be a boolean',
         },
+        { status: 400 },
+      );
+    }
+
+    const validation = validateAutomationRule({
+      group,
+      trigger,
+      threshold,
+      action,
+      waterWaitSeconds,
+    });
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
         { status: 400 },
       );
     }
@@ -74,10 +101,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     await docRef.set({
       id: docRef.id,
       name: trimmedName,
-      group,
-      trigger,
-      threshold,
-      action,
+      ...validation.data,
       enabled: enabled ?? true,
       createdAt: FieldValue.serverTimestamp(),
     });

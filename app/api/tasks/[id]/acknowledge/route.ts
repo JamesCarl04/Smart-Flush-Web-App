@@ -3,7 +3,6 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import {
-  listRequiredTaskUserIds,
   normalizeAssignedToIds,
 } from '@/lib/task-assignment';
 
@@ -16,6 +15,7 @@ interface TaskActionDoc {
   assignedToIds?: unknown;
   acknowledgedBy?: Record<string, unknown>;
   completedBy?: Record<string, unknown>;
+  isBroadcast?: unknown;
 }
 
 export async function POST(
@@ -28,41 +28,58 @@ export async function POST(
     const { id } = await params;
 
     const taskRef = adminDb.collection('tasks').doc(id);
-    const taskSnapshot = await taskRef.get();
-    if (!taskSnapshot.exists) {
+    const outcome = await adminDb.runTransaction(async (transaction) => {
+      const taskSnapshot = await transaction.get(taskRef);
+      if (!taskSnapshot.exists) return 'not_found' as const;
+
+      const task = taskSnapshot.data() as TaskActionDoc;
+      const now = Timestamp.now();
+      const assignedTo =
+        typeof task.assignedTo === 'string' && task.assignedTo.trim()
+          ? task.assignedTo.trim()
+          : null;
+      const assignedToIds = normalizeAssignedToIds(task.assignedToIds);
+      const isUnassigned = assignedTo === null && assignedToIds.length === 0;
+      if (isUnassigned && task.isBroadcast !== true) return 'forbidden' as const;
+
+      const requiredUserIds = isUnassigned
+        ? [user.uid]
+        : assignedToIds.length > 0
+          ? assignedToIds
+          : assignedTo
+            ? [assignedTo]
+            : [];
+      if (!requiredUserIds.includes(user.uid)) return 'forbidden' as const;
+
+      transaction.update(taskRef, {
+        [`acknowledgedBy.${user.uid}`]: now,
+        status: 'acknowledged',
+        acknowledgedAt: now,
+        ...(isUnassigned
+          ? {
+              assignedTo: user.uid,
+              assignedToIds: [user.uid],
+              isBroadcast: false,
+              assignmentType: 'individual',
+              assignedAt: now,
+            }
+          : {}),
+      });
+      return 'acknowledged' as const;
+    });
+
+    if (outcome === 'not_found') {
       return NextResponse.json(
         { success: false, error: 'Task not found' },
         { status: 404 },
       );
     }
-
-    const task = taskSnapshot.data() as TaskActionDoc;
-    const now = Timestamp.now();
-    const assignment = {
-      assignedTo:
-        typeof task.assignedTo === 'string' && task.assignedTo.trim()
-          ? task.assignedTo.trim()
-          : null,
-      assignedToIds: normalizeAssignedToIds(task.assignedToIds),
-    };
-    const requiredUserIds = await listRequiredTaskUserIds(assignment);
-    if (!requiredUserIds.includes(user.uid)) {
+    if (outcome === 'forbidden') {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
       );
     }
-
-    const acknowledgedBy = {
-      ...(task.acknowledgedBy ?? {}),
-      [user.uid]: now,
-    };
-
-    await taskRef.update({
-      [`acknowledgedBy.${user.uid}`]: now,
-      status: 'acknowledged',
-      acknowledgedAt: now,
-    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

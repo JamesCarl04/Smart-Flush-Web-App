@@ -9,14 +9,15 @@ import {
   writeLidEvent,
   writeUVCycle,
   updateDeviceLastSeen,
+  isValidCompletedFlowEvent,
   type UltrasonicPayload,
   type WaterflowPayload,
   type LidPayload,
   type UVPayload,
 } from './firestore-writers';
-import { evaluateAlerts, resetOfflineWatchdog } from './alert-engine';
+import { resetOfflineWatchdog } from './alert-engine';
 import { recordDeviceHeartbeat } from './local-runtime-cache';
-import { createTaskAndNotify } from './task-service';
+import { createAutomationEngine } from './automation-engine';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -44,34 +45,13 @@ function ts(): string {
 
 // ─── Singleton state ──────────────────────────────────────────────────────────
 
-async function writeUvCycleAndMaybeCreateTask(
-  payload: UVPayload,
-  deviceId: string,
-): Promise<void> {
-  await writeUVCycle(payload, deviceId);
-
-  if (payload.completed !== true) {
-    return;
-  }
-
-  try {
-    await createTaskAndNotify({
-      deviceId,
-      triggerType: 'uv_complete',
-      message: 'UV cycle complete. Manual cleaning required.',
-      assignedTo: null,
-      createdBy: 'system:mqtt',
-    });
-  } catch (error) {
-    console.error(`[${ts()}] [MQTT] Failed to create UV completion task:`, error);
-  }
-}
-
 let client: MqttClient | null = null;
+const automationEngine = createAutomationEngine();
+let messageQueue: Promise<void> = Promise.resolve();
 
 // ─── Message router ───────────────────────────────────────────────────────────
 
-async function handleMessage(topic: string, raw: Buffer): Promise<void> {
+export async function handleMessage(topic: string, raw: Buffer): Promise<void> {
   console.log(`[${ts()}] [MQTT] Message on: ${topic}`);
 
   let payload: unknown;
@@ -88,41 +68,55 @@ async function handleMessage(topic: string, raw: Buffer): Promise<void> {
   // Reset the device-offline watchdog on every inbound message
   resetOfflineWatchdog(DEVICE_ID);
 
-  // Update the device's lastSeen for every inbound message
-  void updateDeviceLastSeen(DEVICE_ID);
+  // Await heartbeat persistence before evaluating online-only sensor rules.
+  await updateDeviceLastSeen(DEVICE_ID);
+  automationEngine.recordHeartbeat(DEVICE_ID);
 
   switch (topic) {
     case 'toilet/sensors/ultrasonic': {
       const p = payload as UltrasonicPayload;
-      void writeSensorReading(topic, p, DEVICE_ID);
+      await writeSensorReading(topic, p, DEVICE_ID);
+      await automationEngine.handleUltrasonic(DEVICE_ID, p);
       break;
     }
     case 'toilet/sensors/waterflow': {
       const p = payload as WaterflowPayload;
-      void writeSensorReading(topic, p, DEVICE_ID);
-      void writeFlushEvent(p, DEVICE_ID);
-      void evaluateAlerts(topic, p, DEVICE_ID);
+      await writeSensorReading(topic, p, DEVICE_ID);
+      if (!isValidCompletedFlowEvent(p)) break;
+      const flush = await writeFlushEvent(p, DEVICE_ID);
+      await automationEngine.handleCompletedFlow(
+        DEVICE_ID,
+        p,
+        flush.flushCycleCount,
+      );
       break;
     }
     case 'toilet/events/lid': {
       const p = payload as LidPayload;
-      void writeLidEvent(p, DEVICE_ID);
+      await writeLidEvent(p, DEVICE_ID);
       break;
     }
     case 'toilet/events/uv': {
       const p = payload as UVPayload;
-      void writeUvCycleAndMaybeCreateTask(p, DEVICE_ID);
-      void evaluateAlerts(topic, p, DEVICE_ID);
+      await writeUVCycle(p, DEVICE_ID);
       break;
     }
     case 'toilet/events/pump': {
-      // Pump events are informational — log only (no dedicated collection)
       console.log(`[${ts()}] [MQTT] Pump event:`, JSON.stringify(payload));
+      await automationEngine.handlePumpEvent(
+        DEVICE_ID,
+        payload as { status?: unknown },
+      );
       break;
     }
     default:
       console.warn(`[${ts()}] [MQTT] Unhandled topic: ${topic}`);
   }
+}
+
+/** Re-evaluates Firestore-persisted no-water state after process restarts. */
+export async function processPendingAutomationState(): Promise<void> {
+  await automationEngine.processDueNoWaterCheck(DEVICE_ID);
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -174,7 +168,11 @@ export function getMqttClient(): MqttClient {
   });
 
   client.on('message', (topic, message) => {
-    void handleMessage(topic, message);
+    messageQueue = messageQueue
+      .then(() => handleMessage(topic, message))
+      .catch((error) => {
+        console.error(`[${ts()}] [MQTT] Message processing failed:`, error);
+      });
   });
 
   client.on('error', (error) => {

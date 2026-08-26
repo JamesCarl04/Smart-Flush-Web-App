@@ -93,6 +93,27 @@ function getPriorityBadge(triggerType?: TaskTriggerType) {
           'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30',
         icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
       };
+    case 'water_overuse':
+      return {
+        label: 'Water Overuse',
+        className:
+          'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30',
+        icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'water_no_flow':
+      return {
+        label: 'No Water After Flush',
+        className:
+          'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30',
+        icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'sensor_fault':
+      return {
+        label: 'Ultrasonic Sensor Fault',
+        className:
+          'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30',
+        icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
     case 'manual':
     default:
       return {

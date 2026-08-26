@@ -53,7 +53,7 @@ export function isAssignedToUser(
     return task.assignedToIds.includes(userId);
   }
 
-  return task.assignedTo === userId || task.assignedTo === null;
+  return task.assignedTo === userId;
 }
 
 export function usesSharedProgress(task: TaskAssignmentShape): boolean {

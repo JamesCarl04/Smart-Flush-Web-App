@@ -19,6 +19,7 @@ interface TaskNotificationPayload {
     taskId: string;
     deviceId: string;
     triggerType: string;
+    status: string;
   };
 }
 
@@ -40,6 +41,7 @@ function buildPayload(task: TaskDoc): TaskNotificationPayload {
       taskId: task.id,
       deviceId: task.deviceId,
       triggerType: task.triggerType,
+      status: task.status,
     },
   };
 }
@@ -103,10 +105,10 @@ async function readAssignedToken(uid: string): Promise<TokenOwner | null> {
   return token ? { uid, token } : null;
 }
 
-async function readMaintenanceTokens(): Promise<TokenOwner[]> {
+async function readSupervisorAndAdminTokens(): Promise<TokenOwner[]> {
   const snapshot = await adminDb
     .collection('users')
-    .where('role', '==', 'maintenance')
+    .where('role', 'in', ['supervisor', 'admin'])
     .get();
   const owners: TokenOwner[] = [];
 
@@ -186,13 +188,12 @@ async function sendToManyTokens(
 
 export async function sendTaskNotification(
   task: TaskDoc,
-  assignedToUid: string | null,
 ): Promise<void> {
-  if (assignedToUid) {
-    const owner = await readAssignedToken(assignedToUid);
+  if (task.assignedTo) {
+    const owner = await readAssignedToken(task.assignedTo);
     if (!owner) {
       console.info(
-        `[FCM] No FCM token found for assigned user ${assignedToUid}. success=0 failure=0`,
+        `[FCM] No FCM token found for assigned user ${task.assignedTo}. success=0 failure=0`,
       );
       return;
     }
@@ -201,9 +202,9 @@ export async function sendTaskNotification(
     return;
   }
 
-  const owners = await readMaintenanceTokens();
+  const owners = await readSupervisorAndAdminTokens();
   if (owners.length === 0) {
-    console.info('[FCM] No maintenance FCM tokens found. success=0 failure=0');
+    console.info('[FCM] No supervisor/admin FCM tokens found. success=0 failure=0');
     return;
   }
 

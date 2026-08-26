@@ -18,7 +18,7 @@ jest.mock('firebase-admin/firestore', () => ({
 
 jest.mock('@/lib/fcm', () => ({ sendTaskNotification: jest.fn() }));
 
-import { createTaskDocument } from '@/lib/task-service';
+import { createTaskDocument, serializeTaskSnapshot } from '@/lib/task-service';
 
 describe('createTaskDocument', () => {
   beforeEach(() => mockTaskSet.mockReset());
@@ -41,5 +41,65 @@ describe('createTaskDocument', () => {
         assignmentType: 'broadcast',
       }),
     );
+  });
+});
+
+describe('serializeTaskSnapshot', () => {
+  it('preserves additional photos from a Firestore task snapshot', () => {
+    const additionalPhotos = [
+      { area: 'floor', url: 'https://storage.example/floor.jpg' },
+      { area: 'seat', url: 'https://storage.example/seat.jpg' },
+    ];
+    const snapshot = {
+      id: 'task-photos',
+      data: () => ({
+        deviceId: 'toilet-01',
+        triggerType: 'manual',
+        message: 'Inspect toilet.',
+        status: 'pending',
+        assignedTo: null,
+        assignedToIds: [],
+        additionalPhotos,
+        createdBy: 'user-1',
+      }),
+    } as unknown as FirebaseFirestore.QueryDocumentSnapshot;
+
+    const result = serializeTaskSnapshot(snapshot);
+
+    expect(result.additionalPhotos).toEqual(additionalPhotos);
+  });
+
+  it('preserves automation assignment metadata for dashboard and mobile clients', () => {
+    const snapshot = {
+      id: 'task-automation',
+      data: () => ({
+        deviceId: 'toilet-01',
+        triggerType: 'water_no_flow',
+        message: 'No water detected after a flush cycle.',
+        status: 'unassigned',
+        assignedTo: null,
+        assignedToIds: [],
+        isBroadcast: false,
+        assignmentType: 'individual',
+        automationRuleId: 'rule-dry-flow',
+        automationTrigger: 'no_water_after_flush',
+        assignmentSource: 'initial_auto',
+        requiresSupervisorAssignment: true,
+        autoAssignmentEligibleAt: { toMillis: () => 60_000 },
+        cycleCountAtTrigger: 2,
+        createdBy: 'system:mqtt',
+      }),
+    } as unknown as FirebaseFirestore.QueryDocumentSnapshot;
+
+    expect(serializeTaskSnapshot(snapshot)).toEqual(expect.objectContaining({
+      triggerType: 'water_no_flow',
+      isBroadcast: false,
+      automationRuleId: 'rule-dry-flow',
+      automationTrigger: 'no_water_after_flush',
+      assignmentSource: 'initial_auto',
+      requiresSupervisorAssignment: true,
+      autoAssignmentEligibleAt: 60_000,
+      cycleCountAtTrigger: 2,
+    }));
   });
 });

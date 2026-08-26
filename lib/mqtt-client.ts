@@ -2,44 +2,6 @@
 // Singleton MQTT client for HiveMQ Cloud (TLS port 8883)
 // Import this via getMqttClient() — never call mqtt.connect() directly elsewhere
 import mqtt, { type MqttClient } from 'mqtt';
-import {
-  writeSensorReading,
-  writeFlushEvent,
-  writeLidEvent,
-  writeUVCycle,
-  updateDeviceLastSeen,
-} from '@/lib/firestore-writers';
-import { evaluateAlerts } from '@/lib/alert-engine';
-import { createTaskAndNotify } from '@/lib/task-service';
-
-// The device ID associated with the single physical toilet unit.
-// Override via MQTT_DEVICE_ID env var if you later support multiple devices.
-const DEVICE_ID = process.env.MQTT_DEVICE_ID ?? 'toilet-01';
-
-// ─── Payload interfaces ───────────────────────────────────────────────────────
-
-interface UltrasonicPayload {
-  distance: number;
-  unit: string;
-  timestamp: number;
-}
-
-interface WaterflowPayload {
-  volume: number;
-  duration: number;
-  unit: string;
-}
-
-interface LidPayload {
-  status: 'open' | 'closed';
-  timestamp: number;
-}
-
-interface UVPayload {
-  duration: number;
-  completed: boolean;
-  timestamp: number;
-}
 
 // ─── Singleton state ──────────────────────────────────────────────────────────
 
@@ -56,66 +18,6 @@ function buildBrokerUrl(hostOrUrl: string | undefined, port: string): string {
   }
 
   return `mqtts://${value}:${port.trim() || '8883'}`;
-}
-
-// ─── Message router ───────────────────────────────────────────────────────────
-
-async function writeUvCycleTelemetry(
-  payload: UVPayload,
-  deviceId: string,
-): Promise<void> {
-  await writeUVCycle(payload, deviceId);
-  // Normal UV completion is a healthy sanitation routine — telemetry only.
-  // Hardware failures (payload.completed === false) are evaluated by evaluateAlerts.
-}
-
-async function handleMessage(topic: string, raw: Buffer): Promise<void> {
-  console.log(`[MQTT] Message: ${topic}`);
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw.toString());
-  } catch {
-    console.error(`[MQTT] Invalid JSON on topic ${topic}:`, raw.toString());
-    return;
-  }
-
-  // Update the device's lastSeen for every inbound message
-  void updateDeviceLastSeen(DEVICE_ID);
-
-  switch (topic) {
-    case 'toilet/sensors/ultrasonic': {
-      const p = payload as UltrasonicPayload;
-      void writeSensorReading(topic, p, DEVICE_ID);
-      break;
-    }
-    case 'toilet/sensors/waterflow': {
-      const p = payload as WaterflowPayload;
-      void writeSensorReading(topic, p, DEVICE_ID);
-      void writeFlushEvent(p, DEVICE_ID);
-      void evaluateAlerts(topic, p, DEVICE_ID);
-      break;
-    }
-    case 'toilet/events/lid': {
-      const p = payload as LidPayload;
-      void writeLidEvent(p, DEVICE_ID);
-      break;
-    }
-    case 'toilet/events/uv': {
-      const p = payload as UVPayload;
-      void writeUvCycleTelemetry(p, DEVICE_ID);
-      void evaluateAlerts(topic, p, DEVICE_ID);
-      break;
-    }
-    case 'toilet/events/pump':
-    case 'toilet/events/error': {
-      console.log(`[MQTT] Hardware event on ${topic}:`, JSON.stringify(payload));
-      void evaluateAlerts(topic, payload as Record<string, unknown>, DEVICE_ID);
-      break;
-    }
-    default:
-      console.warn(`[MQTT] Unhandled topic: ${topic}`);
-  }
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -149,24 +51,7 @@ export function getMqttClient(): MqttClient {
   });
 
   client.on('connect', () => {
-    console.log('[MQTT] Connected');
-    client!.subscribe(
-      ['toilet/sensors/#', 'toilet/events/#'],
-      { qos: 1 },
-      (err) => {
-        if (err) {
-          console.error('[MQTT] Subscribe error:', err);
-        } else {
-          console.log(
-            '[MQTT] Subscribed to toilet/sensors/# and toilet/events/#',
-          );
-        }
-      },
-    );
-  });
-
-  client.on('message', (topic, message) => {
-    void handleMessage(topic, message);
+    console.log('[MQTT] Connected for command publishing');
   });
 
   client.on('error', (error) => {

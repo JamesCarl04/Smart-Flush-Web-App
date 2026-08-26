@@ -43,6 +43,24 @@ export interface FlushPayload {
   unit: string;
 }
 
+const SUPPORTED_FLOW_UNITS = new Set(['l', 'liter', 'liters', 'litre', 'litres']);
+
+/** A water packet represents a completed flush only when all flow fields are usable. */
+export function isValidCompletedFlowEvent(payload: unknown): payload is FlushPayload {
+  if (!payload || typeof payload !== 'object') return false;
+  const candidate = payload as Partial<FlushPayload>;
+  return (
+    typeof candidate.volume === 'number' &&
+    Number.isFinite(candidate.volume) &&
+    candidate.volume > 0 &&
+    typeof candidate.duration === 'number' &&
+    Number.isFinite(candidate.duration) &&
+    candidate.duration > 0 &&
+    typeof candidate.unit === 'string' &&
+    SUPPORTED_FLOW_UNITS.has(candidate.unit.trim().toLowerCase())
+  );
+}
+
 export interface PumpPayload {
   status: string;
   timestamp: number;
@@ -202,7 +220,7 @@ export async function writeSensorReading(
 export async function writeFlushEvent(
   payload: FlushPayload,
   deviceId: string,
-): Promise<void> {
+): Promise<{ id: string; flushCycleCount: number }> {
   try {
     const docRef = adminDb.collection('flushEvents').doc();
     await docRef.set({
@@ -215,9 +233,18 @@ export async function writeFlushEvent(
     console.log(
       `[Firestore] flushEvent written: ${payload.volume}${payload.unit}`,
     );
-    void incrementCounters(deviceId, 'flush', payload);
+    await incrementCounters(deviceId, 'flush', payload, { throwOnError: true });
+    const countersSnapshot = await adminDb
+      .collection('devices')
+      .doc(deviceId)
+      .collection('maintenanceCounters')
+      .doc('current')
+      .get();
+    const flushCycleCount = Number(countersSnapshot.data()?.flushCycleCount ?? 0);
+    return { id: docRef.id, flushCycleCount };
   } catch (error) {
     console.error('[Firestore] writeFlushEvent error:', error);
+    throw error;
   }
 }
 

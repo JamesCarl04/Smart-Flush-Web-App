@@ -6,15 +6,10 @@ import toast from 'react-hot-toast';
 import { format, endOfMonth, startOfMonth, subDays, subMonths } from 'date-fns';
 import {
   AlertCircle,
-  Calendar,
-  CalendarRange,
   CheckCircle2,
   Clock,
   Download,
   FileBarChart,
-  FileJson,
-  FileSpreadsheet,
-  FileText,
   FileX,
   History,
   Hourglass,
@@ -115,6 +110,9 @@ const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
   flush_count: 'Flush Count Trigger',
   maintenance: 'Scheduled Maintenance',
   hardware_failure: 'Hardware Failure Alert',
+  sensor_fault: 'Ultrasonic Sensor Fault',
+  water_overuse: 'Water Overuse',
+  water_no_flow: 'No Water After Flush',
 };
 
 function getStatusBadge(status: TaskStatus) {
@@ -1432,24 +1430,6 @@ function RecentExportsHistory({
       )}
     </div>
   );
-}
-
-function FormatIcon({
-  fmt,
-  className,
-}: {
-  fmt: ExportFormat;
-  className?: string;
-}) {
-  switch (fmt) {
-    case 'CSV':
-      return <FileSpreadsheet className={className} />;
-    case 'JSON':
-      return <FileJson className={className} />;
-    case 'PDF':
-    default:
-      return <FileText className={className} />;
-  }
 }
 
 type QAFilterTab = 'all' | 'pending' | 'approved' | 'flagged';

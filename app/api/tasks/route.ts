@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import {
   getUserRole,
-  requireAdmin,
   verifyAuthToken,
 } from '@/lib/auth-helpers';
 import {
@@ -67,7 +66,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: 'status must be pending, acknowledged, or completed',
+          error: 'status is not a supported task status',
         },
         { status: 400 },
       );
@@ -91,9 +90,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             rawTask.submissions &&
               (rawTask.submissions as Record<string, unknown>)[user.uid],
           ) ||
-          rawTask.status === 'unassigned' ||
-          rawTask.status === 'reassignment_needed' ||
-          rawTask.status === 'flagged';
+          rawTask.isBroadcast === true;
 
         if (!isUserTask) {
           continue;
@@ -168,7 +165,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         {
           success: false,
           error:
-            'triggerType must be manual, uv_complete, flush_count, or maintenance',
+            'triggerType is not a supported task trigger',
         },
         { status: 400 },
       );

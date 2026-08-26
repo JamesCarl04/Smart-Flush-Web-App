@@ -25,13 +25,14 @@ interface UVPayload {
   timestamp: number;
 }
 
-interface MaintenanceCounters {
+export interface MaintenanceCounters {
   uvOnTimeSeconds: number;
   lidCycleCount: number;
   flowSensorTotalLiters: number;
   pumpTotalLiters: number;
   relayTotalTriggers: number;
   ultrasonicConsecutiveFailures: number;
+  flushCycleCount: number;
 }
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
@@ -54,8 +55,13 @@ const MAINTENANCE_ALERT_CHECK_INTERVAL_MS = readPositiveIntEnv(
 const lastMaintenanceCheckByDevice = new Map<string, number>();
 const ultrasonicHealthState = new Map<string, 'fail' | 'ok'>();
 
-const THRESHOLDS: Record<
+type StaticMaintenanceCounter = Exclude<
   keyof MaintenanceCounters,
+  'flushCycleCount'
+>;
+
+const THRESHOLDS: Record<
+  StaticMaintenanceCounter,
   { limit: number; message: string }
 > = {
   uvOnTimeSeconds: {
@@ -104,6 +110,7 @@ export async function incrementCounters(
   deviceId: string,
   eventType: EventType,
   payload: FlushPayload | UVPayload | Record<string, unknown>,
+  options: { throwOnError?: boolean } = {},
 ): Promise<void> {
   try {
     const ref = countersRef(deviceId);
@@ -136,6 +143,7 @@ export async function incrementCounters(
             flowSensorTotalLiters: FieldValue.increment(p.volume),
             pumpTotalLiters: FieldValue.increment(p.volume),
             relayTotalTriggers: FieldValue.increment(1),
+            flushCycleCount: FieldValue.increment(1),
           },
           { merge: true },
         );
@@ -166,7 +174,18 @@ export async function incrementCounters(
     void evaluateMaintenanceAlerts(deviceId);
   } catch (error) {
     console.error('[HardwareCounters] incrementCounters error:', error);
+    if (options.throwOnError) throw error;
   }
+}
+
+/** Reads the current maintenance counter document after a completed flow write. */
+export async function getMaintenanceCounters(
+  deviceId: string,
+): Promise<Partial<MaintenanceCounters>> {
+  const snapshot = await countersRef(deviceId).get();
+  return snapshot.exists
+    ? (snapshot.data() as Partial<MaintenanceCounters>)
+    : {};
 }
 
 /**
@@ -195,7 +214,7 @@ export async function evaluateMaintenanceAlerts(
     const counters = snap.data() as Partial<MaintenanceCounters>;
 
     for (const [key, config] of Object.entries(THRESHOLDS)) {
-      const counterKey = key as keyof MaintenanceCounters;
+      const counterKey = key as StaticMaintenanceCounter;
       const value = counters[counterKey] ?? 0;
 
       if (value >= config.limit) {

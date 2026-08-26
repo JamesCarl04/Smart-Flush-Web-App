@@ -20,8 +20,18 @@ export const TASK_TRIGGER_TYPES = [
   'hardware_failure',
   'sensor_fault',
   'water_overuse',
+  'water_no_flow',
 ] as const;
 export type TaskTriggerType = (typeof TASK_TRIGGER_TYPES)[number];
+
+export const AUTOMATION_TRIGGERS = [
+  'ultrasonic_sensor_fault',
+  'water_overuse',
+  'no_water_after_flush',
+  'maintenance_due',
+] as const;
+export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
+export type AssignmentSource = 'initial_auto' | 'supervisor' | 'retry_auto';
 
 export interface TaskDoc {
   id: string;
@@ -39,6 +49,12 @@ export interface TaskDoc {
   assignedToIds: string[];
   isBroadcast?: boolean;
   assignmentType?: 'broadcast' | 'individual' | 'team';
+  automationRuleId?: string;
+  automationTrigger?: AutomationTrigger;
+  assignmentSource?: AssignmentSource;
+  requiresSupervisorAssignment?: boolean;
+  autoAssignmentEligibleAt?: Timestamp | null;
+  cycleCountAtTrigger?: number;
   createdAt: Timestamp;
   assignedAt?: Timestamp | null;
   acknowledgedAt: Timestamp | null;
@@ -74,6 +90,14 @@ export interface TaskApiData {
   status: TaskStatus;
   assignedTo: string | null;
   assignedToIds: string[];
+  isBroadcast?: boolean;
+  assignmentType?: 'broadcast' | 'individual' | 'team';
+  automationRuleId?: string;
+  automationTrigger?: AutomationTrigger;
+  assignmentSource?: AssignmentSource;
+  requiresSupervisorAssignment?: boolean;
+  autoAssignmentEligibleAt?: number | null;
+  cycleCountAtTrigger?: number;
   createdAt: number | null;
   assignedAt?: number | null;
   acknowledgedAt: number | null;
@@ -86,6 +110,7 @@ export interface TaskApiData {
   beforePhotoCapturedAt?: number | null;
   afterPhotoUrl?: string | null;
   afterPhotoCapturedAt?: number | null;
+  additionalPhotos?: unknown[];
   checklist?: Record<string, unknown>;
   remarks?: string;
   workDuration?: number | null;

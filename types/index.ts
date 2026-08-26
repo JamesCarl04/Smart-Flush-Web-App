@@ -65,17 +65,23 @@ export interface Alert {
 
 export type TaskStatus =
   | 'pending'
+  | 'unassigned'
+  | 'assigned'
   | 'acknowledged'
   | 'completed'
   | 'flagged'
-  | 'rechecking';
+  | 'rechecking'
+  | 'reassignment_needed';
 
 export type TaskTriggerType =
   | 'manual'
   | 'uv_complete'
   | 'flush_count'
   | 'maintenance'
-  | 'hardware_failure';
+  | 'hardware_failure'
+  | 'sensor_fault'
+  | 'water_overuse'
+  | 'water_no_flow';
 
 export interface Task {
   id: string;
@@ -84,6 +90,18 @@ export interface Task {
   message: string;
   assignedTo?: string | null;
   assignedToIds?: string[];
+  isBroadcast?: boolean;
+  assignmentType?: 'broadcast' | 'individual' | 'team';
+  automationRuleId?: string;
+  automationTrigger?:
+    | 'ultrasonic_sensor_fault'
+    | 'water_overuse'
+    | 'no_water_after_flush'
+    | 'maintenance_due';
+  assignmentSource?: 'initial_auto' | 'supervisor' | 'retry_auto';
+  requiresSupervisorAssignment?: boolean;
+  autoAssignmentEligibleAt?: number | null;
+  cycleCountAtTrigger?: number;
   status: TaskStatus;
   createdAt: number;
   acknowledgedAt?: number | null;

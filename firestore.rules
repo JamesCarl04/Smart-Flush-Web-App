@@ -29,22 +29,85 @@ service cloud.firestore {
       return isRole('maintenance') || isRole('technician') || isSupervisor();
     }
 
-    match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow create: if isSupervisor();
-      allow update: if isAuthenticated() && (
-        isSupervisor() ||
+    function isTaskOwner(task) {
+      return isAuthenticated() && (
+        task.get('assignedTo', null) == request.auth.uid ||
+        request.auth.uid in task.get('assignedToIds', []) ||
         (
-          isMaintenance() &&
-          request.resource.data.inspectionStatus != 'approved'
+          request.auth.token.get('email', null) != null &&
+          task.get('assignedTo', null) == request.auth.token.get('email', null)
         )
       );
+    }
+
+    function isTaskBroadcast(task) {
+      return task.get('isBroadcast', false) == true;
+    }
+
+    function canMaintenanceReadTask(task) {
+      return isMaintenance() && (
+        isTaskOwner(task) ||
+        isTaskBroadcast(task)
+      );
+    }
+
+    function canMaintenanceUpdateTask() {
+      return canMaintenanceReadTask(resource.data) &&
+        isTaskOwner(request.resource.data) &&
+        request.resource.data.get('isBroadcast', false) == false &&
+        request.resource.data.get('inspectionStatus', null) != 'approved' &&
+        request.resource.data.get('inspectionStatus', null) != 'flagged' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'assignedTo',
+          'assignedToIds',
+          'isBroadcast',
+          'assignmentType',
+          'assignedAt',
+          'acknowledgedAt',
+          'acknowledgedBy',
+          'completedAt',
+          'completedBy',
+          'submissions',
+          'checklist',
+          'remarks',
+          'beforePhotoUrl',
+          'beforePhotoCapturedAt',
+          'afterPhotoUrl',
+          'afterPhotoCapturedAt',
+          'additionalPhotos',
+          'biometricVerified',
+          'offlineSynced',
+          'inspectionStatus',
+          'workDuration',
+          'totalTime',
+          'recheckCount',
+          'recheckedBy',
+          'recheckedAt',
+          'updatedAt'
+        ]);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isSupervisor() || canMaintenanceReadTask(resource.data);
+      allow create: if isSupervisor();
+      allow update: if isSupervisor() || canMaintenanceUpdateTask();
       allow delete: if isAdmin();
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isSupervisor());
+      allow create: if isSupervisor() || (
+        isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.get('role', 'maintenance') != 'admin' &&
+        request.resource.data.get('role', 'maintenance') != 'supervisor'
+      );
+      allow update: if isSupervisor() || (
+        isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.get('role', null) == resource.data.get('role', null)
+      );
       allow delete: if isAdmin();
     }
 
