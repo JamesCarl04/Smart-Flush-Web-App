@@ -208,6 +208,68 @@ describe('automated listener task dispatch', () => {
     expect(mockSendTaskNotification).not.toHaveBeenCalled();
   });
 
+  it('consumes a durable routine event in the same transaction as its occurrence merge', async () => {
+    const eventRef = { id: 'event-1' };
+    const guardRef = { id: 'guard' };
+    const taskRef = { id: 'existing-task' };
+    const transaction = { get: jest.fn(), set: jest.fn(), update: jest.fn(), delete: jest.fn() };
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'automationPendingEvents') return { doc: jest.fn(() => eventRef) };
+      if (name === 'automationTaskGuards') return { doc: jest.fn(() => guardRef) };
+      if (name === 'tasks') return { doc: jest.fn(() => taskRef) };
+      return { doc: jest.fn() };
+    });
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          pending: true,
+          type: 'routine_threshold',
+          automationRuleId: 'routine-rule',
+          deviceId: 'toilet-01',
+        }),
+      })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ taskId: 'existing-task' }) })
+      .mockResolvedValueOnce({ exists: true, data: () => guardedAutomationTask('assigned') });
+
+    const eventInput = {
+      ...automationInput,
+      automationRuleId: 'routine-rule',
+      automationTrigger: 'maintenance_due' as const,
+      triggerType: 'maintenance' as const,
+      pendingEventId: 'event-1',
+    };
+    await expect(dispatchAutomatedTaskAndNotify(eventInput)).resolves.toEqual(expect.objectContaining({ outcome: 'merged' }));
+
+    expect(transaction.update).toHaveBeenCalledWith(taskRef, expect.objectContaining({ occurrenceCount: 2 }));
+    expect(transaction.delete).toHaveBeenCalledWith(eventRef);
+  });
+
+  it('treats a missing routine event as already consumed without replaying its task mutation', async () => {
+    const eventRef = { id: 'event-consumed' };
+    const transaction = { get: jest.fn(), set: jest.fn(), update: jest.fn(), delete: jest.fn() };
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'automationPendingEvents') return { doc: jest.fn(() => eventRef) };
+      return { doc: jest.fn(), where: jest.fn() };
+    });
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    transaction.get.mockResolvedValueOnce({ exists: false, data: () => undefined });
+
+    await expect(dispatchAutomatedTaskAndNotify({
+      ...automationInput,
+      automationRuleId: 'routine-rule',
+      automationTrigger: 'maintenance_due',
+      triggerType: 'maintenance',
+      pendingEventId: 'event-consumed',
+    })).resolves.toEqual({ outcome: 'consumed' });
+
+    expect(transaction.get).toHaveBeenCalledTimes(1);
+    expect(transaction.set).not.toHaveBeenCalled();
+    expect(transaction.update).not.toHaveBeenCalled();
+    expect(transaction.delete).not.toHaveBeenCalled();
+  });
+
   it('persists a supervisor-only unassigned task when nobody is available', async () => {
     const taskRef = { id: 'task-2' };
     const transaction = { get: jest.fn(), set: jest.fn(), update: jest.fn() };

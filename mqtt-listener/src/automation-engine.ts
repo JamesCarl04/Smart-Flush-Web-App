@@ -45,7 +45,7 @@ export interface PendingThresholdEvent {
 export interface AutomationStore {
   getEnabledRules(): Promise<AutomationRule[]>;
   getRule(id: string): Promise<AutomationRule | null>;
-  dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<'created' | 'merged' | 'pending'>;
+  dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number, eventId?: string): Promise<'created' | 'merged' | 'pending' | 'consumed'>;
   createAlert(deviceId: string, trigger: AutomationRuleTrigger): Promise<void>;
   getNoWaterState(deviceId: string): Promise<NoWaterState>;
   setNoWaterPending(deviceId: string, dueAtMs: number): Promise<void>;
@@ -213,7 +213,6 @@ export class TelemetryAutomationEngine {
     if (dryCycles === null) return;
     for (const rule of rules) {
       if (dryCycles >= rule.threshold && await this.dispatch(rule, deviceId)) {
-        await this.store.clearNoWaterPending(deviceId, false);
         await this.store.resetDryCycles(deviceId);
       }
     }
@@ -239,8 +238,8 @@ export class TelemetryAutomationEngine {
   private async processPendingEvent(event: PendingThresholdEvent): Promise<void> {
     const rule = await this.store.getRule(event.ruleId);
     if (rule && isRunnableRule(rule) && TASK_ACTIONS.has(rule.action)) {
-      const dispatched = await this.dispatch(rule, event.deviceId, event.cycleCount);
-      if (!dispatched) return;
+      const dispatched = await this.dispatch(rule, event.deviceId, event.cycleCount, event.eventId);
+      if (dispatched) return;
     }
     if (event.eventId) await this.store.acknowledgePendingThresholdEvent(event.eventId);
   }
@@ -255,10 +254,12 @@ export class TelemetryAutomationEngine {
     cachedRule: AutomationRule,
     deviceId: string,
     cycleCount?: number,
+    eventId?: string,
   ): Promise<boolean> {
     const current = await this.store.getRule(cachedRule.id);
     if (!current || current.trigger !== cachedRule.trigger || !isRunnableRule(current) || !TASK_ACTIONS.has(current.action)) return false;
-    await this.store.dispatchThreshold(current, deviceId, cycleCount);
+    const outcome = await this.store.dispatchThreshold(current, deviceId, cycleCount, eventId);
+    if (outcome === 'consumed') return true;
     try {
       await this.store.createAlert(deviceId, current.trigger);
     } catch (error) {
@@ -274,6 +275,19 @@ function timestampMillis(value: unknown): number | null {
     : null;
 }
 
+function pendingDryAttemptMillis(data: Record<string, unknown>): number[] {
+  const explicit = Array.isArray(data.pendingDryAttemptDueAt)
+    ? data.pendingDryAttemptDueAt
+      .map((value) => timestampMillis(value))
+      .filter((value): value is number => value !== null)
+    : [];
+  const legacyDueAt = data.pendingWaterCheck === true ? timestampMillis(data.noWaterDueAt) : null;
+  return [
+    ...explicit,
+    ...(explicit.length === 0 && legacyDueAt !== null ? [legacyDueAt] : []),
+  ].sort((left, right) => left - right);
+}
+
 class FirestoreAutomationStore implements AutomationStore {
   async getEnabledRules(): Promise<AutomationRule[]> {
     const snapshot = await adminDb.collection('automationRules').where('enabled', '==', true).get();
@@ -285,7 +299,7 @@ class FirestoreAutomationStore implements AutomationStore {
     return doc.exists ? ({ id: doc.id, ...doc.data() } as AutomationRule) : null;
   }
 
-  async dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number): Promise<'created' | 'merged' | 'pending'> {
+  async dispatchThreshold(rule: AutomationRule, deviceId: string, cycleCount?: number, eventId?: string): Promise<'created' | 'merged' | 'pending' | 'consumed'> {
     const contract = taskContract(rule);
     const result = await dispatchAutomatedTaskAndNotify({
       deviceId,
@@ -295,6 +309,7 @@ class FirestoreAutomationStore implements AutomationStore {
       message: contract.message,
       repeatIntervalMinutes: normalizeRepeatIntervalMinutes(rule.repeatIntervalMinutes),
       ...(cycleCount === undefined ? {} : { cycleCountAtTrigger: cycleCount }),
+      ...(eventId === undefined ? {} : { pendingEventId: eventId }),
     });
     return result.outcome;
   }
@@ -307,19 +322,30 @@ class FirestoreAutomationStore implements AutomationStore {
   async getNoWaterState(deviceId: string): Promise<NoWaterState> {
     const doc = await this.stateRef(deviceId).get();
     const data = doc.data() ?? {};
+    const attempts = pendingDryAttemptMillis(data);
     return {
-      pending: data.pendingWaterCheck === true,
-      dueAtMs: timestampMillis(data.noWaterDueAt),
+      pending: attempts.length > 0,
+      dueAtMs: attempts[0] ?? null,
       dryCycles: typeof data.noWaterConsecutiveCycles === 'number' ? data.noWaterConsecutiveCycles : 0,
     };
   }
 
   async setNoWaterPending(deviceId: string, dueAtMs: number): Promise<void> {
-    await this.stateRef(deviceId).set({ pendingWaterCheck: true, noWaterDueAt: Timestamp.fromMillis(dueAtMs) }, { merge: true });
+    const dueAt = Timestamp.fromMillis(dueAtMs);
+    await this.stateRef(deviceId).set({
+      pendingWaterCheck: true,
+      noWaterDueAt: dueAt,
+      pendingDryAttemptDueAt: [dueAt],
+    }, { merge: true });
   }
 
   async clearNoWaterPending(deviceId: string, resetDryCycles: boolean): Promise<void> {
-    await this.stateRef(deviceId).set({ pendingWaterCheck: false, noWaterDueAt: null, ...(resetDryCycles ? { noWaterConsecutiveCycles: 0 } : {}) }, { merge: true });
+    await this.stateRef(deviceId).set({
+      pendingWaterCheck: false,
+      noWaterDueAt: null,
+      pendingDryAttemptDueAt: [],
+      ...(resetDryCycles ? { noWaterConsecutiveCycles: 0 } : {}),
+    }, { merge: true });
   }
 
   async consumePendingDryCycle(
@@ -330,17 +356,18 @@ class FirestoreAutomationStore implements AutomationStore {
     return adminDb.runTransaction(async (transaction) => {
       const doc = await transaction.get(ref);
       const data = doc.data() ?? {};
-      const dueAtMs = timestampMillis(data.noWaterDueAt);
-      if (
-        data.pendingWaterCheck !== true ||
-        dueAtMs === null ||
-        dueAtMs > nowMs
-      ) {
-        return null;
-      }
+      const attempts = pendingDryAttemptMillis(data);
+      const dueAttempts = attempts.filter((dueAtMs) => dueAtMs <= nowMs);
+      if (dueAttempts.length === 0) return null;
+      const remainingAttempts = attempts.filter((dueAtMs) => dueAtMs > nowMs);
       const current = Number(data.noWaterConsecutiveCycles ?? 0);
-      const next = Number.isFinite(current) ? current + 1 : 1;
-      transaction.set(ref, { pendingWaterCheck: false, noWaterDueAt: null, noWaterConsecutiveCycles: next }, { merge: true });
+      const next = (Number.isFinite(current) ? current : 0) + dueAttempts.length;
+      transaction.set(ref, {
+        pendingWaterCheck: remainingAttempts.length > 0,
+        noWaterDueAt: remainingAttempts.length > 0 ? Timestamp.fromMillis(remainingAttempts[0]) : null,
+        pendingDryAttemptDueAt: remainingAttempts.map((dueAtMs) => Timestamp.fromMillis(dueAtMs)),
+        noWaterConsecutiveCycles: next,
+      }, { merge: true });
       return next;
     });
   }
@@ -353,16 +380,19 @@ class FirestoreAutomationStore implements AutomationStore {
     const runtimeRef = this.runtimeStateRef(deviceId);
     const noWaterRef = this.stateRef(deviceId);
     await adminDb.runTransaction(async (transaction) => {
-      const [runtimeSnapshot] = await Promise.all([
+      const [runtimeSnapshot, noWaterSnapshot] = await Promise.all([
         transaction.get(runtimeRef),
         transaction.get(noWaterRef),
       ]);
+      const noWaterData = noWaterSnapshot.data() ?? {};
+      const pendingAttempts = pendingDryAttemptMillis(noWaterData);
       if (runtimeSnapshot.data()?.pumpActive === true) {
         transaction.set(runtimeRef, { pumpAttemptHadFlow: true }, { merge: true });
       }
       transaction.set(noWaterRef, {
-        pendingWaterCheck: false,
-        noWaterDueAt: null,
+        pendingWaterCheck: pendingAttempts.length > 0,
+        noWaterDueAt: pendingAttempts.length > 0 ? Timestamp.fromMillis(pendingAttempts[0]) : null,
+        pendingDryAttemptDueAt: pendingAttempts.map((dueAtMs) => Timestamp.fromMillis(dueAtMs)),
         noWaterConsecutiveCycles: 0,
       }, { merge: true });
     });
@@ -440,17 +470,16 @@ class FirestoreAutomationStore implements AutomationStore {
       }
 
       let noWaterDueAtMs: number | null = null;
-      if (data.pumpAttemptHadFlow === true) {
-        transaction.set(noWaterRef, {
-          pendingWaterCheck: false,
-          noWaterDueAt: null,
-          noWaterConsecutiveCycles: 0,
-        }, { merge: true });
-      } else if (options.noWaterWaitMs !== null && noWaterData.pendingWaterCheck !== true) {
+      if (data.pumpAttemptHadFlow !== true && options.noWaterWaitMs !== null) {
         noWaterDueAtMs = options.nowMs + options.noWaterWaitMs;
+        const pendingAttempts = [
+          ...pendingDryAttemptMillis(noWaterData),
+          noWaterDueAtMs,
+        ].sort((left, right) => left - right);
         transaction.set(noWaterRef, {
           pendingWaterCheck: true,
-          noWaterDueAt: Timestamp.fromMillis(noWaterDueAtMs),
+          noWaterDueAt: Timestamp.fromMillis(pendingAttempts[0]),
+          pendingDryAttemptDueAt: pendingAttempts.map((dueAtMs) => Timestamp.fromMillis(dueAtMs)),
         }, { merge: true });
       }
 

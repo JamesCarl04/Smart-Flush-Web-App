@@ -79,6 +79,7 @@ export interface CreateAutomatedTaskInput {
   automationTrigger: AutomationTrigger;
   message: string;
   cycleCountAtTrigger?: number;
+  pendingEventId?: string;
   assignmentSource?: Extract<AssignmentSource, 'initial_auto' | 'retry_auto'>;
   repeatIntervalMinutes?: number;
 }

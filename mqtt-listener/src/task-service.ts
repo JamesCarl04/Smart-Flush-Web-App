@@ -179,7 +179,7 @@ export async function createAutomatedTaskAndNotify(
 }
 
 export interface AutomatedDispatchResult {
-  outcome: 'created' | 'merged' | 'pending';
+  outcome: 'created' | 'merged' | 'pending' | 'consumed';
   task?: TaskDoc;
 }
 
@@ -190,6 +190,22 @@ export async function dispatchAutomatedTaskAndNotify(
     const now = Timestamp.now();
     const tasks = adminDb.collection('tasks');
     const users = adminDb.collection('users');
+    const pendingEventRef = input.pendingEventId
+      ? adminDb.collection('automationPendingEvents').doc(input.pendingEventId)
+      : null;
+    if (pendingEventRef) {
+      const pendingEventSnapshot = await transaction.get(pendingEventRef);
+      const pendingEvent = pendingEventSnapshot.data() ?? {};
+      if (
+        !pendingEventSnapshot.exists ||
+        pendingEvent.pending !== true ||
+        pendingEvent.type !== 'routine_threshold' ||
+        pendingEvent.automationRuleId !== input.automationRuleId ||
+        pendingEvent.deviceId !== input.deviceId
+      ) {
+        return { outcome: 'consumed' };
+      }
+    }
     const guardRef = adminDb
       .collection('automationTaskGuards')
       .doc(`${input.deviceId}--${input.automationTrigger}`);
@@ -214,14 +230,10 @@ export async function dispatchAutomatedTaskAndNotify(
         completedAtMs: timestampToMillis(guardedTask.completedAt),
       } : null,
     });
-    // Routine threshold recording and reset happen atomically with the pump
-    // transition. Rewriting that counter here could erase cycles committed by
-    // a concurrent transition while this dispatch transaction retries.
-    const resetCounter = input.automationTrigger === 'no_water_after_flush'
-        ? { noWaterConsecutiveCycles: 0, pendingWaterCheck: false, noWaterDueAt: null }
-        : {};
-    const stateRef = Object.keys(resetCounter).length > 0 ? automationStateRef(input) : null;
-    if (stateRef) await transaction.get(stateRef);
+    const noWaterStateRef = input.automationTrigger === 'no_water_after_flush'
+      ? adminDb.collection('devices').doc(input.deviceId).collection('automationState').doc('waterNoFlow')
+      : null;
+    if (noWaterStateRef) await transaction.get(noWaterStateRef);
 
     if (plan.kind === 'merge' && guardedTask) {
       const taskRef = tasks.doc(guardedTask.id);
@@ -230,7 +242,8 @@ export async function dispatchAutomatedTaskAndNotify(
         : 2;
       transaction.update(taskRef, { occurrenceCount, latestOccurrenceAt: now, updatedAt: now });
       transaction.set(guardRef, { pending: false, pendingAt: null, pendingCycleCount: null, updatedAt: now }, { merge: true });
-      if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
+      if (noWaterStateRef) transaction.set(noWaterStateRef, { noWaterConsecutiveCycles: 0 }, { merge: true });
+      if (pendingEventRef) transaction.delete(pendingEventRef);
       return { outcome: 'merged', task: { ...guardedTask, occurrenceCount, latestOccurrenceAt: now } as TaskDoc };
     }
 
@@ -245,7 +258,8 @@ export async function dispatchAutomatedTaskAndNotify(
         nextEligibleAt: Timestamp.fromMillis(plan.eligibleAtMs),
         updatedAt: now,
       }, { merge: true });
-      if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
+      if (noWaterStateRef) transaction.set(noWaterStateRef, { noWaterConsecutiveCycles: 0 }, { merge: true });
+      if (pendingEventRef) transaction.delete(pendingEventRef);
       return { outcome: 'pending' };
     }
 
@@ -307,7 +321,8 @@ export async function dispatchAutomatedTaskAndNotify(
       ),
       updatedAt: now,
     });
-    if (stateRef) transaction.set(stateRef, resetCounter, { merge: true });
+    if (noWaterStateRef) transaction.set(noWaterStateRef, { noWaterConsecutiveCycles: 0 }, { merge: true });
+    if (pendingEventRef) transaction.delete(pendingEventRef);
     if (technician) {
       transaction.update(users.doc(technician.uid), {
         lastAutoAssignedAt: now,
@@ -329,10 +344,4 @@ export async function dispatchAutomatedTaskAndNotify(
   }
 
   return result;
-}
-
-function automationStateRef(input: CreateAutomatedTaskInput) {
-  return adminDb.collection('devices').doc(input.deviceId).collection('automationState').doc(
-    input.automationTrigger === 'no_water_after_flush' ? 'waterNoFlow' : 'runtime',
-  );
 }
