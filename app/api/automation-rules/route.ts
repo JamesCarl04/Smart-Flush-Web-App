@@ -160,7 +160,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     return NextResponse.json(
-      { success: true, data: { id: docRef.id } },
+      {
+        success: true,
+        data: {
+          ...ruleData,
+          repeatIntervalMinutes: getRepeatIntervalMinutes(
+            ruleData.repeatIntervalMinutes,
+          ),
+        },
+      },
       { status: 201 },
     );
   } catch (error) {

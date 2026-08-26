@@ -16,6 +16,7 @@ import {
   Lock,
   MapPin,
   Plus,
+  Pencil,
   Radio,
   RefreshCw,
   Save,
@@ -334,6 +335,7 @@ export default function ConfigurationPage() {
   const [loadingConfiguration, setLoadingConfiguration] = useState(true);
   const [loadingRules, setLoadingRules] = useState(true);
   const [creatingRule, setCreatingRule] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [ruleMutationId, setRuleMutationId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -653,11 +655,32 @@ export default function ConfigurationPage() {
           ? RULE_ACTION_OPTIONS[2]
           : RULE_ACTION_OPTIONS[0],
     });
-    getRuleModal()?.showModal();
+    setEditingRuleId(null);
+    getRuleModal()?.showModal?.();
+  };
+
+  const openRuleEditor = (rule: Rule) => {
+    const config = getAutomationRuleDefinition(rule.trigger);
+    if (!config) {
+      toast.error('This legacy rule cannot be edited in the configuration form.');
+      return;
+    }
+
+    setRuleForm({
+      name: rule.name,
+      trigger: rule.trigger as AutomationRuleTrigger,
+      threshold: String(rule.threshold),
+      waterWaitSeconds: String(rule.waterWaitSeconds ?? config.waterWaitSeconds?.default ?? ''),
+      repeatIntervalMinutes: String(rule.repeatIntervalMinutes),
+      action: rule.action,
+    });
+    setEditingRuleId(rule.id);
+    getRuleModal()?.showModal?.();
   };
 
   const closeRuleModal = () => {
-    getRuleModal()?.close();
+    getRuleModal()?.close?.();
+    setEditingRuleId(null);
   };
 
   const handleCreateRule = async () => {
@@ -680,23 +703,29 @@ export default function ConfigurationPage() {
 
     setCreatingRule(true);
     try {
-      await apiFetch('/api/automation-rules', user, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: ruleForm.name.trim(),
-          group: config.group,
-          trigger: ruleForm.trigger,
-          threshold: Number(ruleForm.threshold),
-          ...(ruleForm.trigger === 'no_water_after_flush'
-            ? { waterWaitSeconds: Number(ruleForm.waterWaitSeconds) }
-            : {}),
-          repeatIntervalMinutes: Number(ruleForm.repeatIntervalMinutes),
-          action: ruleForm.action,
-          enabled: true,
-        }),
-      });
+      await apiFetch(
+        editingRuleId
+          ? `/api/automation-rules/${editingRuleId}`
+          : '/api/automation-rules',
+        user,
+        {
+          method: editingRuleId ? 'PUT' : 'POST',
+          body: JSON.stringify({
+            name: ruleForm.name.trim(),
+            group: config.group,
+            trigger: ruleForm.trigger,
+            threshold: Number(ruleForm.threshold),
+            ...(ruleForm.trigger === 'no_water_after_flush'
+              ? { waterWaitSeconds: Number(ruleForm.waterWaitSeconds) }
+              : {}),
+            repeatIntervalMinutes: Number(ruleForm.repeatIntervalMinutes),
+            action: ruleForm.action,
+            ...(editingRuleId ? {} : { enabled: true }),
+          }),
+        },
+      );
       await fetchRules();
-      toast.success('Rule added successfully.');
+      toast.success(editingRuleId ? 'Rule updated successfully.' : 'Rule added successfully.');
       closeRuleModal();
     } catch (error) {
       toast.error(getErrorMessage(error) ?? 'Failed to add rule.');
@@ -1400,6 +1429,18 @@ export default function ConfigurationPage() {
                         </button>
                       )}
 
+                      {getAutomationRuleDefinition(rule.trigger) && (
+                        <button
+                          type="button"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                          disabled={isMutatingRule}
+                          onClick={() => openRuleEditor(rule)}
+                          title="Edit Rule"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+
                       {/* Clean Toggle Switch */}
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
@@ -1444,7 +1485,7 @@ export default function ConfigurationPage() {
                 <Plus className="h-4 w-4" />
               </div>
               <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
-                Create Automation Rule
+                {editingRuleId ? 'Edit Automation Rule' : 'Create Automation Rule'}
               </h3>
             </div>
             <button
@@ -1675,7 +1716,7 @@ export default function ConfigurationPage() {
               ) : (
                 <Plus className="h-4 w-4" />
               )}
-              Create Rule
+              {editingRuleId ? 'Update Rule' : 'Create Rule'}
             </button>
           </div>
         </div>

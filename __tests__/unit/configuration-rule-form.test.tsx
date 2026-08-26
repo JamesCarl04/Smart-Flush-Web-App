@@ -1,11 +1,14 @@
 /** @jest-environment jsdom */
 
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import ConfigurationPage from '@/app/(dashboard)/configuration/page';
+import { apiFetch } from '@/lib/api-client';
+
+let mockUser: { uid: string } | null = null;
 
 jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: mockUser }),
 }));
 
 jest.mock('@/hooks/useSensorData', () => ({
@@ -30,6 +33,11 @@ jest.mock('firebase/auth', () => ({
 }));
 
 describe('configuration automation-rule form', () => {
+  beforeEach(() => {
+    mockUser = null;
+    jest.clearAllMocks();
+  });
+
   it('shows only canonical creation triggers and adds the no-water wait setting contextually', () => {
     render(<ConfigurationPage />);
 
@@ -72,5 +80,54 @@ describe('configuration automation-rule form', () => {
     });
     expect(screen.getByLabelText('Custom repeat interval (minutes)')).toHaveAttribute('min', '1');
     expect(screen.getByLabelText('Custom repeat interval (minutes)')).toHaveAttribute('max', '1440');
+  });
+
+  it.each([
+    [1, '1'],
+    [10, '10'],
+    [25, 'custom'],
+  ])('loads an existing %d-minute rule into the %s interval preset', async (repeatIntervalMinutes, expectedPreset) => {
+    mockUser = { uid: 'admin-1' };
+    (apiFetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/devices/')) return Promise.resolve({ success: true, data: {} });
+      return Promise.resolve({
+        success: true,
+        data: [{
+          id: 'rule-1',
+          group: 'system_alert',
+          name: 'Existing alert rule',
+          trigger: 'ultrasonic_sensor_fault',
+          threshold: 10,
+          action: 'Send Warning Email',
+          enabled: true,
+          repeatIntervalMinutes,
+        }],
+      });
+    });
+
+    render(<ConfigurationPage />);
+
+    await screen.findByText('Existing alert rule');
+    fireEvent.click(screen.getByTitle('Edit Rule'));
+
+    expect(screen.getByLabelText('Repeat interval')).toHaveValue(expectedPreset);
+    if (expectedPreset === 'custom') {
+      expect(screen.getByLabelText('Custom repeat interval (minutes)')).toHaveValue(25);
+      fireEvent.click(screen.getByRole('button', { name: 'Update Rule', hidden: true }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith(
+          '/api/automation-rules/rule-1',
+          mockUser,
+          expect.objectContaining({
+            method: 'PUT',
+            body: expect.stringContaining('"repeatIntervalMinutes":25'),
+          }),
+        ),
+      );
+      const updateOptions = (apiFetch as jest.Mock).mock.calls.find(
+        ([url]) => url === '/api/automation-rules/rule-1',
+      )?.[2] as { body: string };
+      expect(JSON.parse(updateOptions.body)).not.toHaveProperty('enabled');
+    }
   });
 });

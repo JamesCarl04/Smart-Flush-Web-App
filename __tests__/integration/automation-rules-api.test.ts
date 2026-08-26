@@ -91,6 +91,14 @@ describe('automation rule API validation', () => {
     );
 
     expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      success: true,
+      data: expect.objectContaining({
+        id: 'rule-1',
+        repeatIntervalMinutes: 10,
+        action: 'Send Task to Available Maintenance',
+      }),
+    });
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'rule-1' }),
       expect.objectContaining({
@@ -298,6 +306,56 @@ describe('automation rule API validation', () => {
     expect(response.status).toBe(409);
     expect(transaction.update).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['trigger', { trigger: 'water_overuse', threshold: 12 }],
+    ['action', { action: 'Send Task to Available Maintenance' }],
+  ])(
+    'rejects a %s update that would duplicate an enabled task-dispatch trigger',
+    async (_field, body) => {
+      const ruleDocument: RuleDocument = {
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => ({
+            id: 'rule-2',
+            name: 'Rule being changed',
+            group: 'system_alert',
+            trigger: body.trigger === 'water_overuse' ? 'ultrasonic_sensor_fault' : 'water_overuse',
+            threshold: 10,
+            action: body.action ? 'Send Warning Email' : 'Send Task to Available Maintenance',
+            enabled: true,
+          }),
+        }),
+        set: jest.fn(),
+        update: jest.fn(),
+      };
+      const transaction = {
+        get: jest.fn().mockResolvedValue({
+          docs: [{
+            id: 'rule-1',
+            data: () => ({
+              trigger: 'water_overuse',
+              action: 'Create Maintenance Ticket',
+              enabled: true,
+            }),
+          }],
+        }),
+        update: jest.fn(),
+      };
+      collection.mockReturnValue({
+        doc: jest.fn(() => ruleDocument),
+        where: jest.fn(() => ({ get: jest.fn() })),
+      });
+      (adminDb.runTransaction as jest.Mock).mockImplementation(async (callback) => callback(transaction));
+
+      const response = await PUT(jsonRequest('PUT', body), {
+        params: Promise.resolve({ id: 'rule-2' }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(transaction.update).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a maintenance threshold outside its configured range on update', async () => {
     const snapshot = {
