@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-26-sensor-water-routine-maintenance-design.md`
 
+## Implementation status (2026-08-27)
+
+- [x] Task 1: Remove the current Vercel production-build blocker
+- [x] Task 2: Create one canonical automation-rule model and make the dashboard contextual
+- [x] Task 3: Establish the listener task/assignment/notification contract
+- [x] Task 4: Make MQTT telemetry distinguish valid flushes and evaluate all three rules
+- [x] Task 5: Retry unassigned work and reset routine counters only on supervisor approval
+- [x] Task 6: Align dashboard task controls and mobile role visibility
+- [x] Task 7: Add Firestore indexes, security review, and deployment configuration checks
+- [ ] Task 8: Verify production-equivalent behavior and perform the controlled rollout
+
 ## Global constraints
 
 - Do not dispatch on idle `waterflow: 0`; only a finite, positive-volume, positive-duration completed-flow event is a flush/cycle.
@@ -137,6 +148,11 @@
 4. Add a startup configuration validator in the listener that fails clearly when required Firebase/MQTT credentials are absent. In the web app, log an actionable server-side configuration error rather than constructing Firebase Admin with empty credentials.
 
 ### Task 8: Verify production-equivalent behavior and perform the controlled rollout
+
+**Execution status (2026-08-27):** Local verification and mocked Firestore/FCM
+coverage are complete. The physical ESP32 completed-flow test, Firestore emulator
+run, and controlled Railway/Vercel rollout remain pending their required runtime
+credentials, linked deployment targets, and hardware test device.
 
 **Files:**
 - Modify: `README.md` or `docs/automation-deployment-checklist.md` with the final runbook and rollback steps

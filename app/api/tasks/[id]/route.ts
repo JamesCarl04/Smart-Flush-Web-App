@@ -44,6 +44,21 @@ function canManageTask(
   return task.createdBy === userId || isAssignedToUser(task, userId);
 }
 
+function canEditTask(
+  task: ReturnType<typeof serializeTaskData>,
+  role: Awaited<ReturnType<typeof getUserRole>>,
+): boolean {
+  if (task.status === 'pending') {
+    return true;
+  }
+
+  return (
+    task.status === 'unassigned' &&
+    task.requiresSupervisorAssignment === true &&
+    (role === 'admin' || role === 'supervisor')
+  );
+}
+
 async function listMaintenanceUserIds(): Promise<string[]> {
   const snapshot = await adminDb
     .collection('users')
@@ -161,7 +176,12 @@ export async function PATCH(
       );
       updates.assignedTo = assignment.assignedTo;
       updates.assignedToIds = assignment.assignedToIds;
-      updates.status = 'pending';
+      const hasAssignees = assignment.assignedToIds.length > 0;
+      updates.status = hasAssignees ? 'assigned' : 'pending';
+      updates.isBroadcast = false;
+      updates.assignmentSource = 'supervisor';
+      updates.requiresSupervisorAssignment = false;
+      updates.autoAssignmentEligibleAt = null;
       updates.acknowledgedAt = null;
       updates.acknowledgedBy = {};
     }
@@ -201,7 +221,7 @@ export async function PATCH(
       );
     }
 
-    if (existingTask.status !== 'pending') {
+    if (!canEditTask(existingTask, role)) {
       return NextResponse.json(
         {
           success: false,
@@ -219,7 +239,7 @@ export async function PATCH(
         const freshTask = serializeTaskData(fresh.id, data as Record<string, unknown>);
         if (!canManageTask(role, user.uid, freshTask)) return 'forbidden' as const;
         if (freshTask.completedAt !== null || freshTask.status === 'completed') return 'terminal' as const;
-        if (freshTask.status !== 'pending') return 'locked' as const;
+        if (!canEditTask(freshTask, role)) return 'locked' as const;
         const now = Timestamp.now();
 
         if (!('assignedToIds' in updates)) {

@@ -70,11 +70,17 @@ function getDefaultMessage(deviceLabel: string): string {
   return `Manual maintenance requested for ${deviceLabel}.`;
 }
 
-function getPriorityBadge(triggerType?: TaskTriggerType) {
+function getPriorityBadge(
+  triggerType?: TaskTriggerType,
+  automationTrigger?: Task['automationTrigger'],
+) {
   switch (triggerType) {
     case 'maintenance':
       return {
-        label: 'Scheduled Maintenance',
+        label:
+          automationTrigger === 'maintenance_due'
+            ? 'Routine Toilet Check'
+            : 'Scheduled Maintenance',
         className:
           'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30',
         icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
@@ -732,11 +738,13 @@ export function MaintenanceTaskPanel() {
 
   // Edit Task Handlers
   const openEditTaskModal = (task: Task) => {
-    if (task.status !== 'pending') {
+    const isSupervisorOnlyUnassigned =
+      task.status === 'unassigned' && task.requiresSupervisorAssignment === true;
+    if (task.status !== 'pending' && !isSupervisorOnlyUnassigned) {
       setTaskToast({
         kind: 'error',
         message:
-          'Only pending tasks can be edited. Acknowledged or completed tasks are locked.',
+          'Only pending tasks and supervisor-only unassigned tasks can be edited.',
       });
       return;
     }
@@ -1121,9 +1129,15 @@ export function MaintenanceTaskPanel() {
             >
               {filteredTasks.map((task) => {
                 const acknowledgementSummary = getAcknowledgementSummary(task);
-                const priority = getPriorityBadge(task.triggerType);
+                const priority = getPriorityBadge(
+                  task.triggerType,
+                  task.automationTrigger,
+                );
                 const statusInfo = getStatusBadge(task.status);
                 const isHighlighted = highlightedTaskId === task.id;
+                const requiresSupervisorAssignment =
+                  task.status === 'unassigned' &&
+                  task.requiresSupervisorAssignment === true;
 
                 return (
                   <div
@@ -1147,6 +1161,12 @@ export function MaintenanceTaskPanel() {
                           {priority.icon}
                           <span>{priority.label}</span>
                         </span>
+                        {requiresSupervisorAssignment ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                            <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Unassigned — supervisor action required</span>
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
@@ -1204,6 +1224,17 @@ export function MaintenanceTaskPanel() {
                           {formatRelativeTimestamp(task.createdAt)}
                         </span>
 
+                        {requiresSupervisorAssignment ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="whitespace-nowrap font-semibold text-violet-700 dark:text-violet-300">
+                              Retry {task.autoAssignmentEligibleAt
+                                ? formatTimestamp(task.autoAssignmentEligibleAt)
+                                : 'pending'}
+                            </span>
+                          </>
+                        ) : null}
+
                         {task.acknowledgedAt ? (
                           <>
                             <span aria-hidden="true">·</span>
@@ -1234,16 +1265,16 @@ export function MaintenanceTaskPanel() {
 
                       {canManageTasks ? (
                         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                          {task.status === 'pending' && (
+                          {(task.status === 'pending' || requiresSupervisorAssignment) && (
                             <button
                               type="button"
                               className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:ring-2 focus-visible:ring-primary min-h-[30px]"
                               onClick={() => openEditTaskModal(task)}
-                              title="Edit task"
-                              aria-label={`Edit task for ${resolveDeviceLabel(task.deviceId)}`}
+                              title={requiresSupervisorAssignment ? 'Assign task' : 'Edit task'}
+                              aria-label={`${requiresSupervisorAssignment ? 'Assign' : 'Edit'} task for ${resolveDeviceLabel(task.deviceId)}`}
                             >
                               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                              <span>Edit</span>
+                              <span>{requiresSupervisorAssignment ? 'Assign' : 'Edit'}</span>
                             </button>
                           )}
                           <button

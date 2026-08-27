@@ -14,6 +14,11 @@ jest.mock('firebase-admin/firestore', () => ({
   Timestamp: { now: jest.fn(() => ({ toMillis: () => 120_000 })) },
 }));
 
+jest.mock('@/lib/task-lifecycle', () => ({
+  shouldClearAutomationGuard: jest.fn(),
+  syncTechniciansAfterTaskRelease: jest.fn().mockResolvedValue(undefined),
+}));
+
 import { PATCH } from '@/app/api/tasks/[id]/route';
 import { adminDb } from '@/lib/firebase-admin';
 
@@ -73,5 +78,61 @@ describe('task PATCH lifecycle transaction', () => {
     expect(transaction.update).not.toHaveBeenCalled();
     expect(transaction.set).not.toHaveBeenCalled();
     expect(taskRef.update).not.toHaveBeenCalled();
+  });
+
+  it('lets a supervisor atomically assign a supervisor-only unassigned task', async () => {
+    const supervisorTask = taskSnapshot({
+      status: 'unassigned',
+      assignedTo: null,
+      assignedToIds: [],
+      isBroadcast: false,
+      requiresSupervisorAssignment: true,
+      autoAssignmentEligibleAt: { toMillis: () => 180_000 },
+    });
+    const assignedTask = taskSnapshot({
+      status: 'assigned',
+      assignedTo: 'tech-new',
+      assignedToIds: ['tech-new'],
+      isBroadcast: false,
+      assignmentSource: 'supervisor',
+      requiresSupervisorAssignment: false,
+      autoAssignmentEligibleAt: null,
+    });
+    const taskRef = {
+      get: jest.fn()
+        .mockResolvedValueOnce(supervisorTask)
+        .mockResolvedValueOnce(assignedTask),
+    };
+    const transaction = { get: jest.fn().mockResolvedValue(supervisorTask), update: jest.fn(), set: jest.fn() };
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') {
+        return { doc: jest.fn(() => taskRef) };
+      }
+      return {
+        doc: jest.fn(() => ({ id: 'tech-new' })),
+        where: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ docs: [] }) })),
+      };
+    });
+
+    const response = await PATCH(new Request('http://localhost/api/tasks/task-1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ assignedTo: 'tech-new', assignedToIds: ['tech-new'] }),
+    }), { params: Promise.resolve({ id: 'task-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(transaction.update).toHaveBeenCalledWith(
+      taskRef,
+      expect.objectContaining({
+        status: 'assigned',
+        assignedTo: 'tech-new',
+        assignedToIds: ['tech-new'],
+        isBroadcast: false,
+        assignmentSource: 'supervisor',
+        requiresSupervisorAssignment: false,
+        autoAssignmentEligibleAt: null,
+      }),
+    );
   });
 });
