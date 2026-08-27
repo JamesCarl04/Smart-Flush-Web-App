@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/public-issue-report-jobs",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

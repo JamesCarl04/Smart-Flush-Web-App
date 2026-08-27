@@ -24,11 +24,12 @@ Set all server-only values before enabling public reporting:
 - `CRON_SECRET`: a separate long random secret used by Vercel Cron as the
   bearer credential for `GET /api/cron/public-issue-report-jobs`.
 
-The included Vercel Cron schedule invokes the recovery endpoint every minute.
-That cadence requires Vercel Pro. Vercel Hobby cron jobs are limited to daily
-runs, which is too slow for prompt leak notifications and evidence recovery;
-Hobby deployments must call the same secured GET endpoint every minute from an
-external scheduler and send `Authorization: Bearer ${CRON_SECRET}`.
+The included Vercel Cron schedule invokes the recovery endpoint once daily so
+it is compatible with Vercel Hobby. That cadence is too slow for prompt leak
+notifications and evidence recovery; deployments that need minute-level
+processing must call the same secured GET endpoint every minute from an
+external scheduler and send `Authorization: Bearer ${CRON_SECRET}`. Vercel Pro
+can use a per-minute Vercel Cron schedule instead.
 
 Each invocation queries at most 20 pending evidence jobs and 20 pending or
 expired-lease notification jobs. Processing is idempotent. Evidence reservations
