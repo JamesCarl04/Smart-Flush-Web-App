@@ -128,7 +128,7 @@ function makeHarness() {
       uploadEvidence,
       evidenceExists,
       notifyAdmins,
-      timestampFromMillis: (value) => value,
+      timestampFromMillis: (value: number) => value,
       now: () => now,
       deviceId: 'toilet-01',
       fingerprint: 'a'.repeat(64),
@@ -185,6 +185,24 @@ describe('public issue report transactional intake', () => {
     harness.db.data.set('devices/disabled', { name: 'Disabled', publicReportingEnabled: false });
     await expect(harness.submit({ deviceId: 'disabled' })).rejects.toMatchObject({ status: 404 });
     await expect(harness.submit()).resolves.toMatchObject({ confirmationCount: 1 });
+  });
+
+  it('persists camera status, capture time, and an immutable device snapshot', async () => {
+    const harness = makeHarness();
+    const capturedAt = 1_799_999_999_000;
+    const result = await harness.submit({
+      photo: photo(),
+      photoCaptureStatus: 'captured',
+      photoCapturedAt: capturedAt,
+    });
+    expect(harness.db.data.get(`issueReports/${result.aggregateId}/submissions/${result.submissionId}`)).toEqual(
+      expect.objectContaining({
+        photoCaptureStatus: 'captured',
+        photoCapturedAt: capturedAt,
+        submittedAt: 1_800_000_000_000,
+        deviceSnapshot: expect.objectContaining({ name: 'Main Restroom', location: 'North Wing' }),
+      }),
+    );
   });
 
   it('atomically merges concurrent reports into one pending aggregate and preserves submissions', async () => {

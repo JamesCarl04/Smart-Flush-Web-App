@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import type { PublicReportingDevice } from '@/lib/public-issue-reports';
+import { CameraCapture } from './CameraCapture';
+import type { PhotoCaptureStatus, PublicReportingDevice } from '@/lib/public-issue-reports';
 
 const CATEGORY_OPTIONS = [
   ['lid_malfunction', 'Lid malfunction'],
@@ -15,7 +16,13 @@ const CATEGORY_OPTIONS = [
 
 interface SuccessResponse {
   success: true;
-  data: { referenceCode: string; confirmation: string };
+  data: {
+    referenceCode: string;
+    confirmation: string;
+    submittedAt?: number;
+    photoCaptureStatus?: PhotoCaptureStatus;
+    photoCapturedAt?: number | null;
+  };
 }
 
 interface ErrorResponse {
@@ -31,16 +38,45 @@ export function PublicIssueReportForm({
   const [startedAt] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<SuccessResponse['data'] | null>(null);
+  const [captureStatus, setCaptureStatus] = useState<PhotoCaptureStatus | 'pending'>('pending');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoCapturedAt, setPhotoCapturedAt] = useState<number | null>(null);
+  const [receipt, setReceipt] = useState<(SuccessResponse['data'] & { previewUrl: string | null }) | null>(null);
+
+  const formatDateTime = (value: number | null | undefined): string => {
+    if (!value) return 'Unavailable';
+    return new Date(value).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+  };
+
+  const handlePhotoChange = (file: File | null, capturedAt: number | null, status: PhotoCaptureStatus) => {
+    setPhoto(file);
+    setPhotoCapturedAt(capturedAt);
+    setCaptureStatus(status);
+  };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (captureStatus === 'pending') {
+      setError('Please open the camera, or continue without a photo if camera access fails.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
     try {
       const body = new FormData(event.currentTarget);
       body.set('deviceId', device.id);
+      body.set('photoCaptureStatus', captureStatus);
+      body.delete('photo');
+      if (photo) body.set('photo', photo, photo.name);
+      if (photoCapturedAt !== null) body.set('photoCapturedAt', String(photoCapturedAt));
       const response = await fetch('/api/public/issue-reports', {
         method: 'POST',
         body,
@@ -52,7 +88,10 @@ export function PublicIssueReportForm({
         );
         return;
       }
-      setReceipt(result.data);
+      setReceipt({
+        ...result.data,
+        previewUrl: photo && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(photo) : null,
+      });
     } catch {
       setError('Unable to submit report. Please try again.');
     } finally {
@@ -73,6 +112,12 @@ export function PublicIssueReportForm({
           <p className="mt-3 text-sm leading-6 text-slate-600">
             {receipt.confirmation}
           </p>
+          {receipt.previewUrl ? <img src={receipt.previewUrl} alt="Submitted restroom issue" className="mt-6 max-h-72 w-full rounded-xl object-contain" /> : <p className="mt-6 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800">Submitted without photo.</p>}
+          <dl className="mt-5 space-y-2 text-left text-sm">
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Toilet location</dt><dd className="text-right font-medium">{[device.building, device.floor, device.location].filter(Boolean).join(' · ') || device.name}</dd></div>
+            {receipt.previewUrl ? <div className="flex justify-between gap-4"><dt className="text-slate-500">Photo captured</dt><dd className="text-right font-medium">{formatDateTime(receipt.photoCapturedAt)}</dd></div> : null}
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Report submitted</dt><dd className="text-right font-medium">{formatDateTime(receipt.submittedAt)}</dd></div>
+          </dl>
         </section>
       </main>
     );
@@ -151,19 +196,7 @@ export function PublicIssueReportForm({
             <p className="mt-1 text-xs text-slate-500">Maximum 500 characters</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold" htmlFor="report-photo">
-              Photo (optional)
-            </label>
-            <input
-              id="report-photo"
-              name="photo"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="mt-2 block w-full rounded-xl border border-slate-300 p-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:font-semibold file:text-emerald-800"
-            />
-            <p className="mt-1 text-xs text-slate-500">JPEG, PNG, or WebP · up to 5 MB</p>
-          </div>
+          <CameraCapture onChange={handlePhotoChange} disabled={submitting} />
 
           {error ? (
             <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">

@@ -118,6 +118,23 @@ describe('POST /api/public/issue-reports', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('passes camera capture metadata and accepts an explicit no-photo fallback', async () => {
+    const submit = jest.fn().mockResolvedValue({
+      aggregateId: 'report-1', submissionId: 'submission-1', referenceCode: 'IR-REPORT1',
+      confirmationCount: 1, submittedAt: 1_800_000_000_000,
+      photoCaptureStatus: 'unavailable', photoCapturedAt: null,
+    });
+    const handler = createPublicIssueReportPostHandler({ secret: 'test-secret', now: () => 1_800_000_000_000, submit });
+    const response = await handler(multipartRequest({
+      deviceId: 'toilet-01', category: 'no_water', website: '', startedAt,
+      photoCaptureStatus: 'unavailable',
+    }, { 'x-vercel-forwarded-for': '198.51.100.40' }));
+    expect(response.status).toBe(201);
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      photo: null, photoCaptureStatus: 'unavailable', photoCapturedAt: null,
+    }));
+  });
+
   it('returns 429 generically without exposing fingerprint data', async () => {
     const submit = jest.fn().mockRejectedValue(
       new PublicIssueReportError(

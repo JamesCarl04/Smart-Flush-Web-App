@@ -36,11 +36,13 @@ describe('issue reports page authority gate', () => {
     mockApiFetch.mockResolvedValue({ success: true, data: [{
       id: 'r1', deviceId: 'stall-1', category: 'no_water', confirmationCount: 3,
       firstReportedAt: 100, lastReportedAt: 200, descriptions: ['No water at all'], evidence: [],
+      submissions: [{ submissionId: 's1', photoCaptureStatus: 'unavailable', photoCapturedAt: null, submittedAt: 200 }],
       device: { name: 'Stall 1', location: '4F Restroom' }, status: 'pending_review',
     }] });
     render(<IssueReportsPage />);
     await waitFor(() => expect(screen.getByText('Stall 1')).toBeTruthy());
     expect(screen.getByText('No water at all')).toBeTruthy();
+    expect(screen.getByText('Submitted without photo')).toBeTruthy();
     expect(mockApiFetch).toHaveBeenCalledWith('/api/issue-reports?status=pending_review', expect.objectContaining({ uid: 'admin-1' }));
   });
 });

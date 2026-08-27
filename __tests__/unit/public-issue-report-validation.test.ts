@@ -4,6 +4,7 @@ import {
   extractClientIp,
   isIssueReportImageMime,
   sanitizePublicDevice,
+  validatePhotoCaptureMetadata,
   validateIssueReportInput,
   validateIssueReportPhoto,
 } from '@/lib/public-issue-reports';
@@ -156,5 +157,20 @@ describe('public issue report validation', () => {
     await expect(
       validateIssueReportPhoto(new File(['not jpeg'], 'photo.jpg', { type: 'image/jpeg' })),
     ).rejects.toThrow('contents');
+  });
+
+  it('validates camera metadata and permits an explicit no-photo fallback', () => {
+    expect(validatePhotoCaptureMetadata({ photoCaptureStatus: 'unavailable' }, null, now)).toEqual({
+      photoCaptureStatus: 'unavailable',
+      photoCapturedAt: null,
+    });
+    expect(validatePhotoCaptureMetadata({ photoCaptureStatus: 'captured', photoCapturedAt: now - 1_000 }, {
+      bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: 'image/jpeg', size: 3,
+    }, now)).toEqual({ photoCaptureStatus: 'captured', photoCapturedAt: now - 1_000 });
+    expect(() => validatePhotoCaptureMetadata({ photoCaptureStatus: 'captured' }, null, now)).toThrow('captured photo');
+    expect(() => validatePhotoCaptureMetadata({ photoCaptureStatus: 'unavailable', photoCapturedAt: now }, null, now)).toThrow('capture time');
+    expect(() => validatePhotoCaptureMetadata({ photoCaptureStatus: 'captured', photoCapturedAt: now + 5 * 60 * 1_000 + 1 }, {
+      bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: 'image/jpeg', size: 3,
+    }, now)).toThrow('capture time');
   });
 });

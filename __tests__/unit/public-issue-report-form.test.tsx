@@ -21,7 +21,7 @@ describe('anonymous public issue report form', () => {
     jest.restoreAllMocks();
   });
 
-  it('renders the public device location and only anonymous report fields', () => {
+  it('renders the public device location and camera-only evidence controls', () => {
     render(<PublicIssueReportForm device={device} />);
 
     expect(screen.getByRole('heading', { name: 'Report a restroom issue' })).toBeInTheDocument();
@@ -29,10 +29,9 @@ describe('anonymous public issue report form', () => {
     expect(screen.getByText(/Annex.*4th Floor.*North Wing/)).toBeInTheDocument();
     expect(screen.getByLabelText('Issue category')).toBeInTheDocument();
     expect(screen.getByLabelText('Description (optional)')).toHaveAttribute('maxlength', '500');
-    expect(screen.getByLabelText('Photo (optional)')).toHaveAttribute(
-      'accept',
-      'image/jpeg,image/png,image/webp',
-    );
+    expect(screen.getByText(/Gallery uploads are not accepted/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
     expect(document.querySelector('input[name="startedAt"]')).toHaveValue('1800000000000');
     expect(document.querySelector('input[name="website"]')).toBeInTheDocument();
     expect(screen.queryByLabelText(/name/i)).not.toBeInTheDocument();
@@ -40,7 +39,7 @@ describe('anonymous public issue report form', () => {
     expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
   });
 
-  it('shows only a reference code and confirmation after successful submission', async () => {
+  it('allows a no-photo fallback after camera access fails', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -64,10 +63,16 @@ describe('anonymous public issue report form', () => {
       target: { value: 'Water keeps flowing' },
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue without photo' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Continue without photo' }));
+
     fireEvent.submit(screen.getByRole('button', { name: 'Submit report' }).closest('form')!);
 
     await waitFor(() => expect(screen.getByText('IR-ABC12345')).toBeInTheDocument());
     expect(screen.getByText('Your report has been received for administrator review.')).toBeInTheDocument();
+    expect(screen.getByText('Submitted without photo.')).toBeInTheDocument();
+    expect(screen.getByText(/Annex.*North Wing/)).toBeInTheDocument();
     expect(screen.queryByRole('form')).not.toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -79,6 +84,8 @@ describe('anonymous public issue report form', () => {
     expect(submitted.get('category')).toBe('continuous_leak');
     expect(submitted.get('description')).toBe('Water keeps flowing');
     expect(submitted.get('startedAt')).toBe('1800000000000');
+    expect(submitted.get('photoCaptureStatus')).toBe('unavailable');
+    expect(submitted.has('photo')).toBe(false);
     expect(submitted.has('name')).toBe(false);
     expect(submitted.has('email')).toBe(false);
     expect(submitted.has('phone')).toBe(false);

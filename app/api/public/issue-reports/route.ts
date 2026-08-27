@@ -12,10 +12,12 @@ import {
   extractClientIp,
   submitPublicIssueReport,
   validateIssueReportInput,
+  validatePhotoCaptureMetadata,
   validateIssueReportPhoto,
   type IssueReportCategory,
   type PublicIssueReportFirestore,
   type PublicIssueReportReceipt,
+  type PhotoCaptureStatus,
   type ValidatedIssueReportPhoto,
 } from '@/lib/public-issue-reports';
 
@@ -25,6 +27,8 @@ interface IntakeInput {
   category: IssueReportCategory;
   description: string | null;
   photo: ValidatedIssueReportPhoto | null;
+  photoCaptureStatus?: PhotoCaptureStatus;
+  photoCapturedAt?: number | null;
 }
 
 interface HandlerDependencies {
@@ -138,12 +142,28 @@ export function createPublicIssueReportPostHandler(
         photoEntry instanceof File && photoEntry.size > 0
           ? await validateIssueReportPhoto(photoEntry)
           : null;
+      const photoCaptureStatusInput = formString(form, 'photoCaptureStatus');
+      const photoCapturedAtInput = formString(form, 'photoCapturedAt');
+      const photoMetadata = validatePhotoCaptureMetadata(
+        {
+          photoCaptureStatus: photoCaptureStatusInput,
+          photoCapturedAt: photoCapturedAtInput,
+        },
+        photo,
+        nowMs,
+      );
       const receipt = await dependencies.submit({
         deviceId,
         fingerprint,
         category: validated.category,
         description: validated.description,
         photo,
+        ...(photoCaptureStatusInput !== undefined || photoCapturedAtInput !== undefined
+          ? {
+              photoCaptureStatus: photoMetadata.photoCaptureStatus,
+              photoCapturedAt: photoMetadata.photoCapturedAt,
+            }
+          : {}),
       });
 
       return NextResponse.json(
@@ -153,6 +173,9 @@ export function createPublicIssueReportPostHandler(
             referenceCode: receipt.referenceCode,
             confirmation:
               'Your report has been received for administrator review.',
+            submittedAt: receipt.submittedAt,
+            photoCaptureStatus: receipt.photoCaptureStatus,
+            photoCapturedAt: receipt.photoCapturedAt,
           },
         },
         { status: 201 },

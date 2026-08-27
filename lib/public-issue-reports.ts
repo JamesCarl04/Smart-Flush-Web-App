@@ -19,6 +19,8 @@ export const ISSUE_REPORT_STATUSES = [
 
 export type IssueReportCategory = (typeof ISSUE_REPORT_CATEGORIES)[number];
 export type IssueReportStatus = (typeof ISSUE_REPORT_STATUSES)[number];
+export const PHOTO_CAPTURE_STATUSES = ['captured', 'unavailable'] as const;
+export type PhotoCaptureStatus = (typeof PHOTO_CAPTURE_STATUSES)[number];
 
 export interface PublicReportingDevice {
   id: string;
@@ -58,6 +60,9 @@ export interface IssueReportSubmission {
   description: string | null;
   evidence: IssueReportEvidence;
   submittedAt: unknown;
+  photoCaptureStatus?: PhotoCaptureStatus;
+  photoCapturedAt?: unknown | null;
+  deviceSnapshot?: PublicReportingDevice;
 }
 
 export interface IssueReportAggregate {
@@ -390,6 +395,8 @@ export interface SubmitPublicIssueReportOptions {
   category: IssueReportCategory;
   description: string | null;
   photo: ValidatedIssueReportPhoto | null;
+  photoCaptureStatus?: PhotoCaptureStatus;
+  photoCapturedAt?: number | null;
 }
 
 export type AcceptPublicIssueReportOptions = Omit<
@@ -402,8 +409,47 @@ export interface PublicIssueReportReceipt {
   submissionId: string;
   referenceCode: string;
   confirmationCount: number;
+  submittedAt: number;
+  photoCaptureStatus: PhotoCaptureStatus;
+  photoCapturedAt: number | null;
   evidenceJobId?: string;
   notificationOutboxId?: string;
+}
+
+export function validatePhotoCaptureMetadata(
+  input: { photoCaptureStatus?: unknown; photoCapturedAt?: unknown },
+  photo: ValidatedIssueReportPhoto | null,
+  nowMs = Date.now(),
+): { photoCaptureStatus: PhotoCaptureStatus; photoCapturedAt: number | null } {
+  const status = input.photoCaptureStatus == null || input.photoCaptureStatus === ''
+    ? (photo ? 'captured' : 'unavailable')
+    : input.photoCaptureStatus;
+  if (!(PHOTO_CAPTURE_STATUSES as readonly unknown[]).includes(status)) {
+    throw new PublicIssueReportError('Invalid photo capture status', 400, 'invalid_photo_capture_status');
+  }
+  if (status === 'captured' && !photo) {
+    throw new PublicIssueReportError('A captured photo is required', 400, 'missing_captured_photo');
+  }
+  if (status === 'unavailable' && photo) {
+    throw new PublicIssueReportError('Photo capture status does not match the image', 400, 'inconsistent_photo_capture_status');
+  }
+
+  if (input.photoCapturedAt == null || input.photoCapturedAt === '') {
+    if (status === 'captured') return { photoCaptureStatus: 'captured', photoCapturedAt: null };
+    return { photoCaptureStatus: 'unavailable', photoCapturedAt: null };
+  }
+  const capturedAt = typeof input.photoCapturedAt === 'number'
+    ? input.photoCapturedAt
+    : typeof input.photoCapturedAt === 'string' && input.photoCapturedAt.trim()
+      ? Number(input.photoCapturedAt)
+      : Number.NaN;
+  if (!Number.isFinite(capturedAt) || capturedAt <= 0 || capturedAt > nowMs + 5 * 60 * 1_000) {
+    throw new PublicIssueReportError('Invalid photo capture time', 400, 'invalid_photo_capture_time');
+  }
+  if (status !== 'captured') {
+    throw new PublicIssueReportError('A photo capture time requires a captured image', 400, 'inconsistent_photo_capture_time');
+  }
+  return { photoCaptureStatus: 'captured', photoCapturedAt: Math.floor(capturedAt) };
 }
 
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1_000;
@@ -445,6 +491,7 @@ export async function acceptPublicIssueReport(
   options: AcceptPublicIssueReportOptions,
 ): Promise<PublicIssueReportReceipt> {
   const nowMs = (options.now ?? Date.now)();
+  const photoMetadata = validatePhotoCaptureMetadata(options, options.photo, nowMs);
   const now = options.timestampFromMillis(nowMs);
   const candidateAggregateId = randomUUID();
   const submissionId = randomUUID();
@@ -607,6 +654,11 @@ export async function acceptPublicIssueReport(
       description: options.description,
       evidence,
       submittedAt: now,
+      photoCaptureStatus: photoMetadata.photoCaptureStatus,
+      photoCapturedAt: photoMetadata.photoCapturedAt === null
+        ? null
+        : options.timestampFromMillis(photoMetadata.photoCapturedAt),
+      deviceSnapshot: device,
     };
     transaction.set(submissionRef, submission as unknown as Record<string, unknown>);
     if (evidenceJobId && objectPath) {
@@ -673,6 +725,9 @@ export async function acceptPublicIssueReport(
       submissionId,
       referenceCode: code,
       confirmationCount: count,
+      submittedAt: nowMs,
+      photoCaptureStatus: photoMetadata.photoCaptureStatus,
+      photoCapturedAt: photoMetadata.photoCapturedAt,
       evidenceJobId,
       notificationOutboxId,
     };
@@ -683,6 +738,9 @@ export async function acceptPublicIssueReport(
     submissionId: committed.submissionId,
     referenceCode: committed.referenceCode,
     confirmationCount: committed.confirmationCount,
+    submittedAt: committed.submittedAt,
+    photoCaptureStatus: committed.photoCaptureStatus,
+    photoCapturedAt: committed.photoCapturedAt,
     ...(committed.evidenceJobId
       ? { evidenceJobId: committed.evidenceJobId }
       : {}),

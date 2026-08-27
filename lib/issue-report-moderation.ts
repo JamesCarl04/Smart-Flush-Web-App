@@ -34,6 +34,7 @@ function text(value: unknown): string | null {
 }
 
 function millis(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (value instanceof Date) return value.getTime();
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
     return value.toMillis();
@@ -69,6 +70,9 @@ interface SubmissionShape {
   id: string;
   description?: unknown;
   evidence?: unknown;
+  photoCaptureStatus?: unknown;
+  photoCapturedAt?: unknown;
+  submittedAt?: unknown;
 }
 
 export function safeSerializeIssueReport(
@@ -88,6 +92,16 @@ export function safeSerializeIssueReport(
       ? [{ submissionId: submission.id, contentType: text(item.contentType), size: count(item.size) }]
       : [];
   });
+  const submissionDetails = submissions.map((submission) => ({
+    submissionId: submission.id,
+    photoCaptureStatus: submission.photoCaptureStatus === 'captured' || submission.photoCaptureStatus === 'unavailable'
+      ? submission.photoCaptureStatus
+      : submission.evidence && typeof submission.evidence === 'object' && (submission.evidence as Record<string, unknown>).state === 'stored'
+        ? 'captured'
+        : 'unavailable',
+    photoCapturedAt: millis(submission.photoCapturedAt),
+    submittedAt: millis(submission.submittedAt),
+  }));
   return {
     id,
     referenceCode: text(data.referenceCode),
@@ -106,6 +120,7 @@ export function safeSerializeIssueReport(
     lastReportedAt: millis(data.lastReportedAt),
     descriptions,
     evidence,
+    submissions: submissionDetails,
     linkedTaskId: text(data.linkedTaskId),
     reviewedBy: text(data.reviewedBy),
     reviewedAt: millis(data.reviewedAt),
