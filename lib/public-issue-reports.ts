@@ -31,12 +31,11 @@ export interface PublicReportingDevice {
 export type IssueReportEvidence =
   | { state: 'none' }
   | {
-      state: 'finalization_pending';
+      state: 'upload_pending';
       contentType: 'image/jpeg' | 'image/png' | 'image/webp';
       size: number;
       jobId: string;
-      tempObjectPath: string;
-      finalObjectPath: string;
+      objectPath: string;
       failureCode?: 'storage_unavailable' | 'metadata_write_failed';
     }
   | {
@@ -50,7 +49,7 @@ export type IssueReportEvidence =
       state: 'upload_failed';
       contentType: 'image/jpeg' | 'image/png' | 'image/webp';
       size: number;
-      failureCode: 'storage_unavailable';
+      failureCode: 'storage_unavailable' | 'upload_timeout';
       failedAt: unknown;
     };
 
@@ -324,8 +323,11 @@ export function createCooldownKey(
     .digest('hex');
 }
 
-export function createTemporaryEvidencePath(submissionId: string): string {
-  return `issue-report-evidence-temp/${submissionId}/${randomUUID()}`;
+export function createEvidencePath(
+  aggregateId: string,
+  submissionId: string,
+): string {
+  return `issue-report-evidence/${aggregateId}/${submissionId}/${randomUUID()}`;
 }
 
 export interface PublicIssueReportDocumentSnapshot {
@@ -374,16 +376,12 @@ export interface AdminIssueReportNotification {
 
 export interface SubmitPublicIssueReportOptions {
   db: PublicIssueReportFirestore;
-  stageEvidence: (
+  uploadEvidence: (
     objectPath: string,
     bytes: Buffer,
     contentType: ValidatedIssueReportPhoto['contentType'],
   ) => Promise<void>;
-  finalizeEvidence: (
-    tempObjectPath: string,
-    finalObjectPath: string,
-  ) => Promise<void>;
-  deleteEvidence: (objectPath: string) => Promise<void>;
+  evidenceExists: (objectPath: string) => Promise<boolean>;
   notifyAdmins: (notification: AdminIssueReportNotification) => Promise<void>;
   timestampFromMillis: (milliseconds: number) => unknown;
   now?: () => number;
@@ -393,6 +391,11 @@ export interface SubmitPublicIssueReportOptions {
   description: string | null;
   photo: ValidatedIssueReportPhoto | null;
 }
+
+export type AcceptPublicIssueReportOptions = Omit<
+  SubmitPublicIssueReportOptions,
+  'uploadEvidence' | 'evidenceExists' | 'notifyAdmins'
+>;
 
 export interface PublicIssueReportReceipt {
   aggregateId: string;
@@ -438,8 +441,8 @@ function rateLimitError(): PublicIssueReportError {
   );
 }
 
-export async function submitPublicIssueReport(
-  options: SubmitPublicIssueReportOptions,
+export async function acceptPublicIssueReport(
+  options: AcceptPublicIssueReportOptions,
 ): Promise<PublicIssueReportReceipt> {
   const nowMs = (options.now ?? Date.now)();
   const now = options.timestampFromMillis(nowMs);
@@ -448,29 +451,6 @@ export async function submitPublicIssueReport(
   const candidateEvidenceJobId = options.photo ? randomUUID() : null;
   const candidateNotificationOutboxId =
     options.category === 'continuous_leak' ? randomUUID() : null;
-  const tempObjectPath = options.photo
-    ? createTemporaryEvidencePath(submissionId)
-    : null;
-  const finalObjectNonce = options.photo ? randomUUID() : null;
-  let evidenceStaged = false;
-
-  if (options.photo && tempObjectPath) {
-    try {
-      await options.stageEvidence(
-        tempObjectPath,
-        options.photo.bytes,
-        options.photo.contentType,
-      );
-      evidenceStaged = true;
-    } catch {
-      try {
-        await options.deleteEvidence(tempObjectPath);
-      } catch {
-        console.error('[Public Reports] Temporary evidence cleanup failed');
-      }
-      console.error('[Public Reports] Evidence upload failed');
-    }
-  }
 
   const deviceRef = options.db.collection('devices').doc(options.deviceId);
   const rateRef = options.db
@@ -483,9 +463,7 @@ export async function submitPublicIssueReport(
     .collection('publicIssueReportOpenKeys')
     .doc(createOpenKey(options.deviceId, options.category));
 
-  let committed;
-  try {
-    committed = await options.db.runTransaction(async (transaction) => {
+  const committed = await options.db.runTransaction(async (transaction) => {
     const [deviceSnapshot, rateSnapshot, cooldownSnapshot, openSnapshot] =
       await Promise.all([
         transaction.get(deviceRef),
@@ -609,34 +587,20 @@ export async function submitPublicIssueReport(
       });
     }
 
-    const evidenceJobId =
-      options.photo &&
-      evidenceStaged &&
-      candidateEvidenceJobId &&
-      tempObjectPath &&
-      finalObjectNonce
-        ? candidateEvidenceJobId
-        : null;
-    const finalObjectPath = evidenceJobId
-      ? `issue-report-evidence/${aggregateId}/${submissionId}/${finalObjectNonce}`
+    const evidenceJobId = options.photo ? candidateEvidenceJobId : null;
+    const objectPath = evidenceJobId
+      ? createEvidencePath(aggregateId, submissionId)
       : null;
     const evidence: IssueReportEvidence = options.photo
-      ? evidenceJobId && tempObjectPath && finalObjectPath
+      ? evidenceJobId && objectPath
         ? {
-            state: 'finalization_pending',
+            state: 'upload_pending',
             contentType: options.photo.contentType,
             size: options.photo.size,
             jobId: evidenceJobId,
-            tempObjectPath,
-            finalObjectPath,
+            objectPath,
           }
-        : {
-            state: 'upload_failed',
-            contentType: options.photo.contentType,
-            size: options.photo.size,
-            failureCode: 'storage_unavailable',
-            failedAt: now,
-          }
+        : { state: 'none' }
       : { state: 'none' };
     const submission: IssueReportSubmission = {
       id: submissionId,
@@ -645,19 +609,20 @@ export async function submitPublicIssueReport(
       submittedAt: now,
     };
     transaction.set(submissionRef, submission as unknown as Record<string, unknown>);
-    if (evidenceJobId && tempObjectPath && finalObjectPath) {
+    if (evidenceJobId && objectPath) {
       transaction.set(
         options.db.collection('publicIssueReportEvidenceJobs').doc(evidenceJobId),
         {
           id: evidenceJobId,
           status: 'pending',
+          phase: 'reserved',
           aggregateId,
           submissionId,
-          tempObjectPath,
-          finalObjectPath,
+          objectPath,
           contentType: options.photo?.contentType,
           size: options.photo?.size,
           attemptCount: 0,
+          reservedAt: now,
           createdAt: now,
           updatedAt: now,
         },
@@ -705,39 +670,46 @@ export async function submitPublicIssueReport(
 
     return {
       aggregateId,
-      aggregateRef,
       submissionId,
-      submissionRef,
       referenceCode: code,
       confirmationCount: count,
       evidenceJobId,
       notificationOutboxId,
-      device,
     };
-    });
-  } catch (error) {
-    if (evidenceStaged && tempObjectPath) {
-      try {
-        await options.deleteEvidence(tempObjectPath);
-      } catch {
-        console.error('[Public Reports] Temporary evidence cleanup failed');
-      }
-    }
-    throw error;
-  }
+  });
+
+  return {
+    aggregateId: committed.aggregateId,
+    submissionId: committed.submissionId,
+    referenceCode: committed.referenceCode,
+    confirmationCount: committed.confirmationCount,
+    ...(committed.evidenceJobId
+      ? { evidenceJobId: committed.evidenceJobId }
+      : {}),
+    ...(committed.notificationOutboxId
+      ? { notificationOutboxId: committed.notificationOutboxId }
+      : {}),
+  };
+}
+
+export async function submitPublicIssueReport(
+  options: SubmitPublicIssueReportOptions,
+): Promise<PublicIssueReportReceipt> {
+  const committed = await acceptPublicIssueReport(options);
 
   if (committed.evidenceJobId) {
     try {
       await processIssueReportEvidenceJob({
         db: options.db,
         jobId: committed.evidenceJobId,
-        finalizeEvidence: options.finalizeEvidence,
-        deleteEvidence: options.deleteEvidence,
+        uploadEvidence: options.uploadEvidence,
+        evidenceExists: options.evidenceExists,
+        photo: options.photo,
         timestampFromMillis: options.timestampFromMillis,
         now: options.now,
       });
     } catch {
-      console.error('[Public Reports] Evidence finalization deferred');
+      console.error('[Public Reports] Evidence processing deferred');
     }
   }
 
@@ -755,35 +727,27 @@ export async function submitPublicIssueReport(
     }
   }
 
-  return {
-    aggregateId: committed.aggregateId,
-    submissionId: committed.submissionId,
-    referenceCode: committed.referenceCode,
-    confirmationCount: committed.confirmationCount,
-    ...(committed.evidenceJobId
-      ? { evidenceJobId: committed.evidenceJobId }
-      : {}),
-    ...(committed.notificationOutboxId
-      ? { notificationOutboxId: committed.notificationOutboxId }
-      : {}),
-  };
+  return committed;
 }
 
 export interface ProcessEvidenceJobOptions {
   db: PublicIssueReportFirestore;
   jobId: string;
-  finalizeEvidence: (
-    tempObjectPath: string,
-    finalObjectPath: string,
+  uploadEvidence: (
+    objectPath: string,
+    bytes: Buffer,
+    contentType: ValidatedIssueReportPhoto['contentType'],
   ) => Promise<void>;
-  deleteEvidence: (objectPath: string) => Promise<void>;
+  evidenceExists: (objectPath: string) => Promise<boolean>;
+  photo?: ValidatedIssueReportPhoto | null;
+  reservationTimeoutMs?: number;
   timestampFromMillis: (milliseconds: number) => unknown;
   now?: () => number;
 }
 
-async function recordEvidenceJobFailure(
+async function recordPendingEvidenceFailure(
   options: ProcessEvidenceJobOptions,
-  failureCode: 'storage_unavailable' | 'metadata_write_failed',
+  failureCode: 'metadata_write_failed',
 ): Promise<void> {
   const now = options.timestampFromMillis((options.now ?? Date.now)());
   const jobRef = options.db
@@ -792,15 +756,70 @@ async function recordEvidenceJobFailure(
   await options.db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(jobRef);
     const job = snapshot.data();
-    if (!snapshot.exists || job?.status === 'completed') return;
+    if (!snapshot.exists || job?.status !== 'pending') return;
     transaction.set(
       jobRef,
       {
         status: 'pending',
-        attemptCount: nonnegativeInteger(job?.attemptCount) + 1,
+        phase: 'uploaded',
         failureCode,
-        lastAttemptAt: now,
         updatedAt: now,
+      },
+      { merge: true },
+    );
+  });
+}
+
+async function markEvidenceUploadFailed(
+  options: ProcessEvidenceJobOptions,
+  failureCode: 'storage_unavailable' | 'upload_timeout',
+): Promise<void> {
+  const failedAt = options.timestampFromMillis((options.now ?? Date.now)());
+  const jobRef = options.db
+    .collection('publicIssueReportEvidenceJobs')
+    .doc(options.jobId);
+  await options.db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+    const job = snapshot.data();
+    if (!snapshot.exists || job?.status !== 'pending') return;
+    const aggregateId = requiredString(job.aggregateId);
+    const submissionId = requiredString(job.submissionId);
+    const contentType = job.contentType;
+    const size = nonnegativeInteger(job.size);
+    if (
+      !aggregateId ||
+      !submissionId ||
+      !isIssueReportImageMime(contentType) ||
+      size === 0
+    ) {
+      return;
+    }
+    transaction.set(
+      options.db
+        .collection('issueReports')
+        .doc(aggregateId)
+        .collection('submissions')
+        .doc(submissionId),
+      {
+        evidence: {
+          state: 'upload_failed',
+          contentType,
+          size,
+          failureCode,
+          failedAt,
+        } satisfies IssueReportEvidence,
+      },
+      { merge: true },
+    );
+    transaction.set(
+      jobRef,
+      {
+        status: 'failed',
+        phase: 'failed',
+        failureCode,
+        failedAt,
+        leaseExpiresAt: null,
+        updatedAt: failedAt,
       },
       { merge: true },
     );
@@ -815,38 +834,117 @@ export async function processIssueReportEvidenceJob(
     .doc(options.jobId);
   const snapshot = await jobRef.get();
   const job = snapshot.data();
-  if (!snapshot.exists || job?.status === 'completed') return;
+  if (!snapshot.exists || job?.status !== 'pending') return;
 
   const aggregateId = requiredString(job?.aggregateId);
   const submissionId = requiredString(job?.submissionId);
-  const tempObjectPath = requiredString(job?.tempObjectPath);
-  const finalObjectPath = requiredString(job?.finalObjectPath);
+  const objectPath = requiredString(job?.objectPath);
   const contentType = job?.contentType;
   const size = nonnegativeInteger(job?.size);
   if (
     !aggregateId ||
     !submissionId ||
-    !tempObjectPath ||
-    !finalObjectPath ||
+    !objectPath ||
     !isIssueReportImageMime(contentType) ||
     size === 0
   ) {
     return;
   }
 
+  const nowMs = (options.now ?? Date.now)();
+  const phase = requiredString(job.phase) ?? 'reserved';
+  const leaseExpiresAt = milliseconds(job.leaseExpiresAt);
+  let objectExists: boolean;
   try {
-    await options.finalizeEvidence(tempObjectPath, finalObjectPath);
+    objectExists = await options.evidenceExists(objectPath);
   } catch {
-    try {
-      await recordEvidenceJobFailure(options, 'storage_unavailable');
-    } catch {
-      console.error('[Public Reports] Evidence failure-state write failed');
-    }
-    console.error('[Public Reports] Evidence finalization remains pending');
+    console.error('[Public Reports] Evidence existence check deferred');
     return;
   }
 
-  const completedAt = options.timestampFromMillis((options.now ?? Date.now)());
+  if (!objectExists && options.photo) {
+    if (
+      options.photo.contentType !== contentType ||
+      options.photo.size !== size
+    ) {
+      return;
+    }
+    const attemptId = randomUUID();
+    const claimed = await options.db.runTransaction(async (transaction) => {
+      const latest = await transaction.get(jobRef);
+      const latestJob = latest.data();
+      if (!latest.exists || latestJob?.status !== 'pending') return false;
+      const latestLease = milliseconds(latestJob.leaseExpiresAt);
+      if (
+        latestJob.phase === 'uploading' &&
+        latestLease !== null &&
+        latestLease > nowMs
+      ) {
+        return false;
+      }
+      const claimedAt = options.timestampFromMillis(nowMs);
+      transaction.set(
+        jobRef,
+        {
+          phase: 'uploading',
+          attemptId,
+          attemptCount: nonnegativeInteger(latestJob.attemptCount) + 1,
+          lastAttemptAt: claimedAt,
+          leaseExpiresAt: options.timestampFromMillis(nowMs + 60_000),
+          updatedAt: claimedAt,
+        },
+        { merge: true },
+      );
+      return true;
+    });
+    if (!claimed) return;
+
+    try {
+      await options.uploadEvidence(
+        objectPath,
+        options.photo.bytes,
+        contentType,
+      );
+      objectExists = true;
+    } catch {
+      try {
+        objectExists = await options.evidenceExists(objectPath);
+      } catch {
+        console.error('[Public Reports] Evidence upload outcome is ambiguous');
+        return;
+      }
+      if (!objectExists) {
+        try {
+          await markEvidenceUploadFailed(options, 'storage_unavailable');
+        } catch {
+          console.error('[Public Reports] Evidence failure-state write failed');
+        }
+        console.error('[Public Reports] Evidence upload failed');
+        return;
+      }
+    }
+  }
+
+  if (!objectExists) {
+    if (phase === 'uploading' && leaseExpiresAt !== null && leaseExpiresAt > nowMs) {
+      return;
+    }
+    const reservedAt = milliseconds(job.reservedAt);
+    const reservationTimeoutMs = options.reservationTimeoutMs ?? 2 * 60 * 1_000;
+    const reservationExpired =
+      phase === 'uploading'
+        ? leaseExpiresAt === null || leaseExpiresAt <= nowMs
+        : reservedAt !== null && nowMs - reservedAt >= reservationTimeoutMs;
+    if (!reservationExpired) return;
+    try {
+      await markEvidenceUploadFailed(options, 'upload_timeout');
+    } catch {
+      console.error('[Public Reports] Evidence timeout-state write failed');
+    }
+    return;
+  }
+
+  const completedAt = options.timestampFromMillis(nowMs);
   try {
     await options.db.runTransaction(async (transaction) => {
       const latest = await transaction.get(jobRef);
@@ -864,7 +962,7 @@ export async function processIssueReportEvidenceJob(
             state: 'stored',
             contentType,
             size,
-            objectPath: finalObjectPath,
+            objectPath,
             storedAt: completedAt,
           } satisfies IssueReportEvidence,
         },
@@ -874,8 +972,9 @@ export async function processIssueReportEvidenceJob(
         jobRef,
         {
           status: 'completed',
-          attemptCount: nonnegativeInteger(latestJob?.attemptCount) + 1,
+          phase: 'stored',
           failureCode: null,
+          leaseExpiresAt: null,
           completedAt,
           updatedAt: completedAt,
         },
@@ -884,7 +983,7 @@ export async function processIssueReportEvidenceJob(
     });
   } catch {
     try {
-      await recordEvidenceJobFailure(options, 'metadata_write_failed');
+      await recordPendingEvidenceFailure(options, 'metadata_write_failed');
     } catch {
       console.error('[Public Reports] Evidence failure-state write failed');
     }
@@ -996,4 +1095,55 @@ export async function processIssueReportNotificationOutbox(
       );
     }
   });
+}
+
+export interface PublicIssueReportRecoveryBatchOptions {
+  db: PublicIssueReportFirestore;
+  evidenceJobIds: string[];
+  notificationOutboxIds: string[];
+  maxJobsPerType?: number;
+  uploadEvidence: ProcessEvidenceJobOptions['uploadEvidence'];
+  evidenceExists: ProcessEvidenceJobOptions['evidenceExists'];
+  notifyAdmins: (notification: AdminIssueReportNotification) => Promise<void>;
+  timestampFromMillis: (milliseconds: number) => unknown;
+  now?: () => number;
+}
+
+export async function processPublicIssueReportRecoveryBatch(
+  options: PublicIssueReportRecoveryBatchOptions,
+): Promise<{ evidenceProcessed: number; notificationsProcessed: number }> {
+  const limit = Math.min(Math.max(options.maxJobsPerType ?? 20, 1), 50);
+  const evidenceJobIds = [...new Set(options.evidenceJobIds)].slice(0, limit);
+  const notificationOutboxIds = [
+    ...new Set(options.notificationOutboxIds),
+  ].slice(0, limit);
+
+  await Promise.allSettled(
+    evidenceJobIds.map((jobId) =>
+      processIssueReportEvidenceJob({
+        db: options.db,
+        jobId,
+        uploadEvidence: options.uploadEvidence,
+        evidenceExists: options.evidenceExists,
+        timestampFromMillis: options.timestampFromMillis,
+        now: options.now,
+      }),
+    ),
+  );
+  await Promise.allSettled(
+    notificationOutboxIds.map((jobId) =>
+      processIssueReportNotificationOutbox({
+        db: options.db,
+        jobId,
+        notifyAdmins: options.notifyAdmins,
+        timestampFromMillis: options.timestampFromMillis,
+        now: options.now,
+      }),
+    ),
+  );
+
+  return {
+    evidenceProcessed: evidenceJobIds.length,
+    notificationsProcessed: notificationOutboxIds.length,
+  };
 }

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb, adminStorage } from '@/lib/firebase-admin';
-import { sendAdminNotification } from '@/lib/fcm';
+import { adminDb } from '@/lib/firebase-admin';
+import {
+  issueReportEvidenceExists,
+  notifyIssueReportAdmins,
+  uploadIssueReportEvidence,
+} from '@/lib/public-issue-report-runtime';
 import {
   PublicIssueReportError,
   createPublicReportFingerprint,
@@ -33,63 +37,14 @@ interface HandlerDependencies {
 
 const DEFAULT_MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
-async function stageEvidence(
-  objectPath: string,
-  bytes: Buffer,
-  contentType: ValidatedIssueReportPhoto['contentType'],
-): Promise<void> {
-  await adminStorage.bucket().file(objectPath).save(bytes, {
-    resumable: false,
-    validation: 'crc32c',
-    metadata: {
-      contentType,
-      cacheControl: 'private, no-store, max-age=0',
-    },
-  });
-}
-
-async function finalizeEvidence(
-  tempObjectPath: string,
-  finalObjectPath: string,
-): Promise<void> {
-  const bucket = adminStorage.bucket();
-  const temporary = bucket.file(tempObjectPath);
-  const destination = bucket.file(finalObjectPath);
-  const [destinationExists] = await destination.exists();
-  if (!destinationExists) {
-    const [temporaryExists] = await temporary.exists();
-    if (!temporaryExists) throw new Error('Temporary evidence is unavailable');
-    await temporary.copy(destination);
-  }
-  await temporary.delete({ ignoreNotFound: true });
-}
-
-async function deleteEvidence(objectPath: string): Promise<void> {
-  await adminStorage.bucket().file(objectPath).delete({ ignoreNotFound: true });
-}
-
 async function submitWithFirebase(
   input: IntakeInput,
 ): Promise<PublicIssueReportReceipt> {
   return submitPublicIssueReport({
     db: adminDb as unknown as PublicIssueReportFirestore,
-    stageEvidence,
-    finalizeEvidence,
-    deleteEvidence,
-    notifyAdmins: async (notification) => {
-      await sendAdminNotification({
-        title: 'Continuous leak reported',
-        body: `${notification.deviceName} has a public continuous-leak report (${notification.referenceCode}).`,
-        data: {
-          issueReportId: notification.issueReportId,
-          notificationId: notification.notificationId,
-          deviceId: notification.deviceId,
-          category: notification.category,
-          referenceCode: notification.referenceCode,
-          confirmationCount: String(notification.confirmationCount),
-        },
-      });
-    },
+    uploadEvidence: uploadIssueReportEvidence,
+    evidenceExists: issueReportEvidenceExists,
+    notifyAdmins: notifyIssueReportAdmins,
     timestampFromMillis: (milliseconds) => Timestamp.fromMillis(milliseconds),
     ...input,
   });

@@ -124,3 +124,56 @@ Complete. The trusted-IP boundary, evidence durability, leak-notification delive
 - Production must deploy a scheduled/queued invoker for the exported durable evidence and notification processors so jobs left by a process exit are retried without waiting for a later matching report. The records and processors are recoverable and idempotent; this task does not provision deployment infrastructure.
 - Exactly-once push delivery cannot be guaranteed across a transport-success/metadata-write crash. The outbox lease and stable Android/APNS collapse ID prevent concurrent sends and reduce visible duplicates on retry.
 - No live Firebase project was mutated. Deploy the updated rules and validate the trusted edge strips/overwrites the configured authoritative header before enabling anonymous intake.
+
+---
+
+## Fix round 2 — transaction-first evidence and production recovery
+
+### Status
+
+Complete. This round supersedes fix round 1's temporary-upload design. Evidence is now reserved transactionally before any Storage access, written idempotently to its already-tracked final private path, and recovered alongside notification outbox work by a secured bounded cron endpoint.
+
+### Files changed
+
+- `lib/public-issue-reports.ts` — separates transactional acceptance from best-effort post-commit processing; records exact evidence object paths/jobs before Storage access; claims upload attempts with leases; probes ambiguous writes; finalizes stored metadata transactionally; times out stale reservations safely; and exposes a bounded recovery batch for evidence and notification jobs.
+- `lib/public-issue-report-runtime.ts` — centralizes private Admin Storage upload/existence operations and stable-ID administrator notification delivery for both request and cron execution.
+- `app/api/public/issue-reports/route.ts` — uses the transaction-first direct upload runtime without temporary objects or cleanup windows.
+- `app/api/cron/public-issue-report-jobs/route.ts` — adds a bounded GET recovery endpoint, fails closed without `CRON_SECRET`, verifies the exact bearer value with timing-safe digest comparison, and scans pending/leased jobs for idempotent processing.
+- `vercel.json` — schedules `/api/cron/public-issue-report-jobs` every minute.
+- `.env.example`, `docs/public-issue-reporting-deployment.md` — document `CRON_SECRET`, every-minute Vercel Pro scheduling, the Hobby external-scheduler requirement, at-least-once FCM semantics, stable collapse IDs, tracked evidence recovery, and the approximate nature of post-parse multipart sizing.
+- `storage.rules` — removes the obsolete temporary evidence prefix; final evidence remains denied to direct clients.
+- `__tests__/unit/public-issue-report-service.test.ts` — covers path-before-bytes ordering, zero Storage access for missing/disabled/rate-limited reports, direct upload failure, crash-before-upload timeout, ambiguous upload probing, expired upload leases, metadata/failure-state write failures, bounded recovery, and leak retry/expired-lease recovery without a new report.
+- `__tests__/integration/public-issue-report-jobs-cron.test.ts` — covers missing configuration, missing/wrong authentication, exact bearer authorization, and one bounded cron invocation.
+
+### TDD RED/GREEN evidence
+
+- RED: the first ordering tests showed Storage ran before the acceptance transaction and a nonexistent-device photo caused one Storage write. GREEN: acceptance now validates the device and abuse limits and commits the aggregate, submission, exact object path, and job reservation before any Storage existence check or upload; missing, disabled, and rate-limited cases perform zero Storage operations.
+- RED: the desired direct-upload suite had seven failures: no transactional acceptance-only API, no durable direct path, no terminal stale reservation, and no ambiguous-object recovery. GREEN: all service tests pass with `upload_pending` reservations, direct tracked-path upload, lease-based upload claims, object existence probing, transactional stored/failed states, and idempotent retry.
+- RED: recovery batch tests failed because `processPublicIssueReportRecoveryBatch` did not exist. GREEN: bounded batches recover stale/expired evidence jobs and retry pending/expired notification jobs without a new public submission.
+- RED: the cron integration suite failed because the route module did not exist. GREEN: five route cases pass for fail-closed configuration, exact bearer authentication, and successful bounded invocation.
+
+### Verification
+
+- Focused report/cron Jest: `npx jest __tests__/integration/public-issue-report-jobs-cron.test.ts __tests__/unit/public-issue-report-service.test.ts __tests__/integration/public-issue-reports-api.test.ts --runInBand --watchAll=false` — PASS, 3 suites and 43/43 tests.
+- Full root Jest: `npx jest --runInBand --watchAll=false` — PASS, 26 suites and 215/215 tests.
+- Production build: `npm run build` — PASS, including TypeScript and the dynamic `/api/cron/public-issue-report-jobs` route.
+- Scoped ESLint over all changed TypeScript source/tests — PASS with exit code 0 and no findings.
+- JSON parsing and `git diff --check` — PASS; repository line-ending conversion notices only.
+
+### Commit
+
+- Planned focused commit: `fix: recover public report jobs by cron`.
+
+### Self-review
+
+- The acceptance transaction is the first external side-effect after validation. Every possible evidence object path is durable before bytes can be written; there is no temporary/untracked object namespace and no best-effort cleanup dependency.
+- An immediate upload obtains a durable lease, writes only to the recorded path, and checks that same path after an ambiguous error. Metadata completion and terminal `upload_failed` transitions update the submission and job atomically. Cron safely resolves expired upload leases and stale pre-upload reservations.
+- The cron query and processor both cap work per collection. Completed/failed evidence jobs and delivered notifications no-op; active notification leases no-op; expired leases are reclaimable.
+- Outbox cadence still creates at most one record per eligible aggregate interval. Delivery is at-least-once: the stable outbox ID is used for Android/APNS collapse metadata because an FCM success followed by a Firestore failure can be retried.
+- The `Content-Length` gate remains the exact early boundary. The decoded post-parse total is explicitly documented as an approximation, with an upstream hard body cap required.
+
+### Concerns
+
+- The checked-in every-minute Vercel Cron schedule requires a Pro plan. Hobby deployments need an external every-minute scheduler calling the same endpoint with the configured bearer secret; Hobby's daily cron limit is not suitable for prompt recovery.
+- FCM cannot provide exactly-once delivery across an ambiguous success/metadata-write crash. Leases and collapse IDs reduce duplicates but do not mathematically eliminate every duplicate notification.
+- No live Firebase or Vercel project was mutated; deployment still needs the updated rules plus `CRON_SECRET`, Storage, and trusted-proxy environment configuration.

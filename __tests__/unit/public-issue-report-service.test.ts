@@ -1,8 +1,10 @@
 import {
   PublicIssueReportError,
+  acceptPublicIssueReport,
   createOpenKey,
   processIssueReportEvidenceJob,
   processIssueReportNotificationOutbox,
+  processPublicIssueReportRecoveryBatch,
   submitPublicIssueReport,
   type PublicIssueReportFirestore,
   type ValidatedIssueReportPhoto,
@@ -110,18 +112,21 @@ function makeHarness() {
     floor: '4th Floor',
     location: 'North Wing',
   });
-  const stageEvidence = jest.fn().mockResolvedValue(undefined);
-  const finalizeEvidence = jest.fn().mockResolvedValue(undefined);
-  const deleteEvidence = jest.fn().mockResolvedValue(undefined);
+  const storedEvidence = new Set<string>();
+  const uploadEvidence = jest.fn(
+    async (objectPath: string) => void storedEvidence.add(objectPath),
+  );
+  const evidenceExists = jest.fn(
+    async (objectPath: string) => storedEvidence.has(objectPath),
+  );
   const notifyAdmins = jest.fn().mockResolvedValue(undefined);
   let now = 1_800_000_000_000;
 
   const submit = (overrides: Partial<Parameters<typeof submitPublicIssueReport>[0]> = {}) =>
     submitPublicIssueReport({
       db,
-      stageEvidence,
-      finalizeEvidence,
-      deleteEvidence,
+      uploadEvidence,
+      evidenceExists,
       notifyAdmins,
       timestampFromMillis: (value) => value,
       now: () => now,
@@ -133,13 +138,29 @@ function makeHarness() {
       ...overrides,
     } as unknown as Parameters<typeof submitPublicIssueReport>[0]);
 
+  const accept = (
+    overrides: Partial<Parameters<typeof acceptPublicIssueReport>[0]> = {},
+  ) =>
+    acceptPublicIssueReport({
+      db,
+      timestampFromMillis: (value) => value,
+      now: () => now,
+      deviceId: 'toilet-01',
+      fingerprint: 'a'.repeat(64),
+      category: 'no_water',
+      description: 'No water after flushing',
+      photo: null,
+      ...overrides,
+    } as Parameters<typeof acceptPublicIssueReport>[0]);
+
   return {
     db,
-    stageEvidence,
-    finalizeEvidence,
-    deleteEvidence,
+    storedEvidence,
+    uploadEvidence,
+    evidenceExists,
     notifyAdmins,
     submit,
+    accept,
     advance: (milliseconds: number) => {
       now += milliseconds;
     },
@@ -272,16 +293,12 @@ describe('public issue report transactional intake', () => {
     expect(persisted).not.toContain('198.51.100.9');
     expect(persisted).not.toContain('downloadUrl');
     expect(persisted).not.toContain('https://');
-    expect(harness.stageEvidence).toHaveBeenCalledWith(
-      expect.stringMatching(/^issue-report-evidence-temp\//),
-      expect.any(Buffer),
-      'image/jpeg',
-    );
-    expect(harness.finalizeEvidence).toHaveBeenCalledWith(
-      expect.stringMatching(/^issue-report-evidence-temp\//),
+    expect(harness.uploadEvidence).toHaveBeenCalledWith(
       expect.stringMatching(
         new RegExp(`^issue-report-evidence/${result.aggregateId}/${result.submissionId}/[0-9a-f-]{36}$`),
       ),
+      expect.any(Buffer),
+      'image/jpeg',
     );
     const submission = harness.db.data.get(
       `issueReports/${result.aggregateId}/submissions/${result.submissionId}`,
@@ -291,9 +308,49 @@ describe('public issue report transactional intake', () => {
     );
   });
 
+  it('records the exact evidence object path transactionally before writing bytes', async () => {
+    const harness = makeHarness();
+    let pathWasDurableBeforeStorage = false;
+    harness.uploadEvidence.mockImplementationOnce(async (objectPath: string) => {
+      pathWasDurableBeforeStorage = valuesForCollection(
+        harness.db,
+        'publicIssueReportEvidenceJobs',
+      ).some((job) => job.objectPath === objectPath);
+      harness.storedEvidence.add(objectPath);
+    });
+
+    await harness.submit({ photo: photo() });
+
+    expect(pathWasDurableBeforeStorage).toBe(true);
+  });
+
+  it('performs zero Storage operations for invalid devices and rate-limited reports', async () => {
+    const harness = makeHarness();
+
+    await expect(
+      harness.submit({ deviceId: 'missing', photo: photo() }),
+    ).rejects.toMatchObject({ code: 'device_unavailable' });
+    harness.db.data.set('devices/disabled-photo', {
+      name: 'Disabled',
+      publicReportingEnabled: false,
+    });
+    await expect(
+      harness.submit({ deviceId: 'disabled-photo', photo: photo() }),
+    ).rejects.toMatchObject({ code: 'device_unavailable' });
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
+    expect(harness.evidenceExists).not.toHaveBeenCalled();
+
+    await harness.submit({ photo: null });
+    await expect(harness.submit({ photo: photo() })).rejects.toMatchObject({
+      code: 'rate_limited',
+    });
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
+    expect(harness.evidenceExists).not.toHaveBeenCalled();
+  });
+
   it('keeps the accepted text report and persists a safe failure state when evidence upload fails', async () => {
     const harness = makeHarness();
-    harness.stageEvidence.mockRejectedValueOnce(new Error('bucket leaked a provider detail'));
+    harness.uploadEvidence.mockRejectedValueOnce(new Error('bucket leaked a provider detail'));
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
     const result = await harness.submit({ photo: photo() });
@@ -310,6 +367,9 @@ describe('public issue report transactional intake', () => {
         }),
       }),
     );
+    expect(valuesForCollection(harness.db, 'publicIssueReportEvidenceJobs')).toEqual([
+      expect.objectContaining({ status: 'failed', failureCode: 'storage_unavailable' }),
+    ]);
     expect(consoleError).toHaveBeenCalledWith('[Public Reports] Evidence upload failed');
     consoleError.mockRestore();
   });
@@ -372,7 +432,7 @@ describe('public issue report transactional intake', () => {
 
   it('keeps exact evidence paths durable when final storage succeeds but metadata finalization fails', async () => {
     const harness = makeHarness();
-    harness.db.failTransactionAttempts.add(2);
+    harness.db.failTransactionAttempts.add(3);
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
     const receipt = await harness.submit({ photo: photo() });
@@ -382,21 +442,19 @@ describe('public issue report transactional intake', () => {
     expect(harness.db.data.get(jobPath)).toEqual(
       expect.objectContaining({
         status: 'pending',
-        tempObjectPath: expect.stringMatching(/^issue-report-evidence-temp\//),
-        finalObjectPath: expect.stringMatching(/^issue-report-evidence\//),
+        objectPath: expect.stringMatching(/^issue-report-evidence\//),
       }),
     );
-    expect(harness.finalizeEvidence).toHaveBeenCalledTimes(1);
+    expect(harness.uploadEvidence).toHaveBeenCalledTimes(1);
     expect(
       harness.db.data.get(
         `issueReports/${receipt.aggregateId}/submissions/${receipt.submissionId}`,
       )?.evidence,
     ).toEqual(
       expect.objectContaining({
-        state: 'finalization_pending',
+        state: 'upload_pending',
         jobId: receipt.evidenceJobId,
-        tempObjectPath: expect.any(String),
-        finalObjectPath: expect.any(String),
+        objectPath: expect.any(String),
       }),
     );
 
@@ -404,8 +462,8 @@ describe('public issue report transactional intake', () => {
     await processIssueReportEvidenceJob({
       db: harness.db,
       jobId: receipt.evidenceJobId!,
-      finalizeEvidence: harness.finalizeEvidence,
-      deleteEvidence: harness.deleteEvidence,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
       timestampFromMillis: (value) => value,
       now: () => 1_800_000_000_000,
     });
@@ -416,54 +474,84 @@ describe('public issue report transactional intake', () => {
     consoleError.mockRestore();
   });
 
-  it('retries interrupted evidence finalization and is idempotent after completion', async () => {
+  it('recovers an ambiguous upload by checking the tracked object and remains idempotent', async () => {
     const harness = makeHarness();
-    harness.finalizeEvidence.mockRejectedValueOnce(new Error('process interrupted'));
+    harness.uploadEvidence.mockImplementationOnce(async (objectPath: string) => {
+      harness.storedEvidence.add(objectPath);
+      throw new Error('connection closed after upload');
+    });
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
     const receipt = await harness.submit({ photo: photo() });
     const jobPath = `publicIssueReportEvidenceJobs/${receipt.evidenceJobId}`;
     expect(harness.db.data.get(jobPath)).toEqual(
-      expect.objectContaining({ status: 'pending', attemptCount: 1 }),
+      expect.objectContaining({ status: 'completed', attemptCount: 1 }),
     );
 
     const processOptions = {
       db: harness.db,
       jobId: receipt.evidenceJobId!,
-      finalizeEvidence: harness.finalizeEvidence,
-      deleteEvidence: harness.deleteEvidence,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
       timestampFromMillis: (value: number) => value,
       now: () => 1_800_000_000_100,
     };
     await processIssueReportEvidenceJob(processOptions);
-    await processIssueReportEvidenceJob(processOptions);
 
-    expect(harness.finalizeEvidence).toHaveBeenCalledTimes(2);
+    expect(harness.uploadEvidence).toHaveBeenCalledTimes(1);
     expect(harness.db.data.get(jobPath)).toEqual(
-      expect.objectContaining({ status: 'completed', attemptCount: 2 }),
+      expect.objectContaining({ status: 'completed', attemptCount: 1 }),
     );
-    expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
   });
 
-  it('deletes staged evidence when the acceptance transaction fails', async () => {
+  it('marks a stale crash-before-upload reservation failed without touching Storage early', async () => {
     const harness = makeHarness();
+    const receipt = await harness.accept({ photo: photo() });
+    const jobPath = `publicIssueReportEvidenceJobs/${receipt.evidenceJobId}`;
 
-    await expect(
-      harness.submit({ deviceId: 'missing', photo: photo() }),
-    ).rejects.toMatchObject({ code: 'device_unavailable' });
-
-    expect(harness.stageEvidence).toHaveBeenCalledTimes(1);
-    expect(harness.deleteEvidence).toHaveBeenCalledWith(
-      expect.stringMatching(/^issue-report-evidence-temp\//),
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
+    expect(harness.db.data.get(jobPath)).toEqual(
+      expect.objectContaining({ status: 'pending', phase: 'reserved' }),
     );
-    expect(valuesForCollection(harness.db, 'publicIssueReportEvidenceJobs')).toHaveLength(0);
+
+    await processIssueReportEvidenceJob({
+      db: harness.db,
+      jobId: receipt.evidenceJobId!,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      reservationTimeoutMs: 120_000,
+      timestampFromMillis: (value) => value,
+      now: () => 1_800_000_119_999,
+    });
+    expect(harness.db.data.get(jobPath)).toEqual(
+      expect.objectContaining({ status: 'pending', phase: 'reserved' }),
+    );
+
+    await processIssueReportEvidenceJob({
+      db: harness.db,
+      jobId: receipt.evidenceJobId!,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      reservationTimeoutMs: 120_000,
+      timestampFromMillis: (value) => value,
+      now: () => 1_800_000_120_000,
+    });
+    expect(harness.db.data.get(jobPath)).toEqual(
+      expect.objectContaining({ status: 'failed', failureCode: 'upload_timeout' }),
+    );
+    expect(
+      harness.db.data.get(
+        `issueReports/${receipt.aggregateId}/submissions/${receipt.submissionId}`,
+      )?.evidence,
+    ).toEqual(expect.objectContaining({ state: 'upload_failed' }));
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
   });
 
   it('leaves the originally tracked evidence job retryable when fallback metadata writing fails', async () => {
     const harness = makeHarness();
-    harness.finalizeEvidence.mockRejectedValueOnce(new Error('storage unavailable'));
-    harness.db.failTransactionAttempts.add(2);
+    harness.uploadEvidence.mockRejectedValueOnce(new Error('storage unavailable'));
+    harness.db.failTransactionAttempts.add(3);
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
     const receipt = await harness.submit({ photo: photo() });
@@ -471,8 +559,7 @@ describe('public issue report transactional intake', () => {
     expect(harness.db.data.get(`publicIssueReportEvidenceJobs/${receipt.evidenceJobId}`)).toEqual(
       expect.objectContaining({
         status: 'pending',
-        tempObjectPath: expect.any(String),
-        finalObjectPath: expect.any(String),
+        objectPath: expect.any(String),
       }),
     );
     expect(consoleError).toHaveBeenCalled();
@@ -582,5 +669,121 @@ describe('public issue report transactional intake', () => {
     );
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it('recovers a crash-before-upload reservation through a bounded recovery batch', async () => {
+    const harness = makeHarness();
+    const receipt = await harness.accept({ photo: photo() });
+    harness.advance(120_000);
+
+    const result = await processPublicIssueReportRecoveryBatch({
+      db: harness.db,
+      evidenceJobIds: [receipt.evidenceJobId!, 'ignored-over-limit'],
+      notificationOutboxIds: [],
+      maxJobsPerType: 1,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      notifyAdmins: harness.notifyAdmins,
+      timestampFromMillis: (value) => value,
+      now: () => 1_800_000_120_000,
+    });
+
+    expect(result).toEqual({ evidenceProcessed: 1, notificationsProcessed: 0 });
+    expect(
+      harness.db.data.get(`publicIssueReportEvidenceJobs/${receipt.evidenceJobId}`),
+    ).toEqual(expect.objectContaining({ status: 'failed', failureCode: 'upload_timeout' }));
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
+  });
+
+  it('recovers an ambiguous tracked object after an upload lease expires', async () => {
+    const harness = makeHarness();
+    const receipt = await harness.accept({ photo: photo() });
+    const jobPath = `publicIssueReportEvidenceJobs/${receipt.evidenceJobId}`;
+    const job = harness.db.data.get(jobPath)!;
+    harness.storedEvidence.add(job.objectPath as string);
+    harness.db.write(
+      jobPath,
+      { phase: 'uploading', leaseExpiresAt: 1_799_999_999_999 },
+      true,
+    );
+
+    await processPublicIssueReportRecoveryBatch({
+      db: harness.db,
+      evidenceJobIds: [receipt.evidenceJobId!],
+      notificationOutboxIds: [],
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      notifyAdmins: harness.notifyAdmins,
+      timestampFromMillis: (value) => value,
+      now: () => 1_800_000_000_000,
+    });
+
+    expect(harness.db.data.get(jobPath)).toEqual(
+      expect.objectContaining({ status: 'completed', phase: 'stored' }),
+    );
+    expect(harness.uploadEvidence).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed leak outbox through recovery without accepting a new report', async () => {
+    const harness = makeHarness();
+    const receipt = await harness.accept({ category: 'continuous_leak' });
+    harness.notifyAdmins.mockRejectedValueOnce(new Error('FCM unavailable'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    const options = {
+      db: harness.db,
+      evidenceJobIds: [],
+      notificationOutboxIds: [receipt.notificationOutboxId!],
+      maxJobsPerType: 10,
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      notifyAdmins: harness.notifyAdmins,
+      timestampFromMillis: (value: number) => value,
+      now: () => 1_800_000_000_000,
+    };
+
+    await processPublicIssueReportRecoveryBatch(options);
+    await processPublicIssueReportRecoveryBatch(options);
+
+    expect(valuesForCollection(harness.db, 'issueReports')).toHaveLength(1);
+    expect(valuesForCollection(harness.db, 'publicIssueReportNotificationOutbox')).toHaveLength(1);
+    expect(harness.notifyAdmins).toHaveBeenCalledTimes(2);
+    expect(
+      harness.db.data.get(
+        `publicIssueReportNotificationOutbox/${receipt.notificationOutboxId}`,
+      ),
+    ).toEqual(expect.objectContaining({ status: 'delivered', attemptCount: 2 }));
+    consoleError.mockRestore();
+  });
+
+  it('reclaims an expired leak-notification lease through recovery', async () => {
+    const harness = makeHarness();
+    const receipt = await harness.accept({ category: 'continuous_leak' });
+    const outboxPath = `publicIssueReportNotificationOutbox/${receipt.notificationOutboxId}`;
+    harness.db.write(
+      outboxPath,
+      {
+        status: 'sending',
+        attemptId: 'interrupted-attempt',
+        attemptCount: 1,
+        leaseExpiresAt: 1_799_999_999_999,
+      },
+      true,
+    );
+
+    await processPublicIssueReportRecoveryBatch({
+      db: harness.db,
+      evidenceJobIds: [],
+      notificationOutboxIds: [receipt.notificationOutboxId!],
+      uploadEvidence: harness.uploadEvidence,
+      evidenceExists: harness.evidenceExists,
+      notifyAdmins: harness.notifyAdmins,
+      timestampFromMillis: (value) => value,
+      now: () => 1_800_000_000_000,
+    });
+
+    expect(harness.notifyAdmins).toHaveBeenCalledTimes(1);
+    expect(harness.db.data.get(outboxPath)).toEqual(
+      expect.objectContaining({ status: 'delivered', attemptCount: 2 }),
+    );
   });
 });
