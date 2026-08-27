@@ -21,6 +21,7 @@ export const TASK_TRIGGER_TYPES = [
   'sensor_fault',
   'water_overuse',
   'water_no_flow',
+  'student_report',
 ] as const;
 export type TaskTriggerType = (typeof TASK_TRIGGER_TYPES)[number];
 
@@ -59,6 +60,8 @@ export interface TaskDoc {
   occurrenceCount?: number;
   latestOccurrenceAt?: Timestamp | null;
   taskOrigin?: TaskOrigin;
+  issueReportId?: string;
+  reportCategory?: string;
   createdAt: Timestamp;
   assignedAt?: Timestamp | null;
   acknowledgedAt: Timestamp | null;

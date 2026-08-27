@@ -34,6 +34,8 @@ import { useDeviceStatus } from '@/hooks/useDeviceStatus';
 import { apiFetch } from '@/lib/api-client';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { getErrorMessage } from '@/lib/error-utils';
+import { PublicReportingControls } from '@/components/configuration/PublicReportingControls';
+import { getSiteUrl } from '@/lib/site-url';
 import {
   AUTOMATION_ACTIONS,
   AUTOMATION_RULE_CONFIG,
@@ -92,6 +94,7 @@ interface DeviceDoc {
   floor?: string;
   location?: string;
   config?: Partial<TimingConfig & { threshold: number }>;
+  publicReportingEnabled?: boolean;
 }
 
 interface DeviceResponse {
@@ -307,7 +310,7 @@ function getRuleModal(): HTMLDialogElement | null {
 }
 
 export default function ConfigurationPage() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const { ultrasonicDistance } = useSensorData();
   const { connected, loading: deviceLoading } = useDeviceStatus(DEFAULT_DEVICE_ID);
 
@@ -317,6 +320,7 @@ export default function ConfigurationPage() {
   const [deviceLocation, setDeviceLocation] = useState<string>(DEFAULT_LOCATION);
   const [savedFloor, setSavedFloor] = useState<string>(DEFAULT_FLOOR);
   const [savedLocation, setSavedLocation] = useState<string>(DEFAULT_LOCATION);
+  const [publicReportingEnabled, setPublicReportingEnabled] = useState(true);
 
   // Password confirmation modal state
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -379,6 +383,7 @@ export default function ConfigurationPage() {
       setDeviceLocation(loadedLocation);
       setSavedFloor(loadedFloor);
       setSavedLocation(loadedLocation);
+      setPublicReportingEnabled(response.data?.publicReportingEnabled !== false);
 
       setThreshold(
         typeof config.threshold === 'number'
@@ -413,6 +418,7 @@ export default function ConfigurationPage() {
       setSavedLocation(DEFAULT_LOCATION);
       setThreshold(DEFAULT_THRESHOLD);
       setTiming(DEFAULT_TIMING);
+      setPublicReportingEnabled(true);
       setIsDirty(false);
     } finally {
       setLoadingConfiguration(false);
@@ -1046,6 +1052,16 @@ export default function ConfigurationPage() {
             </button>
           </div>
         </div>
+
+        {user ? (
+          <PublicReportingControls
+            user={user}
+            role={role}
+            device={{ id: DEFAULT_DEVICE_ID, name: deviceName, location: deviceLocation, publicReportingEnabled }}
+            siteUrl={getSiteUrl()}
+            onUpdated={setPublicReportingEnabled}
+          />
+        ) : null}
 
         {/* CARD 2: Sensor Calibration */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">

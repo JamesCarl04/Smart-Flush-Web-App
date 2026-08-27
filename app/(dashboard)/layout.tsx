@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Toaster } from 'react-hot-toast';
+import { apiFetch } from '@/lib/api-client';
+import { buildOperationsNavigation } from '@/lib/admin-navigation';
 
 interface NavItem {
   name: string;
@@ -47,12 +49,13 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { logout, user, loading } = useAuth();
+  const { logout, user, loading, role, roleLoading } = useAuth();
   const presentationMode = usePresentationMode();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [pendingIssueReportsCount, setPendingIssueReportsCount] = useState(0);
 
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +64,33 @@ export default function DashboardLayout({
 
   const { tasks } = useTasks();
   const pendingTasksCount = tasks.filter((t) => t.status === 'pending').length;
+
+  useEffect(() => {
+    if (!user || role !== 'admin' || roleLoading) {
+      setPendingIssueReportsCount(0);
+      return;
+    }
+    let cancelled = false;
+    const loadPendingCount = async () => {
+      try {
+        const response = await apiFetch<{ success: boolean; data?: unknown[] }>(
+          '/api/issue-reports?status=pending_review',
+          user,
+        );
+        if (!cancelled) setPendingIssueReportsCount(response.success && Array.isArray(response.data) ? response.data.length : 0);
+      } catch {
+        if (!cancelled) setPendingIssueReportsCount(0);
+      }
+    };
+    void loadPendingCount();
+    window.addEventListener('issue-reports:refresh', loadPendingCount);
+    const interval = window.setInterval(loadPendingCount, 30_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('issue-reports:refresh', loadPendingCount);
+      window.clearInterval(interval);
+    };
+  }, [role, roleLoading, user]);
 
   useEffect(() => {
     if (!loading && !user && !presentationMode && !isLoggingOut) {
@@ -116,20 +146,18 @@ export default function DashboardLayout({
     },
     {
       title: 'Operations',
-      items: [
-        {
-          name: 'Tasks',
-          href: '/tasks',
-          icon: ClipboardList,
-          badge: pendingTasksCount > 0 ? pendingTasksCount : null,
-        },
-        {
-          name: 'Configuration',
-          href: '/configuration',
-          icon: SlidersHorizontal,
-        },
-        { name: 'Reports', href: '/reports', icon: FileText },
-      ],
+      items: buildOperationsNavigation(role, pendingIssueReportsCount).map((item) => ({
+        ...item,
+        icon:
+          item.name === 'Tasks'
+            ? ClipboardList
+            : item.name === 'Configuration'
+              ? SlidersHorizontal
+              : item.name === 'Issue Reports'
+                ? AlertTriangle
+                : FileText,
+        ...(item.name === 'Tasks' ? { badge: pendingTasksCount > 0 ? pendingTasksCount : null } : {}),
+      })),
     },
   ];
 
@@ -150,11 +178,9 @@ export default function DashboardLayout({
     user?.displayName ||
     (user?.email ? user.email.split('@')[0] : 'Operator');
 
-  const isAdmin =
-    user?.email?.toLowerCase().includes('admin') ||
-    user?.displayName?.toLowerCase().includes('admin');
+  const isAdmin = role === 'admin';
 
-  if (loading || isLoggingOut || (!user && !presentationMode)) {
+  if (loading || (user && roleLoading) || isLoggingOut || (!user && !presentationMode)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 transition-colors">
         <div className="flex flex-col items-center gap-4 animate-fade-in">

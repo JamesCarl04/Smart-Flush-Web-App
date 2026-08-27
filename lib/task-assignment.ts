@@ -88,6 +88,17 @@ export interface AvailableTechnician {
   lastAutoAssignedAt: number | null;
 }
 
+export function selectLeastRecentlyAssignedTechnician(
+  technicians: AvailableTechnician[],
+): AvailableTechnician | null {
+  return [...technicians].sort(
+    (left, right) =>
+      (left.lastAutoAssignedAt ?? 0) - (right.lastAutoAssignedAt ?? 0) ||
+      left.workload - right.workload ||
+      left.displayName.localeCompare(right.displayName),
+  )[0] ?? null;
+}
+
 /**
  * Finds all on-duty, active maintenance personnel who do NOT have an active uncompleted work order.
  */
@@ -155,12 +166,10 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
       }
     }
 
-    return available.sort(
-      (left, right) =>
-        (left.lastAutoAssignedAt ?? 0) - (right.lastAutoAssignedAt ?? 0) ||
-        left.workload - right.workload ||
-        left.displayName.localeCompare(right.displayName),
-    );
+    return available.sort((left, right) => {
+      const selected = selectLeastRecentlyAssignedTechnician([left, right]);
+      return selected?.id === left.id ? -1 : 1;
+    });
   } catch (err) {
     console.error('[task-assignment] findAvailableMaintenancePersonnel error:', err);
     return [];
