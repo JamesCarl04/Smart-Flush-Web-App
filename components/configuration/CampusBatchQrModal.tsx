@@ -36,7 +36,7 @@ const QrCard = React.memo(function QrCard({
   qrDataUrl?: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-between rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid transform-gpu">
+    <div className="flex flex-col items-center justify-between rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
       {/* Header Tag */}
       <div className="w-full border-b border-slate-100 pb-2 dark:border-slate-800 print:border-slate-300">
         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 print:text-black">
@@ -97,11 +97,12 @@ export function CampusBatchQrModal({
     setMounted(true);
   }, []);
 
-  // Lock background body scrolling when modal is open to eliminate scroll-past and background leaks
+  // Lock background body scrolling and mark body for print isolation when modal is open
   useEffect(() => {
     if (!isOpen) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('batch-qr-modal-open');
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -113,6 +114,7 @@ export function CampusBatchQrModal({
 
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.classList.remove('batch-qr-modal-open');
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -201,16 +203,17 @@ export function CampusBatchQrModal({
 
   const modalContent = (
     <div
+      id="campus-batch-qr-modal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="batch-qr-title"
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-3 sm:p-6 md:p-8 backdrop-blur-md overscroll-contain overflow-hidden animate-fade-in print:static print:p-0 print:bg-white print:backdrop-blur-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-3 sm:p-6 md:p-8 backdrop-blur-md overscroll-contain overflow-hidden animate-fade-in print:static print:p-0 print:bg-white print:backdrop-blur-none print:block print:w-full print:h-auto print:overflow-visible"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       {/* Centered Modal Container locked firmly in viewport */}
-      <div className="relative flex max-h-[92vh] sm:max-h-[90vh] w-full max-w-6xl flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-scale-up overflow-hidden print:max-h-none print:h-auto print:max-w-none print:border-none print:shadow-none print:rounded-none">
+      <div className="relative flex max-h-[92vh] sm:max-h-[90vh] w-full max-w-6xl flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-scale-up overflow-hidden print:max-h-none print:h-auto print:max-w-none print:border-none print:shadow-none print:rounded-none print:overflow-visible">
         
         {/* Pinned Sticky Header Bar: Locked in place, never scrolled past */}
         <div className="shrink-0 z-20 sticky top-0 border-b border-slate-200 bg-white/95 p-4 sm:p-5 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 print:hidden">

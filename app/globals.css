@@ -421,5 +421,11 @@
     width: 100% !important;
     border-collapse: collapse !important;
   }
+
+  /* Isolate Campus Batch QR Modal in print mode, hiding background dashboard & configuration page */
+  body.batch-qr-modal-open > *:not(#campus-batch-qr-modal),
+  body:has(#campus-batch-qr-modal) > *:not(#campus-batch-qr-modal) {
+    display: none !important;
+  }
 }
 
