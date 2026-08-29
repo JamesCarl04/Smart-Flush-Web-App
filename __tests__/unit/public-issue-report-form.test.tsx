@@ -25,13 +25,14 @@ describe('anonymous public issue report form', () => {
   it('renders the public device location and camera-only evidence controls', () => {
     render(<PublicIssueReportForm device={device} />);
 
-    expect(screen.getByRole('heading', { name: 'Report a restroom issue' })).toBeInTheDocument();
-    expect(screen.getByText('North Restroom')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'North Restroom' })).toBeInTheDocument();
+    expect(screen.getByText(/Klir/i)).toBeInTheDocument();
     expect(screen.getByText(/Annex.*4th Floor.*North Wing/)).toBeInTheDocument();
     expect(screen.getByLabelText('Issue category')).toBeInTheDocument();
     expect(screen.getByLabelText('Description (optional)')).toHaveAttribute('maxlength', '500');
-    expect(screen.getByText(/Gallery uploads are not accepted/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
+    expect(screen.queryByText('Report a restroom issue')).not.toBeInTheDocument();
+    expect(screen.queryByText('Operational & In Service')).not.toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
     expect(document.querySelector('input[name="startedAt"]')).toHaveValue('1800000000000');
     expect(document.querySelector('input[name="website"]')).toBeInTheDocument();

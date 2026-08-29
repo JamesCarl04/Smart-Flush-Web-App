@@ -130,22 +130,48 @@ export function PublicIssueReportForm({
 
   if (receipt) {
     return (
-      <main className="flex min-h-screen items-center bg-slate-50 px-4 py-8 text-slate-900">
-        <section className="mx-auto w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
+      <main className="flex h-[100dvh] max-h-[100dvh] items-center justify-center bg-slate-50 px-4 text-slate-900 dark:bg-[#0b0f19] dark:text-slate-100">
+        <section className="w-full max-w-md rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+          <p className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
+            Klir<span className="text-[#B5121B]">.</span>
+          </p>
+          <p className="mt-1 text-xs font-bold uppercase tracking-wider text-[#B5121B]">
             Report received
           </p>
-          <p className="mt-3 text-3xl font-bold tracking-tight">
+          <p className="mt-2 text-2xl font-bold tracking-tight">
             {receipt.referenceCode}
           </p>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
+          <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
             {receipt.confirmation}
           </p>
-          {receipt.previewUrl ? <img src={receipt.previewUrl} alt="Submitted restroom issue" className="mt-6 max-h-72 w-full rounded-xl object-contain" /> : <p className="mt-6 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800">Submitted without photo.</p>}
-          <dl className="mt-5 space-y-2 text-left text-sm">
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Toilet location</dt><dd className="text-right font-medium">{[device.building, device.floor, device.location].filter(Boolean).join(' · ') || device.name}</dd></div>
-            {receipt.previewUrl ? <div className="flex justify-between gap-4"><dt className="text-slate-500">Photo captured</dt><dd className="text-right font-medium">{formatDateTime(receipt.photoCapturedAt)}</dd></div> : null}
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Report submitted</dt><dd className="text-right font-medium">{formatDateTime(receipt.submittedAt)}</dd></div>
+          {receipt.previewUrl ? (
+            <img
+              src={receipt.previewUrl}
+              alt="Submitted restroom issue"
+              className="mt-3 max-h-40 w-full rounded-xl object-contain mx-auto border border-slate-200 dark:border-slate-800"
+            />
+          ) : (
+            <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+              Submitted without photo.
+            </p>
+          )}
+          <dl className="mt-3 space-y-1.5 text-left text-xs border-t border-slate-100 dark:border-slate-800 pt-2.5">
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Location</dt>
+              <dd className="text-right font-medium truncate">
+                {[device.building, device.floor, device.location].filter(Boolean).join(' · ') || device.name}
+              </dd>
+            </div>
+            {receipt.previewUrl ? (
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Photo captured</dt>
+                <dd className="text-right font-medium">{formatDateTime(receipt.photoCapturedAt)}</dd>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Submitted</dt>
+              <dd className="text-right font-medium">{formatDateTime(receipt.submittedAt)}</dd>
+            </div>
           </dl>
         </section>
       </main>
@@ -153,42 +179,40 @@ export function PublicIssueReportForm({
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:py-10">
-      <section className="mx-auto w-full max-w-md rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-7">
-        <header>
+    <main className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-slate-50 p-3 sm:p-6 text-slate-900 dark:bg-[#0b0f19] dark:text-slate-100 flex flex-col justify-center">
+      <section className="mx-auto w-full max-w-md h-full max-h-[640px] flex flex-col justify-between rounded-2xl bg-white p-4 sm:p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 overflow-hidden">
+        {/* Level 1: Location & Identity Header */}
+        <header className="shrink-0 border-b border-slate-100 dark:border-slate-800 pb-2.5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-emerald-700">Smart Flush</p>
+            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              Klir<span className="text-[#B5121B]">.</span>
+            </span>
             {device.isCommonArea ? (
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+              <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Common Area
               </span>
             ) : device.stallNumber ? (
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+              <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-xs font-semibold text-[#B5121B] dark:text-red-400 border border-red-200 dark:border-red-900/40">
                 {device.isSmartHardware ? 'Smart IoT Stall' : `Stall ${device.stallNumber}`}
               </span>
             ) : null}
           </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            Report a restroom issue
-          </h1>
-          <p className="mt-4 font-semibold">{device.name}</p>
-          <p className="mt-1 text-sm text-slate-600">
-            {[device.building, device.floor, device.location]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Operational &amp; In Service
+          <div className="mt-1 min-w-0">
+            <h1 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+              {device.name}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              {[device.building, device.floor, device.location]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
           </div>
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            This anonymous report goes to facility administrators for review.
-          </p>
         </header>
 
+        {/* Level 2: Core Form Controls (Issue Category, Note, Camera) */}
         <form
           aria-label="Anonymous issue report"
-          className="mt-6 space-y-5"
+          className="flex-1 flex flex-col justify-between py-2 min-h-0"
           onSubmit={handleSubmit}
         >
           <input type="hidden" name="startedAt" value={startedAt} />
@@ -203,58 +227,67 @@ export function PublicIssueReportForm({
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold" htmlFor="report-category">
-              Issue category
-            </label>
-            <select
-              id="report-category"
-              name="category"
-              required
-              defaultValue=""
-              className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-            >
-              <option value="" disabled>
-                Select an issue
-              </option>
-              {categoryOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+          <div className="space-y-2.5 flex-1 flex flex-col justify-center min-h-0">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-category">
+                Issue category
+              </label>
+              <select
+                id="report-category"
+                name="category"
+                required
+                defaultValue=""
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <option value="" disabled>
+                  Select an issue
                 </option>
-              ))}
-            </select>
+                {categoryOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-description">
+                Description (optional)
+              </label>
+              <textarea
+                id="report-description"
+                name="description"
+                maxLength={500}
+                rows={2}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 resize-none"
+                placeholder="What did you notice?"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Photo evidence <span className="text-slate-400 font-normal">(required)</span>
+              </label>
+              <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold" htmlFor="report-description">
-              Description (optional)
-            </label>
-            <textarea
-              id="report-description"
-              name="description"
-              maxLength={500}
-              rows={4}
-              className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              placeholder="What did you notice?"
-            />
-            <p className="mt-1 text-xs text-slate-500">Maximum 500 characters</p>
+          {/* Level 3: Primary Action Button */}
+          <div className="shrink-0 pt-2">
+            {error ? (
+              <p role="alert" className="mb-2 rounded-lg bg-red-50 p-2 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-400">
+                {error}
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="min-h-12 w-full rounded-xl bg-[#B5121B] hover:bg-[#990e16] active:bg-[#730c12] px-4 py-3 font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2"
+            >
+              {submitting ? 'Submitting…' : 'Submit report'}
+            </button>
           </div>
-
-          <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
-
-          {error ? (
-            <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="min-h-12 w-full rounded-xl bg-emerald-700 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? 'Submitting…' : 'Submit report'}
-          </button>
         </form>
       </section>
     </main>
