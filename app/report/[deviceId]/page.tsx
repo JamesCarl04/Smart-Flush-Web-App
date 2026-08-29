@@ -1,5 +1,6 @@
 import { adminDb } from '@/lib/firebase-admin';
 import {
+  createOpenKey,
   PublicIssueReportError,
   sanitizePublicDevice,
   type PublicReportingDevice,
@@ -16,6 +17,19 @@ export async function loadPublicReportingDevice(
     deviceId,
     snapshot.exists ? snapshot.data() : null,
   );
+}
+
+export async function checkStallHasPendingReport(deviceId: string): Promise<boolean> {
+  try {
+    const openKey = createOpenKey(deviceId);
+    const snapshot = await adminDb
+      .collection('publicIssueReportOpenKeys')
+      .doc(openKey)
+      .get();
+    return snapshot.exists;
+  } catch {
+    return false;
+  }
 }
 
 function UnavailableReportPage() {
@@ -47,5 +61,12 @@ export default async function PublicReportPage({
     return <UnavailableReportPage />;
   }
 
-  return <PublicIssueReportForm device={device} />;
+  const hasPendingReport = await checkStallHasPendingReport(deviceId);
+
+  return (
+    <PublicIssueReportForm
+      device={device}
+      hasPendingReport={hasPendingReport}
+    />
+  );
 }

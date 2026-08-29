@@ -1,5 +1,7 @@
 import {
   ISSUE_REPORT_CATEGORIES,
+  createCooldownKey,
+  createOpenKey,
   createPublicReportFingerprint,
   extractClientIp,
   isIssueReportImageMime,
@@ -205,5 +207,20 @@ describe('public issue report validation', () => {
     expect(() => validatePhotoCaptureMetadata({ photoCaptureStatus: 'captured', photoCapturedAt: now + 5 * 60 * 1_000 + 1 }, {
       bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: 'image/jpeg', size: 3,
     }, now)).toThrow('capture time');
+  });
+
+  it('scopes open-keys and cooldowns to the stall so category switching does not create duplicates or bypass cooldowns', () => {
+    const keyA = createOpenKey('toilet-01', 'physical_damage');
+    const keyB = createOpenKey('toilet-01', 'continuous_leak');
+    const keyC = createOpenKey('toilet-01');
+    expect(keyA).toBe(keyB);
+    expect(keyA).toBe(keyC);
+
+    const fp = 'f'.repeat(64);
+    const cdA = createCooldownKey(fp, 'toilet-01', 'physical_damage');
+    const cdB = createCooldownKey(fp, 'toilet-01', 'continuous_leak');
+    const cdC = createCooldownKey(fp, 'toilet-01');
+    expect(cdA).toBe(cdB);
+    expect(cdA).toBe(cdC);
   });
 });

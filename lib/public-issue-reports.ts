@@ -76,6 +76,7 @@ export interface IssueReportAggregate {
   deviceId: string;
   device: PublicReportingDevice;
   category: IssueReportCategory;
+  categories?: IssueReportCategory[];
   status: IssueReportStatus;
   confirmationCount: number;
   firstReportedAt: unknown;
@@ -380,17 +381,17 @@ export function createPublicReportFingerprint(
   return createHmac('sha256', secret).update(ip).digest('hex');
 }
 
-export function createOpenKey(deviceId: string, category: IssueReportCategory): string {
-  return createHash('sha256').update(`${deviceId}\0${category}`).digest('hex');
+export function createOpenKey(deviceId: string, _category?: IssueReportCategory): string {
+  return createHash('sha256').update(deviceId).digest('hex');
 }
 
 export function createCooldownKey(
   fingerprint: string,
   deviceId: string,
-  category: IssueReportCategory,
+  _category?: IssueReportCategory,
 ): string {
   return createHash('sha256')
-    .update(`${fingerprint}\0${deviceId}\0${category}`)
+    .update(`${fingerprint}\0${deviceId}`)
     .digest('hex');
 }
 
@@ -571,10 +572,10 @@ export async function acceptPublicIssueReport(
     .doc(options.fingerprint);
   const cooldownRef = options.db
     .collection('publicIssueReportCooldowns')
-    .doc(createCooldownKey(options.fingerprint, options.deviceId, options.category));
+    .doc(createCooldownKey(options.fingerprint, options.deviceId));
   const openRef = options.db
     .collection('publicIssueReportOpenKeys')
-    .doc(createOpenKey(options.deviceId, options.category));
+    .doc(createOpenKey(options.deviceId));
 
   const committed = await options.db.runTransaction(async (transaction) => {
     const [deviceSnapshot, rateSnapshot, cooldownSnapshot, openSnapshot] =
@@ -623,8 +624,7 @@ export async function acceptPublicIssueReport(
       if (
         openAggregateSnapshot.exists &&
         candidateData?.status === 'pending_review' &&
-        candidateData.deviceId === options.deviceId &&
-        candidateData.category === options.category
+        candidateData.deviceId === options.deviceId
       ) {
         aggregateId = openAggregateId;
         aggregateRef = openAggregateRef;
@@ -650,10 +650,20 @@ export async function acceptPublicIssueReport(
     const submissionRef = aggregateRef.collection('submissions').doc(submissionId);
 
     if (aggregateData) {
+      const existingCategories = Array.isArray(aggregateData.categories)
+        ? (aggregateData.categories as string[])
+        : typeof aggregateData.category === 'string'
+          ? [aggregateData.category]
+          : [];
+      const mergedCategories = Array.from(
+        new Set([...existingCategories, options.category]),
+      );
+
       transaction.set(
         aggregateRef,
         {
           confirmationCount: count,
+          categories: mergedCategories,
           lastReportedAt: now,
           ...(shouldEnqueueNotification
             ? {
@@ -672,6 +682,7 @@ export async function acceptPublicIssueReport(
         deviceId: options.deviceId,
         device,
         category: options.category,
+        categories: [options.category],
         status: 'pending_review',
         confirmationCount: count,
         firstReportedAt: now,

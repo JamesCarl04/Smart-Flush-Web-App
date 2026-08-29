@@ -54,8 +54,10 @@ interface ErrorResponse {
 
 export function PublicIssueReportForm({
   device,
+  hasPendingReport = false,
 }: {
   device: PublicReportingDevice;
+  hasPendingReport?: boolean;
 }) {
   const [startedAt] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
@@ -225,6 +227,18 @@ export function PublicIssueReportForm({
             </p>
           </div>
         </header>
+
+        {hasPendingReport ? (
+          <div className="mt-3.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-semibold flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>Issue already under review</span>
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+              A report for this stall is currently awaiting administrator review. Submitting will attach your confirmation and evidence to the existing open ticket.
+            </p>
+          </div>
+        ) : null}
 
         {/* Level 2: Core Form Controls (Issue Category, Note, Camera) */}
         <form

@@ -114,6 +114,9 @@ export function safeSerializeIssueReport(
       location: text(device.location),
     },
     category: text(data.category),
+    categories: Array.isArray(data.categories)
+      ? data.categories.map((c) => text(c)).filter((c): c is string => c !== null)
+      : text(data.category) ? [text(data.category) as string] : [],
     status: text(data.status),
     confirmationCount: count(data.confirmationCount),
     firstReportedAt: millis(data.firstReportedAt),
@@ -141,9 +144,13 @@ export async function listIssueReports(status: IssueReportStatus): Promise<Recor
   return values.sort((left, right) => Number(right.lastReportedAt ?? 0) - Number(left.lastReportedAt ?? 0));
 }
 
-function taskDescription(category: string, descriptions: string[]): string {
+function taskDescription(category: string, categories: string[], descriptions: string[]): string {
   const approved = descriptions.find((value) => value.trim())?.trim();
-  return approved ?? `Investigate administrator-confirmed ${category.replaceAll('_', ' ')} report.`;
+  const allCategories = categories.length > 0 ? categories : [category];
+  const formattedCategories = allCategories.map((c) => c.replaceAll('_', ' ')).join(', ');
+  return approved
+    ? `[${formattedCategories}] ${approved}`
+    : `Investigate administrator-confirmed report: ${formattedCategories}.`;
 }
 
 function technicianFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): AvailableTechnician | null {
@@ -188,6 +195,9 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
     const now = Timestamp.now();
     const device = report.device && typeof report.device === 'object' ? report.device as Record<string, unknown> : {};
     const category = text(report.category) ?? 'other';
+    const categories = Array.isArray(report.categories)
+      ? report.categories.map((c) => text(c)).filter((c): c is string => c !== null)
+      : [category];
     const descriptions = submissionsSnapshot.docs.map((doc) => text(doc.data().description)).filter((value): value is string => value !== null);
     const assignedToIds = selected ? [selected.id] : [];
     const task: TaskDoc = {
@@ -198,7 +208,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       floor: text(device.floor),
       location: text(device.location),
       triggerType: 'student_report',
-      message: taskDescription(category, descriptions),
+      message: taskDescription(category, categories, descriptions),
       status: selected ? 'assigned' : 'unassigned',
       assignedTo: selected?.id ?? null,
       assignedToIds,
@@ -229,7 +239,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       reviewedAt: now,
     });
     const deviceId = text(report.deviceId);
-    if (deviceId) transaction.delete(adminDb.collection('publicIssueReportOpenKeys').doc(createOpenKey(deviceId, category as never)));
+    if (deviceId) transaction.delete(adminDb.collection('publicIssueReportOpenKeys').doc(createOpenKey(deviceId)));
     return { created: true, taskId: candidateTaskRef.id, task };
   });
 
@@ -269,8 +279,7 @@ export async function dismissIssueReport(
       },
     });
     const deviceId = text(report.deviceId);
-    const category = text(report.category);
-    if (deviceId && category) transaction.delete(adminDb.collection('publicIssueReportOpenKeys').doc(createOpenKey(deviceId, category as never)));
+    if (deviceId) transaction.delete(adminDb.collection('publicIssueReportOpenKeys').doc(createOpenKey(deviceId)));
     return { reportId, status: 'dismissed', reason: dismissal.reason };
   });
 }

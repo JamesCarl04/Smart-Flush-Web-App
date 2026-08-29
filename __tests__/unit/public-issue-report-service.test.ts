@@ -265,6 +265,15 @@ describe('public issue report transactional intake', () => {
 
   it('limits accepted attempts to five per fingerprint in fifteen server-time minutes', async () => {
     const harness = makeHarness();
+    for (let i = 1; i <= 6; i++) {
+      harness.db.data.set(`devices/toilet-0${i}`, {
+        name: `Restroom Stall ${i}`,
+        building: 'Annex',
+        floor: '4th Floor',
+        location: 'North Wing',
+      });
+    }
+
     const categories = [
       'lid_malfunction',
       'no_water',
@@ -274,30 +283,52 @@ describe('public issue report transactional intake', () => {
       'physical_damage',
     ] as const;
 
-    for (const category of categories.slice(0, 5)) {
-      await harness.submit({ category });
+    for (let i = 0; i < 5; i++) {
+      await harness.submit({ deviceId: `toilet-0${i + 1}`, category: categories[i] });
     }
 
-    await expect(harness.submit({ category: categories[5] })).rejects.toMatchObject({
+    await expect(harness.submit({ deviceId: 'toilet-06', category: categories[5] })).rejects.toMatchObject({
       status: 429,
       code: 'rate_limited',
     });
 
     harness.advance(15 * 60 * 1_000);
-    await expect(harness.submit({ category: categories[5] })).resolves.toMatchObject({
+    await expect(harness.submit({ deviceId: 'toilet-06', category: categories[5] })).resolves.toMatchObject({
       confirmationCount: 1,
     });
   });
 
-  it('limits one accepted fingerprint/device/category confirmation per ten minutes', async () => {
+  it('limits one accepted fingerprint per stall per ten minutes regardless of category', async () => {
     const harness = makeHarness();
-    await harness.submit();
+    await harness.submit({ category: 'physical_damage' });
 
     harness.advance(9 * 60 * 1_000 + 59_999);
-    await expect(harness.submit()).rejects.toMatchObject({ status: 429 });
+    // Submitting a different category on the same stall within 10 minutes is blocked by cooldown
+    await expect(harness.submit({ category: 'continuous_leak' })).rejects.toMatchObject({ status: 429 });
 
     harness.advance(1);
-    await expect(harness.submit()).resolves.toMatchObject({ confirmationCount: 2 });
+    await expect(harness.submit({ category: 'continuous_leak' })).resolves.toMatchObject({ confirmationCount: 2 });
+  });
+
+  it('atomically merges different categories for the same stall into one pending aggregate with multi-category tags', async () => {
+    const harness = makeHarness();
+
+    const first = await harness.submit({
+      fingerprint: 'a'.repeat(64),
+      category: 'physical_damage',
+      description: 'Flush handle broken',
+    });
+    const second = await harness.submit({
+      fingerprint: 'b'.repeat(64),
+      category: 'continuous_leak',
+      description: 'Water running constantly',
+    });
+
+    expect(first.aggregateId).toBe(second.aggregateId);
+    expect(second.confirmationCount).toBe(2);
+
+    const aggregate = harness.db.data.get(`issueReports/${first.aggregateId}`);
+    expect(aggregate?.categories).toEqual(['physical_damage', 'continuous_leak']);
   });
 
   it('never persists the raw IP or public evidence URL and stores evidence under a random private path', async () => {

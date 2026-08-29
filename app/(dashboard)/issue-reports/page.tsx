@@ -10,6 +10,7 @@ interface IssueReportView {
   deviceId: string | null;
   device: { name: string | null; location: string | null; building: string | null; floor: string | null };
   category: string | null;
+  categories?: string[];
   status: Status;
   confirmationCount: number;
   firstReportedAt: number | null;
@@ -113,7 +114,13 @@ export default function IssueReportsPage() {
           <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h2 className="font-semibold">{report.device.name ?? report.deviceId}</h2><p className="text-sm text-slate-500">{report.device.location ?? [report.device.floor, report.device.building].filter(Boolean).join(', ')}</p></div>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold capitalize text-amber-800">{categoryLabel(report.category)}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {((report.categories && report.categories.length > 0) ? report.categories : [report.category]).map((cat) => (
+                  <span key={cat ?? 'other'} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold capitalize text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                    {categoryLabel(cat)}
+                  </span>
+                ))}
+              </div>
             </div>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
               <div><dt className="text-slate-500">Urgency</dt><dd className="font-medium">{report.confirmationCount >= 3 ? 'High' : report.confirmationCount === 2 ? 'Medium' : 'Normal'}</dd></div>
