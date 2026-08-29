@@ -59,10 +59,20 @@ export function CameraCapture({
       : null,
   );
 
+  const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node && streamRef.current && node.srcObject !== streamRef.current) {
+      node.srcObject = streamRef.current;
+      node.play().catch(() => undefined);
+    }
+  }, []);
+
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     if (typeof document !== 'undefined') {
       document.body.style.overflow = '';
     }
@@ -83,6 +93,15 @@ export function CameraCapture({
     stopCamera();
     clearPreview();
   }, [clearPreview, stopCamera]);
+
+  useEffect(() => {
+    if (phase === 'ready' && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.play().catch(() => undefined);
+    }
+  }, [phase]);
 
   const markUnavailable = useCallback((detail?: string) => {
     stopCamera();
@@ -274,34 +293,32 @@ export function CameraCapture({
 
   return (
     <div className="w-full">
-      {/* 1. Fullscreen Native Camera App Viewfinder (Active when camera is ready) */}
-      {phase === 'ready' ? (
-        <div
-          className="fixed inset-0 z-50 flex flex-col justify-between bg-black overflow-hidden select-none"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Camera viewfinder"
-        >
-          {/* Fullscreen Video Stream */}
-          <video
-            ref={videoRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            playsInline
-            muted
-            autoPlay
-            aria-label="Camera preview"
-          />
+      {/* 1. Fullscreen Native Camera App Viewfinder (Always mounted to prevent black screen / uninitialized stream) */}
+      <div
+        className={
+          phase === 'ready'
+            ? 'fixed inset-0 z-50 flex flex-col justify-between bg-black overflow-hidden select-none'
+            : 'hidden'
+        }
+        role="dialog"
+        aria-modal="true"
+        aria-label="Camera viewfinder"
+      >
+        {/* Fullscreen Video Stream */}
+        <video
+          ref={setVideoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          playsInline
+          muted
+          autoPlay
+          aria-label="Camera preview"
+        />
 
-          {/* Top Bar: Brand, Stall indicator, and Close button */}
+          {/* Top Bar: Brand and Close button */}
           <div className="relative z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/70 via-black/30 to-transparent">
-            <div className="flex items-center gap-2">
-              <span className="text-base font-bold tracking-tight text-white">
-                Klir<span className="text-[#B5121B]">.</span>
-              </span>
-              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white/90 backdrop-blur-md border border-white/10">
-                {device?.stallNumber ? `Stall ${device.stallNumber}` : (device?.name ?? 'Stall')}
-              </span>
-            </div>
+            <span className="text-base font-bold tracking-tight text-white">
+              Klir<span className="text-[#B5121B]">.</span>
+            </span>
             <button
               type="button"
               onClick={stopAndCloseCamera}
@@ -376,7 +393,6 @@ export function CameraCapture({
             <span className="mt-2 text-[11px] font-medium text-white/80">Tap to take photo</span>
           </div>
         </div>
-      ) : null}
 
       {/* 2. Compact Form Integration UI (Fits cleanly on single screen) */}
       {phase === 'captured' && previewUrl ? (

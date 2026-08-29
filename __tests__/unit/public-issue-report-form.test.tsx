@@ -26,7 +26,7 @@ describe('anonymous public issue report form', () => {
     render(<PublicIssueReportForm device={device} />);
 
     expect(screen.getByRole('heading', { name: 'North Restroom' })).toBeInTheDocument();
-    expect(screen.getByText(/Klir/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Klir/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/Annex.*4th Floor.*North Wing/)).toBeInTheDocument();
     expect(screen.getByLabelText('Issue category')).toBeInTheDocument();
     expect(screen.getByLabelText('Description (optional)')).toHaveAttribute('maxlength', '500');
