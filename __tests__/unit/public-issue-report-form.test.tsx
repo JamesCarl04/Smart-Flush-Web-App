@@ -14,6 +14,21 @@ const device = {
 };
 
 describe('anonymous public issue report form', () => {
+  beforeAll(() => {
+    if (typeof global.URL.createObjectURL === 'undefined') {
+      Object.defineProperty(global.URL, 'createObjectURL', {
+        value: jest.fn(() => 'blob:mock-evidence-url'),
+        writable: true,
+      });
+    }
+    if (typeof global.URL.revokeObjectURL === 'undefined') {
+      Object.defineProperty(global.URL, 'revokeObjectURL', {
+        value: jest.fn(),
+        writable: true,
+      });
+    }
+  });
+
   beforeEach(() => {
     jest.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
   });
@@ -33,7 +48,10 @@ describe('anonymous public issue report form', () => {
     expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
     expect(screen.queryByText('Report a restroom issue')).not.toBeInTheDocument();
     expect(screen.queryByText('Operational & In Service')).not.toBeInTheDocument();
-    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
     expect(document.querySelector('input[name="startedAt"]')).toHaveValue('1800000000000');
     expect(document.querySelector('input[name="website"]')).toBeInTheDocument();
     expect(screen.queryByLabelText(/name/i)).not.toBeInTheDocument();
@@ -41,7 +59,7 @@ describe('anonymous public issue report form', () => {
     expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
   });
 
-  it('allows a no-photo fallback after camera access fails', async () => {
+  it('allows a no-photo fallback when user selects continue without photo', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -65,8 +83,6 @@ describe('anonymous public issue report form', () => {
       target: { value: 'Water keeps flowing' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue without photo' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Continue without photo' }));
 
     fireEvent.submit(screen.getByRole('button', { name: 'Submit report' }).closest('form')!);
@@ -152,111 +168,84 @@ describe('anonymous public issue report form', () => {
     expect(screen.queryByText('Toilet clogged or dirty')).not.toBeInTheDocument();
   });
 
-  it('renders a clean, clutter-free camera viewfinder without distracting labels when opened', async () => {
-    const mockTrack = { stop: jest.fn() };
-    const mockStream = {
-      getTracks: () => [mockTrack],
-    };
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: jest.fn().mockResolvedValue(mockStream),
-      },
-      configurable: true,
-      writable: true,
-    });
-    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+  it('renders native camera input with capture="environment" to directly open the camera app', () => {
+    render(<PublicIssueReportForm device={device} />);
 
-    const stallDevice = {
-      id: 'SDCA-FL3-M1-S02',
-      name: 'SDCA Annex 3F Male Restroom 1 • Stall 2',
-      building: 'SDCA Annex',
-      floor: '3F',
-      location: '3F • Male Restroom 1 • Stall 2',
-      stallNumber: '2',
-      isSmartHardware: false,
-      isCommonArea: false,
-    };
+    const fileInput = screen.getByLabelText('Capture photo with camera app');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+    expect(fileInput).toHaveClass('hidden');
 
-    render(<PublicIssueReportForm device={stallDevice} />);
-
-    // Open camera
-    fireEvent.press ? fireEvent.press(screen.getByRole('button', { name: 'Open camera' })) : fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
-
-    await waitFor(() => {
-      // Clutter removal verification:
-      expect(screen.queryByText('AR LIVE VIEW')).not.toBeInTheDocument();
-      expect(screen.queryByText('SDCA ANNEX')).not.toBeInTheDocument();
-      expect(screen.queryByText('Aim at stall QR code to inspect')).not.toBeInTheDocument();
-      // Shutter button is present:
-      expect(screen.getByRole('button', { name: 'Take photo' })).toBeInTheDocument();
-    });
+    expect(screen.getByRole('button', { name: 'Open camera' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue without photo' })).toBeInTheDocument();
   });
 
-  it('renders see-through glassmorphic card with stall name and In Service badge when QR is detected', async () => {
-    const mockTrack = { stop: jest.fn() };
-    const mockStream = { getTracks: () => [mockTrack] };
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: { getUserMedia: jest.fn().mockResolvedValue(mockStream) },
-      configurable: true,
-      writable: true,
-    });
-    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+  it('displays captured photo thumbnail and allows retaking photo', async () => {
+    render(<PublicIssueReportForm device={device} />);
 
-    const stallDevice = {
-      id: 'SDCA-FL2-M1-S01',
-      name: 'SDCA Annex 2F Male Restroom 1 • Stall 1',
-      building: 'SDCA Annex',
-      floor: '2F',
-      location: '2F • Male Restroom 1 • Stall 1',
-      stallNumber: '1',
-      isSmartHardware: false,
-      isCommonArea: false,
-    };
+    const fileInput = screen.getByLabelText('Capture photo with camera app');
+    const mockFile = new File(['fake-evidence'], 'evidence.jpg', { type: 'image/jpeg' });
 
-    render(<CameraCapture device={stallDevice} initialQrDetected={true} onChange={jest.fn()} />);
-
-    // Open camera to ready phase
-    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
 
     await waitFor(() => {
-      expect(screen.getByText('SDCA Annex 2F Male Restroom 1 • Stall 1')).toBeInTheDocument();
-      // Verifying clean label: No 'In Service', no 'Ready', no 'AR LIVE VIEW'
-      expect(screen.queryByText('In Service')).not.toBeInTheDocument();
-      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
-      expect(screen.queryByText('AR LIVE VIEW')).not.toBeInTheDocument();
-      expect(screen.queryByText('UV Disinfection')).not.toBeInTheDocument();
+      expect(screen.getByText('Photo attached')).toBeInTheDocument();
+      expect(screen.getByText('Ready to submit')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument();
+      expect(screen.getByAltText('Captured restroom issue')).toBeInTheDocument();
     });
+
+    // Verify zero AR elements exist
+    expect(screen.queryByText('AR LIVE VIEW')).not.toBeInTheDocument();
+    expect(screen.queryByText('SDCA ANNEX')).not.toBeInTheDocument();
   });
 
-  it('renders clean see-through glassmorphic pill with exact toilet name for prototype', async () => {
-    const mockTrack = { stop: jest.fn() };
-    const mockStream = { getTracks: () => [mockTrack] };
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: { getUserMedia: jest.fn().mockResolvedValue(mockStream) },
+  it('submits issue report with the photo captured from the native camera app', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          referenceCode: 'IR-CAM12345',
+          confirmation: 'Your report with photo has been received.',
+        },
+      }),
+    });
+    Object.defineProperty(global, 'fetch', {
       configurable: true,
       writable: true,
+      value: fetchMock,
     });
-    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
 
-    const smartDevice = {
-      id: 'toilet-01',
-      name: 'SDCA Annex Test Stall (toilet-01)',
-      building: 'SDCA Annex',
-      floor: '1F',
-      location: '1F • Canteen Female Restroom',
-      stallNumber: '1',
-      isSmartHardware: true,
-      isCommonArea: false,
-    };
+    render(<PublicIssueReportForm device={device} />);
 
-    render(<CameraCapture device={smartDevice} initialQrDetected={true} onChange={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText('Issue category'), {
+      target: { value: 'lid_malfunction' },
+    });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+    const fileInput = screen.getByLabelText('Capture photo with camera app');
+    const mockFile = new File(['fake-photo-data'], 'issue.jpg', { type: 'image/jpeg' });
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
 
     await waitFor(() => {
-      expect(screen.getByText('SDCA Annex Test Stall (toilet-01)')).toBeInTheDocument();
-      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
-      expect(screen.queryByText('In Service')).not.toBeInTheDocument();
+      expect(screen.getByText('Photo attached')).toBeInTheDocument();
     });
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Submit report' }).closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('IR-CAM12345')).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/public/issue-reports',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    );
+    const submitted = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
+    expect(submitted.get('deviceId')).toBe('toilet-01');
+    expect(submitted.get('category')).toBe('lid_malfunction');
+    expect(submitted.get('photoCaptureStatus')).toBe('captured');
+    expect(submitted.get('photo')).toBeInstanceOf(File);
   });
 });
