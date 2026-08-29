@@ -179,10 +179,10 @@ export function PublicIssueReportForm({
   }
 
   return (
-    <main className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-slate-50 p-3 sm:p-6 text-slate-900 dark:bg-[#0b0f19] dark:text-slate-100 flex flex-col justify-center">
-      <section className="mx-auto w-full max-w-md h-full max-h-[640px] flex flex-col justify-between rounded-2xl bg-white p-4 sm:p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 overflow-hidden">
+    <main className="min-h-[100dvh] bg-slate-50 p-4 sm:p-6 text-slate-900 dark:bg-[#0b0f19] dark:text-slate-100 flex items-center justify-center">
+      <section className="mx-auto w-full max-w-md rounded-2xl bg-white p-5 sm:p-6 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-800">
         {/* Level 1: Location & Identity Header */}
-        <header className="shrink-0 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+        <header className="border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center justify-between">
             <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
               Klir<span className="text-[#B5121B]">.</span>
@@ -197,7 +197,7 @@ export function PublicIssueReportForm({
               </span>
             ) : null}
           </div>
-          <div className="mt-1 min-w-0">
+          <div className="mt-1.5 min-w-0">
             <h1 className="text-sm font-bold text-slate-900 dark:text-white truncate">
               {device.name}
             </h1>
@@ -212,7 +212,7 @@ export function PublicIssueReportForm({
         {/* Level 2: Core Form Controls (Issue Category, Note, Camera) */}
         <form
           aria-label="Anonymous issue report"
-          className="flex-1 flex flex-col justify-between py-2 min-h-0"
+          className="mt-4 space-y-3.5"
           onSubmit={handleSubmit}
         >
           <input type="hidden" name="startedAt" value={startedAt} />
@@ -227,53 +227,51 @@ export function PublicIssueReportForm({
             />
           </div>
 
-          <div className="space-y-2.5 flex-1 flex flex-col justify-center min-h-0">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-category">
-                Issue category
-              </label>
-              <select
-                id="report-category"
-                name="category"
-                required
-                defaultValue=""
-                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-              >
-                <option value="" disabled>
-                  Select an issue
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-category">
+              Issue category
+            </label>
+            <select
+              id="report-category"
+              name="category"
+              required
+              defaultValue=""
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            >
+              <option value="" disabled>
+                Select an issue
+              </option>
+              {categoryOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
-                {categoryOptions.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-description">
-                Description (optional)
-              </label>
-              <textarea
-                id="report-description"
-                name="description"
-                maxLength={500}
-                rows={2}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 resize-none"
-                placeholder="What did you notice?"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1" htmlFor="report-description">
+              Description (optional)
+            </label>
+            <textarea
+              id="report-description"
+              name="description"
+              maxLength={500}
+              rows={2}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#B5121B] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 resize-none"
+              placeholder="What did you notice?"
+            />
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Photo evidence <span className="text-slate-400 font-normal">(required)</span>
-              </label>
-              <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Photo evidence <span className="text-slate-400 font-normal">(required)</span>
+            </label>
+            <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
           </div>
 
           {/* Level 3: Primary Action Button */}
-          <div className="shrink-0 pt-2">
+          <div className="pt-1.5">
             {error ? (
               <p role="alert" className="mb-2 rounded-lg bg-red-50 p-2 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-400">
                 {error}
