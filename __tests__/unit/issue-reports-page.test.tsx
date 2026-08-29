@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 const mockUseAuth = jest.fn();
 const mockApiFetch = jest.fn();
@@ -44,5 +44,37 @@ describe('issue reports page authority gate', () => {
     expect(screen.getByText('No water at all')).toBeTruthy();
     expect(screen.getByText('Submitted without photo')).toBeTruthy();
     expect(mockApiFetch).toHaveBeenCalledWith('/api/issue-reports?status=pending_review', expect.objectContaining({ uid: 'admin-1' }));
+  });
+
+  it('automatically refetches reports every 10 seconds and on refresh triggers', async () => {
+    jest.useFakeTimers();
+    try {
+      mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+      mockApiFetch.mockResolvedValue({ success: true, data: [] });
+
+      render(<IssueReportsPage />);
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+      // Advance 10 seconds for polling interval
+      await act(async () => {
+        jest.advanceTimersByTime(10_000);
+      });
+      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+
+      // Click manual refresh button
+      const refreshBtn = screen.getByRole('button', { name: /refresh/i });
+      await act(async () => {
+        fireEvent.click(refreshBtn);
+      });
+      expect(mockApiFetch).toHaveBeenCalledTimes(3);
+
+      // Dispatch issue-reports:refresh event
+      await act(async () => {
+        window.dispatchEvent(new Event('issue-reports:refresh'));
+      });
+      expect(mockApiFetch).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
