@@ -209,7 +209,7 @@ export function PublicIssueReportForm({
               </span>
             ) : device.stallNumber ? (
               <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-xs font-semibold text-[#B5121B] dark:text-red-400 border border-red-200 dark:border-red-900/40">
-                {device.isSmartHardware ? 'Smart IoT Stall' : `Stall ${device.stallNumber}`}
+                {device.isSmartHardware ? 'Automated Restroom Stall' : `Stall ${device.stallNumber}`}
               </span>
             ) : null}
           </div>
@@ -232,7 +232,7 @@ export function PublicIssueReportForm({
               <span>Issue already under review</span>
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-              A report for this stall is currently awaiting administrator review. Submitting will attach your confirmation and evidence to the existing open ticket.
+              A report for this stall is currently being reviewed. Submitting will attach your feedback to the existing report.
             </p>
           </div>
         ) : null}

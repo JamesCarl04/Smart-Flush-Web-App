@@ -66,8 +66,8 @@ export function ControlPanel() {
     isAnySending || deviceStatusLoading || (!connected && !presentationMode);
 
   const controlsDisabledReason = deviceStatusLoading
-    ? 'Checking ESP32 link status...'
-    : deviceReason || 'ESP32 controller offline';
+    ? 'Checking device connection...'
+    : deviceReason || 'Restroom unit is offline';
 
   const updateActuatorState = useCallback(
     (key: ActuatorKey, state: CycleState) => {
@@ -105,7 +105,7 @@ export function ControlPanel() {
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error('Authentication required to command actuators.');
+        toast.error('Please sign in to use device controls.');
         updateActuatorState(actionKey, 'idle');
         return null;
       }
@@ -267,7 +267,7 @@ export function ControlPanel() {
               </div>
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                  Toilet Device Controls
+                  Restroom Device Controls
                 </h2>
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
                   <span className="relative flex h-2 w-2 items-center justify-center">
@@ -282,7 +282,7 @@ export function ControlPanel() {
                   </span>
                   <span className="tabular-nums">
                     {connected
-                      ? 'Live Device Connected'
+                      ? 'Device Connected'
                       : 'Device Offline'}
                   </span>
                 </div>
@@ -303,7 +303,7 @@ export function ControlPanel() {
                   connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
                 }`}
               />
-              {connected ? 'Unit Online' : 'Offline'}
+              {connected ? 'Online' : 'Offline'}
             </span>
 
             {presentationMode && (
@@ -325,7 +325,7 @@ export function ControlPanel() {
             <div className="text-sm">
               <div className="font-bold">Controls Temporarily Locked</div>
               <div className="mt-0.5 text-xs text-rose-700 dark:text-rose-400/90">
-                Remote controls are disabled while the toilet unit is
+                Remote controls are disabled while the restroom unit is
                 offline. ({controlsDisabledReason})
               </div>
             </div>
@@ -337,7 +337,7 @@ export function ControlPanel() {
           {/* 1. OPEN LID */}
           <TactileActuatorButton
             title="Open Lid"
-            subtitle="Lift Seat Lid"
+            subtitle="Lift Lid"
             icon={ChevronUp}
             state={actuatorStates.lid_open}
             activeAccent="sky"
@@ -349,7 +349,7 @@ export function ControlPanel() {
           {/* 2. CLOSE LID */}
           <TactileActuatorButton
             title="Close Lid"
-            subtitle="Lower Seat Lid"
+            subtitle="Lower Lid"
             icon={ChevronDown}
             state={actuatorStates.lid_close}
             activeAccent="slate"
@@ -363,8 +363,8 @@ export function ControlPanel() {
             title={pumpOn ? 'Stop Flush Cycle' : 'Manual Flush'}
             subtitle={
               pumpOn
-                ? 'EMERGENCY STOP (Flushing)'
-                : 'Run Flush Cycle (6s)'
+                ? 'Stop Flush'
+                : 'Run Flush (6s)'
             }
             icon={Droplets}
             state={actuatorStates.flush}
@@ -378,7 +378,7 @@ export function ControlPanel() {
 
           {/* 4. UV STERILIZE */}
           <TactileActuatorButton
-            title={uvOn ? 'Stop UV-C' : 'UV Disinfection'}
+            title={uvOn ? 'Stop UV Clean' : 'UV Disinfection'}
             subtitle={
               uvOn
                 ? 'Disinfection Active'
@@ -398,7 +398,7 @@ export function ControlPanel() {
         <div className="mt-8 border-t border-slate-200/80 pt-5 dark:border-slate-800/80">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-              System Restart & Diagnostics
+              System Restart
             </span>
             <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
               Safety Protected
@@ -431,7 +431,7 @@ export function ControlPanel() {
               ) : (
                 <Power className="h-4 w-4" />
               )}
-              <span>Restart Toilet Hardware</span>
+              <span>Restart Restroom Unit</span>
             </button>
           </div>
         </div>

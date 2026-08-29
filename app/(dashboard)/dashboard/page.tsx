@@ -21,7 +21,7 @@ export default function DashboardPage() {
           System Overview
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Real-time telemetry, automated disinfection status, and maintenance controls.
+          Live restroom status, automatic cleaning progress, and quick maintenance controls.
         </p>
       </div>
 
@@ -45,12 +45,12 @@ export default function DashboardPage() {
             href="/alerts"
             className="action-btn-primary min-h-[40px] bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2"
           >
-            Triage Alert
+            Review Alert
           </Link>
         </div>
       )}
 
-      {/* ROW 1: Telemetry Stat Cards */}
+      {/* ROW 1: Restroom Status Cards */}
       <StatCards />
 
       {/* ROW 2 & 3: Activity Feed and Control Panel */}

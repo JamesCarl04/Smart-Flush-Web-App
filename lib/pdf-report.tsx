@@ -51,7 +51,7 @@ export interface SupervisorAuditRow {
   inspectionStatus: string;
   inspectedByName: string;
   inspectedAt: string;
-  flagReason: string;
+  flagReason: string | null;
   recheckCount: number;
   timeAssigned: string;
   timeCompleted: string;

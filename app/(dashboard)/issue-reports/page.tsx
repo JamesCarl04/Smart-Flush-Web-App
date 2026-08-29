@@ -130,7 +130,7 @@ export default function IssueReportsPage() {
     <section className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Issue Reports</h1>
-        <p className="text-sm text-slate-500">Review anonymous restroom reports without exposing submitter identifiers.</p>
+        <p className="text-sm text-slate-500">Review anonymous feedback and issue reports submitted by restroom users.</p>
       </div>
       <div className="flex gap-2" role="tablist">
         {(Object.keys(STATUS_LABELS) as Status[]).map((value) => (
@@ -160,7 +160,7 @@ export default function IssueReportsPage() {
             </dl>
             {report.descriptions.map((description, index) => <p key={index} className="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">{description}</p>)}
             {report.submissions?.length ? <div className="mt-4 space-y-2">{report.submissions.map((submission) => <div key={submission.submissionId} className="rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-700"><p className="font-semibold">{submission.photoCaptureStatus === 'captured' ? 'Photo captured' : 'Submitted without photo'}</p>{submission.photoCaptureStatus === 'captured' ? <p className="mt-1 text-slate-500">Photo time: {formatTime(submission.photoCapturedAt)}</p> : null}<p className="mt-1 text-slate-500">Submitted: {formatTime(submission.submittedAt)}</p></div>)}</div> : null}
-            {report.evidence.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">{report.evidence.map((item) => <button key={item.submissionId} onClick={() => void viewEvidence(report.id, item.submissionId)} className="rounded-lg border px-3 py-2 text-xs font-medium">View evidence ({Math.ceil(item.size / 1024)} KB)</button>)}</div> : null}
+            {report.evidence.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">{report.evidence.map((item) => <button key={item.submissionId} onClick={() => void viewEvidence(report.id, item.submissionId)} className="rounded-lg border px-3 py-2 text-xs font-medium">View Photo ({Math.ceil(item.size / 1024)} KB)</button>)}</div> : null}
             {status === 'pending_review' ? <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => void mutate(`/api/issue-reports/${report.id}/confirm`)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Confirm and create task</button><button onClick={() => void mutate(`/api/issue-reports/${report.id}/dismiss`, { reason: 'unable_to_verify' })} className="rounded-lg border px-4 py-2 text-sm font-semibold">Dismiss</button></div> : null}
           </article>
         ))}

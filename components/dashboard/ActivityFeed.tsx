@@ -8,7 +8,7 @@ function getEventDetails(event: ActivityEvent) {
   switch (event.type) {
     case 'flushEvent':
       return {
-        title: 'Flush Cycle Activated',
+        title: 'Flush Completed',
         badgeLabel: 'Flush',
         badgeStyle: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
         iconBg: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30',
@@ -16,7 +16,7 @@ function getEventDetails(event: ActivityEvent) {
       };
     case 'uvCycle':
       return {
-        title: 'UV-C Sterilization',
+        title: 'UV Cleaning Completed',
         badgeLabel: 'Disinfection',
         badgeStyle: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
         iconBg: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30',
@@ -24,7 +24,7 @@ function getEventDetails(event: ActivityEvent) {
       };
     case 'lidEvent':
       return {
-        title: 'Occupancy / Lid Sensor',
+        title: 'Restroom Activity Detected',
         badgeLabel: 'Sensor',
         badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
         iconBg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30',
@@ -102,7 +102,7 @@ export function ActivityFeed() {
             <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="font-medium text-sm">No recent events recorded</p>
             <p className="text-xs text-base-content/40 mt-0.5">
-              Real-time activity and sensor events from connected units will appear here.
+              Recent flushes, cleaning cycles, and restroom activity will appear here.
             </p>
           </div>
         ) : (

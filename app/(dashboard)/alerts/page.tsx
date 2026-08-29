@@ -212,7 +212,7 @@ export default function AlertsPage() {
             System Alerts
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Monitor real-time hardware telemetry deviations, maintenance notices, and system alerts.
+            Monitor restroom equipment notifications, maintenance tasks, and system alerts.
           </p>
         </div>
 
@@ -237,14 +237,14 @@ export default function AlertsPage() {
             }
           >
             <CheckSquare className="h-4 w-4 text-[#B5121B] dark:text-red-400" />
-            Ack All
+            Mark All as Read
           </button>
         </div>
       </div>
 
       {/* Main Alert Container */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        {/* Triage Tab Bar (*All Alerts*, *Critical & High*, *Unacknowledged*, *Tasks*) */}
+        {/* Triage Tab Bar (*All Alerts*, *Critical & High*, *Unread*, *Tasks*) */}
         <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 p-2 dark:border-slate-800 sm:gap-2 sm:p-3">
           <button
             type="button"
@@ -287,7 +287,7 @@ export default function AlertsPage() {
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200'
             }`}
           >
-            <span>Unacknowledged</span>
+            <span>Unread</span>
             {unreadCount > 0 && (
               <span className="rounded-full bg-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-900 dark:bg-red-900 dark:text-red-200 tabular-nums">
                 {unreadCount}
@@ -332,7 +332,7 @@ export default function AlertsPage() {
                 <ShieldCheck className="relative h-10 w-10" />
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                All Systems Nominal
+                All Systems Normal
               </h3>
               <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
                 You&apos;re completely caught up. No active warnings or unresolved alerts matching the selected filter.

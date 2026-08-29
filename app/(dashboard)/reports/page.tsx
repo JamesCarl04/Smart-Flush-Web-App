@@ -78,37 +78,37 @@ const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] 
   {
     label: 'Usage Summary',
     value: 'usage_summary',
-    desc: 'High-level aggregation of flushes, water savings, and cycle counts.',
+    desc: 'Summary of total flushes, water saved, and cleaning cycles.',
   },
   {
     label: 'Daily Audit Report',
     value: 'daily',
-    desc: 'Hour-by-hour telemetry and occupancy activity logs for today.',
+    desc: 'Hourly restroom usage and activity breakdown for today.',
   },
   {
     label: 'Weekly Performance',
     value: 'weekly',
-    desc: '7-day overview with trend analysis and sanitization efficacy.',
+    desc: '7-day overview of restroom usage and disinfection performance.',
   },
   {
     label: 'Monthly Executive Summary',
     value: 'monthly',
-    desc: 'Comprehensive monthly facility metrics and water conservation.',
+    desc: 'Monthly facility summary of restroom usage and water conservation.',
   },
   {
     label: 'Custom Range Audit',
     value: 'custom',
-    desc: 'Specify custom start and end timestamps for precise auditing.',
+    desc: 'Choose specific start and end dates for your report.',
   },
   {
     label: 'Maintenance Task Report',
     value: 'maintenance_tasks',
-    desc: 'Work order history, response times, and personnel attribution.',
+    desc: 'Maintenance work order history, response times, and assigned staff.',
   },
   {
     label: 'Supervisor QA & Approval Audit',
     value: 'supervisor_audit',
-    desc: 'Supervisor approval rate vs maintenance submissions, inspection turnaround, and flagged recheck analytics.',
+    desc: 'Supervisor inspection logs, verification rates, and follow-up reviews.',
   },
 ];
 
@@ -120,13 +120,13 @@ const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
 ];
 
 const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
-  manual: 'Manual Dispatch',
-  uv_complete: 'UV Cycle Complete',
-  flush_count: 'Flush Count Trigger',
+  manual: 'Manual Request',
+  uv_complete: 'UV Cleaning Check',
+  flush_count: 'High Usage Check',
   maintenance: 'Scheduled Maintenance',
-  hardware_failure: 'Hardware Failure Alert',
-  sensor_fault: 'Ultrasonic Sensor Fault',
-  water_overuse: 'Water Overuse',
+  hardware_failure: 'Hardware Alert',
+  sensor_fault: 'Sensor Issue',
+  water_overuse: 'High Water Usage',
   water_no_flow: 'No Water After Flush',
 };
 
@@ -525,7 +525,7 @@ export default function ReportsPage() {
     },
     {
       id: 'exp-recent-3',
-      name: 'Ultrasonic_Telemetry_Audit_Q3',
+      name: 'Restroom_Usage_Audit_Q3',
       type: 'custom',
       date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
       size: '1.1 MB',
@@ -767,7 +767,7 @@ export default function ReportsPage() {
     }
 
     setIsGenerating(true);
-    setSrAnnouncement('Generating telemetry audit package, please wait...');
+    setSrAnnouncement('Generating report package, please wait...');
 
     try {
       const token = await user.getIdToken();
@@ -875,13 +875,13 @@ export default function ReportsPage() {
       <div className="print:hidden">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
           <FileBarChart className="h-3.5 w-3.5" aria-hidden="true" />
-          Analytics &amp; Compliance Exports
+          Restroom Reports &amp; Exports
         </div>
         <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-          Data Exports &amp; Reports
+          Restroom Reports &amp; Exports
         </h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-3xl">
-          Generate audit-ready telemetry summaries, inspect supervisor QA work orders, and download compliance packages.
+          Generate and download usage summaries, maintenance records, and inspection logs for SDCA Annex restrooms.
         </p>
       </div>
 
@@ -903,7 +903,7 @@ export default function ReportsPage() {
                 Report Builder &amp; Data Export
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Select telemetry scope, configure parameters, and download formatted audit packages
+                Choose your report type and date range, then download your report
               </p>
             </div>
           </div>
@@ -913,7 +913,7 @@ export default function ReportsPage() {
             <span>Format:</span>
             <span className="font-bold text-slate-900 dark:text-slate-100 uppercase font-mono">{formatType}</span>
             <span className="text-slate-300 dark:text-slate-600">·</span>
-            <span>Scope:</span>
+            <span>Period:</span>
             <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">
               {resolvedRange.from} {resolvedRange.from !== resolvedRange.to && `to ${resolvedRange.to}`}
             </span>
@@ -961,11 +961,11 @@ export default function ReportsPage() {
               className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
             >
               {isDailyReport
-                ? 'Audit Date (Day)'
+                ? 'Report Date (Day)'
                 : isMonthlyReport
-                  ? 'Executive Scope (Month)'
+                  ? 'Month'
                   : usesExplicitRange
-                    ? 'Audit Date Range'
+                    ? 'Date Range'
                     : 'Time Period'}
             </label>
 
@@ -1243,22 +1243,22 @@ function DailyAuditReportCanvas({
         />
         <SummaryCard
           icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
-          label="Water Metered"
+          label="Water Used"
           sublabel={`Conserved ${telemetry.waterSaved} L`}
           loading={loading}
           value={`${telemetry.waterLiters} L`}
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
-          label="Sterilization Rate"
-          sublabel="UV-C Automation"
+          label="Disinfection Rate"
+          sublabel="Automatic UV Cleaning"
           loading={loading}
           value={telemetry.uvRate}
         />
         <SummaryCard
           icon={<Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
-          label="Peak Activity Hour"
-          sublabel={peakHour.count > 0 ? `${peakHour.count} flushes` : 'No cycles recorded'}
+          label="Busiest Hour"
+          sublabel={peakHour.count > 0 ? `${peakHour.count} flushes` : 'No flushes recorded'}
           loading={loading}
           value={peakHour.hour}
         />
@@ -1273,10 +1273,10 @@ function DailyAuditReportCanvas({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                Hourly Restroom Telemetry &amp; Dispense Bins
+                Hourly Restroom Activity Breakdown
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Synchronized 24-hour sensor volume logs for {date}
+                24-hour hourly usage logs for {date}
               </p>
             </div>
           </div>
@@ -1309,11 +1309,11 @@ function DailyAuditReportCanvas({
           >
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Hour Block</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Cycles Metered</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Used (Est)</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Intensity Tier</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Occupancy State</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Time Period</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flush Count</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Used</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Traffic Level</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1396,8 +1396,8 @@ function UsageTelemetryReportCanvas({
   const title = isMonthly
     ? 'Monthly Executive Conservation Summary'
     : isWeekly
-      ? 'Weekly Facility Performance & Hygiene Audit'
-      : 'High-Level Usage & Telemetry Summary';
+      ? 'Weekly Facility Performance & Hygiene Summary'
+      : 'Overall Restroom Usage Summary';
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -1406,14 +1406,14 @@ function UsageTelemetryReportCanvas({
         <SummaryCard
           icon={<Waves className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
           label="Total Flushes"
-          sublabel="Dispense cycles"
+          sublabel="Completed flushes"
           loading={loading}
           value={String(telemetry.flushes)}
         />
         <SummaryCard
           icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
-          label="Water Metered"
-          sublabel="Actual usage"
+          label="Water Used"
+          sublabel="Total consumed"
           loading={loading}
           value={`${telemetry.waterLiters} L`}
         />
@@ -1426,15 +1426,15 @@ function UsageTelemetryReportCanvas({
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
-          label="Sterilization Rate"
-          sublabel="UV-C Cycle Health"
+          label="Disinfection Rate"
+          sublabel="UV Cleaning Status"
           loading={loading}
           value={telemetry.uvRate}
         />
         <SummaryCard
           icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
-          label="Fleet SLA Uptime"
-          sublabel="Target 99.5%"
+          label="System Reliability"
+          sublabel="Target: 99.5%"
           loading={loading}
           value={telemetry.uptime}
         />
@@ -1452,7 +1452,7 @@ function UsageTelemetryReportCanvas({
                 {title}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Telemetry scope: {range.from} to {range.to} · SDCA Annex Restroom Network
+                Report period: {range.from} to {range.to} · SDCA Annex Restroom Network
               </p>
             </div>
           </div>
@@ -1487,9 +1487,9 @@ function UsageTelemetryReportCanvas({
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Facility</th>
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Location / Floor</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Device ID</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Telemetry Status</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Efficiency Index</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Unit ID</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Conserved</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1510,7 +1510,7 @@ function UsageTelemetryReportCanvas({
                   <td className="py-3 px-4">
                     <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
                       <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                      Active Monitored
+                      Online &amp; Monitored
                     </span>
                   </td>
                   <td className="py-3 px-4 font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
@@ -1537,7 +1537,7 @@ function PrintReportHeader({
 }) {
   const reportTitle =
     REPORT_TYPE_OPTIONS.find((o) => o.value === reportType)?.label ||
-    'Facility Telemetry & Audit Report';
+    'Restroom Usage & Audit Report';
 
   return (
     <header className="hidden print:block mb-6 border-b-2 border-slate-800 pb-4">
@@ -1550,7 +1550,7 @@ function PrintReportHeader({
             {reportTitle}
           </h1>
           <p className="text-xs text-slate-600 font-medium">
-            Facility Operations, Restroom Telemetry &amp; Quality Assurance Audit
+            Facility Operations &amp; Maintenance Inspection Summary
           </p>
         </div>
         <div className="text-right text-[11px] text-slate-600 font-mono space-y-0.5">
@@ -1566,7 +1566,7 @@ function PrintReportHeader({
       <div className="mt-3 grid grid-cols-3 gap-2 rounded-[8px] border border-slate-300 bg-slate-50 p-2.5 text-xs text-slate-800">
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-            Audit Scope / Range
+            Report Period
           </span>
           <span className="font-bold font-mono text-slate-900">
             {resolvedRange.from} &rarr; {resolvedRange.to}
@@ -1674,22 +1674,22 @@ function MaintenanceTaskReport({
         />
         <SummaryCard
           icon={<AlertCircle className="h-4 w-4 text-amber-500" />}
-          label="Pending Dispatch"
-          sublabel="Awaiting Tech Action"
+          label="Pending Tasks"
+          sublabel="Awaiting Technician"
           loading={loading}
           value={String(pendingNow)}
         />
         <SummaryCard
           icon={<Timer className="h-4 w-4 text-sky-500" />}
-          label="Average Response"
-          sublabel="Dispatch to Ack"
+          label="Avg. Response Time"
+          sublabel="Time to Acknowledge"
           loading={loading}
           value={formatAverageMinutes(averageResponseMinutes)}
         />
         <SummaryCard
           icon={<Hourglass className="h-4 w-4 text-emerald-500" />}
-          label="Average Completion"
-          sublabel="Dispatch to Resolution"
+          label="Avg. Completion Time"
+          sublabel="Time to Resolve"
           loading={loading}
           value={formatAverageMinutes(averageCompletionMinutes)}
         />
@@ -1707,7 +1707,7 @@ function MaintenanceTaskReport({
                 Maintenance Work Orders
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Historical dispatch records filtered by chosen audit scope
+                Work order history for the selected report period
               </p>
             </div>
           </div>
@@ -1771,9 +1771,9 @@ function MaintenanceTaskReport({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
                   <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Trigger</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Facility / Stall</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Tech</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Trigger Reason</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Stall</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Technician</th>
                   <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Created</th>
                   <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
                 </tr>
@@ -1880,10 +1880,10 @@ function RecentExportsHistory({
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-              Recent Exports History
+              Recent Downloads
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-              Session export packages and generated telemetry snapshots
+              Download history for this session
             </p>
           </div>
         </div>
@@ -1897,10 +1897,10 @@ function RecentExportsHistory({
         <div className="flex flex-col items-center justify-center py-16 text-center px-4">
           <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" aria-hidden="true" />
           <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-            No exported reports yet
+            No recent downloads yet
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Use the Report Builder above to create and download telemetry records.
+            Use the Report Builder above to generate and download reports.
           </p>
         </div>
       ) : (
@@ -2062,7 +2062,7 @@ function SupervisorAuditReport({
           </div>
           <div>
             <div className="text-sm font-bold text-sky-950 dark:text-sky-100 print:text-black flex items-center gap-2">
-              <span>Supervisor Audit Compliance: {complianceRate}</span>
+              <span>Inspection Completion: {complianceRate}</span>
               <span className="inline-flex items-center rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-0.5 text-[11px] font-bold text-sky-800 dark:text-sky-200 print:border print:border-slate-400 print:text-black">
                 {totalSubmissions - pendingAuditCount} / {totalSubmissions} Inspected
               </span>
@@ -2085,10 +2085,10 @@ function SupervisorAuditReport({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                Supervisor QA Audit &amp; Inspection Log
+                Supervisor Inspection &amp; QA Log
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Maintenance submissions aligned with supervisor approvals, rechecks, and remarks
+                Maintenance work orders verified by supervisors with inspection notes
               </p>
             </div>
           </div>
@@ -2223,12 +2223,12 @@ function SupervisorAuditReport({
             >
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">QA Status</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom &amp; Location</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Inspection Status</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Location</th>
                   <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Technician</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Audited By</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flag Reason / Remarks</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Inspected By</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Supervisor Remarks</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">

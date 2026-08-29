@@ -55,25 +55,25 @@ const NOTIF_ROWS: {
   {
     key: 'criticalAlerts',
     label: 'Critical System Alerts',
-    description: 'Immediate P0 notifications for device offline, water leakage, or hardware failure',
-    badge: 'P0 Urgent',
+    description: 'Immediate notifications for offline devices, water leaks, or hardware alerts',
+    badge: 'Urgent',
   },
   {
     key: 'highPriorityAlerts',
     label: 'High-Priority Dispatches',
-    description: 'P1 alerts when UV-C cycle requires attention or flush threshold is exceeded',
-    badge: 'P1 High',
+    description: 'Alerts when UV cleaning needs attention or flush counts exceed limits',
+    badge: 'High Priority',
   },
   {
     key: 'dailySummaryEmail',
-    label: 'Daily Telemetry Summary',
-    description: 'End-of-day digest detailing total water savings, flushes, and sanitization cycles',
+    label: 'Daily Summary Email',
+    description: 'End-of-day email summarizing total water saved, flushes, and cleaning cycles',
     badge: 'Daily',
   },
   {
     key: 'weeklyReportEmail',
-    label: 'Weekly Executive Report',
-    description: 'Comprehensive weekly analytics report sent every Monday at 8:00 AM',
+    label: 'Weekly Summary Report',
+    description: 'Weekly summary report sent every Monday at 8:00 AM',
     badge: 'Weekly',
   },
 ];

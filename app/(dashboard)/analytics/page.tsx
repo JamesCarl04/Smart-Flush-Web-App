@@ -124,7 +124,7 @@ export default function AnalyticsPage() {
         <div className="flex items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50/80 p-5 text-rose-800 backdrop-blur-md dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
           <AlertCircle className="h-5 w-5 shrink-0 text-rose-500" />
           <div>
-            <h3 className="text-sm font-semibold">Failed to load analytics telemetry</h3>
+            <h3 className="text-sm font-semibold">Failed to load analytics data</h3>
             <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">{error}</p>
           </div>
         </div>
@@ -138,10 +138,10 @@ export default function AnalyticsPage() {
       <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Telemetry & Analytics
+            Restroom Analytics
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Dispense cycles, water consumption patterns, and sterilization telemetry
+            Flush counts, water usage trends, and cleaning performance
           </p>
         </div>
 
@@ -182,20 +182,20 @@ export default function AnalyticsPage() {
               ? totalFlushes.toLocaleString()
               : '--'
           }
-          subtext="Dispense cycles"
+          subtext="Completed flushes"
           loading={loading}
         />
         <StatCard
-          title="Water Consumed"
+          title="Water Used"
           icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
           iconBg="bg-cyan-500/10 dark:bg-cyan-500/15"
           value={typeof totalWater === 'number' ? totalWater.toFixed(1) : '--'}
           unit="L"
-          subtext="Volume metered"
+          subtext="Total consumed"
           loading={loading}
         />
         <StatCard
-          title="UV Completion"
+          title="UV Cleaning Rate"
           icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
           iconBg="bg-emerald-500/10 dark:bg-emerald-500/15"
           value={
@@ -206,7 +206,7 @@ export default function AnalyticsPage() {
           subtext={
             data?.summary.uvTotal
               ? `${data.summary.uvCompleted}/${data.summary.uvTotal} cycles`
-              : 'Sterilization rate'
+              : 'Cleaning completion'
           }
           loading={loading}
         />
@@ -219,18 +219,18 @@ export default function AnalyticsPage() {
               ? avgFlushesPerDay.toFixed(1)
               : '--'
           }
-          subtext="Daily baseline"
+          subtext="Daily average"
           loading={loading}
         />
         <StatCard
-          title="System Uptime"
+          title="System Reliability"
           icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
           iconBg="bg-teal-500/10 dark:bg-teal-500/15"
           value={formatUptime(systemUptime)}
           subtext={
             typeof data?.summary.liveSnapshotUptime === 'number'
-              ? `Fleet live: ${data.summary.liveSnapshotUptime.toFixed(0)}% · SLA: 99.5%`
-              : 'Target SLA: 99.5%'
+              ? `Online: ${data.summary.liveSnapshotUptime.toFixed(0)}% · Target: 99.5%`
+              : 'Target: 99.5%'
           }
           loading={loading}
         />
@@ -241,15 +241,15 @@ export default function AnalyticsPage() {
         {/* 1. Flush Count per Day (Hydro-Cyan Smooth Gradient Area Chart) */}
         <ChartCard
           title="Flush Count per Day"
-          subtitle="Daily dispensing volume across active sensors"
+          subtitle="Daily flush volume across restrooms"
           icon={Waves}
         >
           {loading ? (
             <ChartSkeleton />
           ) : !data?.charts.flushCounts.length ? (
             <EmptyChartState
-              title="No Flush Telemetry"
-              description="No flush cycles recorded for the selected timeframe."
+              title="No Flush Records"
+              description="No flushes recorded for the selected timeframe."
               icon={Waves}
             />
           ) : (
@@ -306,7 +306,7 @@ export default function AnalyticsPage() {
         {/* 2. Water Usage per Day (Clean Cyan/Teal Bar Chart with Rounded Corners) */}
         <ChartCard
           title="Water Usage per Day"
-          subtitle="Total metered volume in liters"
+          subtitle="Total water consumed in liters"
           icon={Droplets}
         >
           {loading ? (
@@ -314,7 +314,7 @@ export default function AnalyticsPage() {
           ) : !data?.charts.waterVolume.length ? (
             <EmptyChartState
               title="No Water Usage Data"
-              description="Water volume metrics are not yet available for this window."
+              description="Water usage data is not yet available for this timeframe."
               icon={Droplets}
             />
           ) : (
@@ -364,7 +364,7 @@ export default function AnalyticsPage() {
         {/* 3. Usage by Hour of Day (Smooth Hydro-Cyan Gradient Area Chart) */}
         <ChartCard
           title="Hourly Activity Distribution"
-          subtitle="24-hour cycle patterns to identify peak restroom traffic"
+          subtitle="24-hour patterns to identify peak restroom traffic"
           icon={Clock}
           className="lg:col-span-2"
         >
@@ -373,7 +373,7 @@ export default function AnalyticsPage() {
           ) : !data?.charts.hourlyUsage.length ? (
             <EmptyChartState
               title="No Hourly Distribution"
-              description="Hourly telemetry patterns will populate as flushes are triggered."
+              description="Hourly activity patterns will appear as flushes occur."
               icon={Clock}
             />
           ) : (
@@ -429,16 +429,16 @@ export default function AnalyticsPage() {
 
         {/* 4. UV Cycles Completed vs Failed (Clean Donut Chart with Center Metric) */}
         <ChartCard
-          title="UV Sterilization Efficiency"
-          subtitle="Completed 254nm cycles vs interrupted sequences"
+          title="UV Cleaning Performance"
+          subtitle="Completed cleaning cycles vs interrupted cycles"
           icon={Sparkles}
         >
           {loading ? (
             <DonutSkeleton />
           ) : !data?.charts.uvStats.length ? (
             <EmptyChartState
-              title="No UV Sterilization Logs"
-              description="No UV sterilization cycles recorded in this interval."
+              title="No UV Cleaning Records"
+              description="No UV cleaning cycles recorded in this period."
               icon={Sparkles}
             />
           ) : (
@@ -520,18 +520,18 @@ export default function AnalyticsPage() {
           )}
         </ChartCard>
 
-        {/* 5. Daily Uptime % (Clean Bar Chart with 99.5% SLA Reference Line) */}
+        {/* 5. Daily Uptime % (Clean Bar Chart with 99.5% Target Reference Line) */}
         <ChartCard
-          title="Daily System Uptime"
-          subtitle="Device availability percentage against SLA target"
+          title="Daily System Reliability"
+          subtitle="System online percentage against target"
           icon={BarChart3}
         >
           {loading ? (
             <ChartSkeleton />
           ) : !data?.charts.uptimeStats.length ? (
             <EmptyChartState
-              title="No Uptime Metrics"
-              description="Uptime telemetry is aggregating for the selected timeframe."
+              title="No Reliability Data"
+              description="Reliability records will appear for the selected timeframe."
               icon={BarChart3}
             />
           ) : (
@@ -572,7 +572,7 @@ export default function AnalyticsPage() {
                   strokeDasharray="3 3"
                   label={{
                     position: 'insideTopLeft',
-                    value: 'SLA (99.5%)',
+                    value: 'Target (99.5%)',
                     fill: CRIMSON,
                     fontSize: 11,
                     fontWeight: 600,

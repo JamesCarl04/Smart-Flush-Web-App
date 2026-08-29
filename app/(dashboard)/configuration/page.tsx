@@ -852,18 +852,18 @@ export default function ConfigurationPage() {
       <div className="mb-8">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
           <Zap className="h-3.5 w-3.5" />
-          Hardware & Telemetry Controls
+          Restroom Unit Settings
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           System Configuration
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          Calibrate ultrasonic distance sensing, manage hardware timing profiles, and configure automated threshold rules.
+          Adjust user detection sensitivity, flush and cleaning timers, and automatic maintenance rules.
         </p>
       </div>
 
       <div className="flex flex-col gap-8">
-        {/* CARD 1: Unit Identity & Hardware Specs */}
+        {/* CARD 1: Unit Information */}
         <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-3">
@@ -872,10 +872,10 @@ export default function ConfigurationPage() {
               </div>
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Unit Identity &amp; Hardware Specs
+                  Restroom Unit Information
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Custom display name, facility location, and controller hardware specifications.
+                  Unit name, restroom location, and device connection details.
                 </p>
               </div>
             </div>
@@ -908,7 +908,7 @@ export default function ConfigurationPage() {
                   }}
                 />
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  Friendly name displayed across live telemetry, alerts, and technician dispatch queues.
+                  Name displayed across dashboard, alerts, and maintenance work orders.
                 </p>
               </div>
 
@@ -991,12 +991,12 @@ export default function ConfigurationPage() {
                 </div>
 
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  Changing physical facility assignment updates telemetry zone routing and requires your admin password.
+                  Changing location updates report routing and requires your admin password.
                 </p>
               </div>
             </div>
 
-            {/* Right Column: Hardware & Telemetry Specs */}
+            {/* Right Column: Hardware & Connection Specs */}
             <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4.5 dark:border-slate-800/80 dark:bg-slate-800/40 space-y-3">
               <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
                 <span className="font-medium text-slate-500 dark:text-slate-400">
@@ -1007,31 +1007,31 @@ export default function ConfigurationPage() {
                 ) : connected ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Cloud Connected (HiveMQ TLS)
+                    Connected (Secure Cloud)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                    Hardware Offline / Disconnected
+                    Unit Offline
                   </span>
                 )}
               </div>
 
               <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
                 <span className="font-medium text-slate-500 dark:text-slate-400">
-                  Microcontroller Model:
+                  Controller Model:
                 </span>
                 <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                  ESP32-WROOM-32D (Dual-Core)
+                  ESP32-WROOM-32D
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-slate-500 dark:text-slate-400">
-                  Integrated Sensors:
+                  Connected Sensors:
                 </span>
                 <span className="text-slate-800 dark:text-slate-200 font-medium">
-                  HC-SR04 Proximity &amp; YF-S201 Flow
+                  Occupancy Sensor &amp; Water Flow Meter
                 </span>
               </div>
             </div>
@@ -1063,7 +1063,7 @@ export default function ConfigurationPage() {
           />
         ) : null}
 
-        {/* CARD 2: Sensor Calibration */}
+        {/* CARD 2: User Detection Range */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-3">
@@ -1072,10 +1072,10 @@ export default function ConfigurationPage() {
               </div>
               <div>
                 <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Sensor Calibration
+                  User Detection Range
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Ultrasonic distance trigger threshold for occupancy detection
+                  Set how close a person must be for the stall to detect them.
                 </p>
               </div>
             </div>
@@ -1096,7 +1096,7 @@ export default function ConfigurationPage() {
                   Occupancy Detection Range
                 </label>
                 <span className="text-xs font-semibold text-[#B5121B] dark:text-red-400">
-                  Trigger Zone &le; {threshold} cm
+                  Detection Zone &le; {threshold} cm
                 </span>
               </div>
 
@@ -1116,14 +1116,14 @@ export default function ConfigurationPage() {
                   }}
                 />
                 <div className="mt-2 flex justify-between text-xs text-slate-400 dark:text-slate-500">
-                  <span>10 cm (Close Proximity)</span>
+                  <span>10 cm (Close Range)</span>
                   <span>50 cm</span>
-                  <span>100 cm (Wide Range)</span>
+                  <span>100 cm (Long Range)</span>
                 </div>
               </div>
 
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                When a user is detected within <strong className="text-slate-700 dark:text-slate-300 font-semibold">{threshold} cm</strong> for more than the departure delay, the automated flush cycle is armed.
+                When a person is within <strong className="text-slate-700 dark:text-slate-300 font-semibold">{threshold} cm</strong> and then steps away, the system will automatically flush.
               </p>
             </div>
 
@@ -1134,7 +1134,7 @@ export default function ConfigurationPage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
                 </span>
-                Live Telemetry
+                Live Sensor Reading
               </div>
 
               <div className="my-2 font-mono text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
@@ -1150,18 +1150,18 @@ export default function ConfigurationPage() {
                   </span>
                 ) : isLiveInRange ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                    <UserCheck className="h-3 w-3" /> User In Trigger Zone
+                    <UserCheck className="h-3 w-3" /> Person Detected
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-                    Stall Clear (&gt; {threshold}cm)
+                    Stall Vacant (&gt; {threshold}cm)
                   </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Unified Primary Action: Apply Calibration */}
+          {/* Unified Primary Action: Save Detection Range */}
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
               className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
@@ -1174,12 +1174,12 @@ export default function ConfigurationPage() {
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              Apply Calibration
+              Save Detection Range
             </button>
           </div>
         </div>
 
-        {/* CARD 3: Timing Parameters */}
+        {/* CARD 3: Flush & Cleaning Timers */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-3">
@@ -1188,10 +1188,10 @@ export default function ConfigurationPage() {
               </div>
               <div>
                 <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Timing Parameters
+                  Flush &amp; Cleaning Timers
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Hardware duty cycle timings for pump actuation and UV-C sanitization
+                  Set how long the system flushes water and runs UV cleaning.
                 </p>
               </div>
             </div>
@@ -1202,7 +1202,7 @@ export default function ConfigurationPage() {
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Droplets className="h-4 w-4 text-sky-500" />
-                Pump Flush Duration
+                Flush Duration
               </div>
               <div className="relative">
                 <input
@@ -1225,7 +1225,7 @@ export default function ConfigurationPage() {
                 </span>
               </div>
               <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                Water pump actuation runtime (1 - 30s).
+                How long water flushes (1 - 30s).
               </p>
             </div>
 
@@ -1233,7 +1233,7 @@ export default function ConfigurationPage() {
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Sun className="h-4 w-4 text-amber-500" />
-                UV-C Disinfection
+                UV Cleaning Duration
               </div>
               <div className="relative">
                 <input
@@ -1256,7 +1256,7 @@ export default function ConfigurationPage() {
                 </span>
               </div>
               <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                Disinfection light active cycle (10 - 120s).
+                How long UV cleaning runs (10 - 120s).
               </p>
             </div>
 
@@ -1264,7 +1264,7 @@ export default function ConfigurationPage() {
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Sparkles className="h-4 w-4 text-emerald-500" />
-                Departure Confirm
+                Departure Delay
               </div>
               <div className="relative">
                 <input
@@ -1287,12 +1287,12 @@ export default function ConfigurationPage() {
                 </span>
               </div>
               <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                Continuous clear signal before flush (1 - 10s).
+                Seconds after user leaves before flush starts (1 - 10s).
               </p>
             </div>
           </div>
 
-          {/* Unified Primary Action: Save Parameters */}
+          {/* Unified Primary Action: Save Timers */}
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
               className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
@@ -1305,12 +1305,12 @@ export default function ConfigurationPage() {
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Save Parameters
+              Save Timers
             </button>
           </div>
         </div>
 
-        {/* CARD 4: Automation Rules */}
+        {/* CARD 4: Automatic Alerts & Rules */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800">
             <div className="flex items-center gap-3">
@@ -1319,10 +1319,10 @@ export default function ConfigurationPage() {
               </div>
               <div>
                 <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Automation Rules
+                  Automatic Alerts &amp; Rules
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Configure automated responses, maintenance triggers, and system safeguards
+                  Set automatic alerts and maintenance notifications when thresholds are reached.
                 </p>
               </div>
             </div>
@@ -1360,7 +1360,7 @@ export default function ConfigurationPage() {
                   : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
               }`}
             >
-              Hardware Maintenance ({rules.filter((r) => r.group === 'maintenance').length})
+              Maintenance Rules ({rules.filter((r) => r.group === 'maintenance').length})
             </button>
           </div>
 

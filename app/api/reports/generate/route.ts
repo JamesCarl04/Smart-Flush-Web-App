@@ -154,7 +154,8 @@ function averageDurationLabel(values: Array<number | null>): string {
   return formatDuration(Math.round(average));
 }
 
-function escapeCsv(value: string): string {
+function escapeCsv(value: string | null | undefined): string {
+  if (!value) return '';
   const sanitized = value.replaceAll('"', '""');
   return /[",\n]/.test(sanitized) ? `"${sanitized}"` : sanitized;
 }

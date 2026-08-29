@@ -32,9 +32,9 @@ interface StateVisualConfig {
 
 const STATE_CONFIGS: Record<SystemStateKey, StateVisualConfig> = {
   standby: {
-    label: 'Standby Mode',
-    badgeLabel: 'Idle / Armed',
-    subtext: 'Awaiting proximity trigger',
+    label: 'Standby',
+    badgeLabel: 'Ready',
+    subtext: 'Waiting for user',
     icon: Moon,
     iconColor: 'text-slate-400 dark:text-slate-500',
     iconBg: 'bg-slate-500/10 dark:bg-slate-500/15',
@@ -47,8 +47,8 @@ const STATE_CONFIGS: Record<SystemStateKey, StateVisualConfig> = {
   },
   lid_open: {
     label: 'Lid Open',
-    badgeLabel: 'User Ready',
-    subtext: 'Proximity detection active',
+    badgeLabel: 'User Present',
+    subtext: 'In use',
     icon: ArrowUpCircle,
     iconColor: 'text-sky-500 dark:text-sky-400',
     iconBg: 'bg-sky-500/10 dark:bg-sky-500/20',
@@ -60,9 +60,9 @@ const STATE_CONFIGS: Record<SystemStateKey, StateVisualConfig> = {
     pulseLed: true,
   },
   flushing: {
-    label: 'Flushing Cycle',
-    badgeLabel: 'Discharging',
-    subtext: 'Solenoid valve engaged',
+    label: 'Flushing',
+    badgeLabel: 'Cleaning',
+    subtext: 'Flushing in progress',
     icon: Droplets,
     iconColor: 'text-cyan-500 dark:text-cyan-400',
     iconBg: 'bg-cyan-500/10 dark:bg-cyan-500/20',
@@ -75,8 +75,8 @@ const STATE_CONFIGS: Record<SystemStateKey, StateVisualConfig> = {
   },
   uv_active: {
     label: 'UV Sanitizing',
-    badgeLabel: 'Sterilizing',
-    subtext: '254nm UV-C cycle active',
+    badgeLabel: 'Disinfecting',
+    subtext: 'Cleaning in progress',
     icon: Sun,
     iconColor: 'text-amber-500 dark:text-amber-400',
     iconBg: 'bg-amber-500/10 dark:bg-amber-500/20',
@@ -182,7 +182,7 @@ export function StatCards() {
                   <Scan className="h-4 w-4" />
                 </div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Occupancy
+                  Stall Occupancy
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -244,8 +244,8 @@ export function StatCards() {
                     {!connected
                       ? 'Offline'
                       : isPersonPresent
-                        ? 'Stall Occupied'
-                        : 'Stall Vacant'}
+                        ? 'Occupied'
+                        : 'Vacant'}
                   </span>
                 </div>
               </div>
@@ -257,7 +257,7 @@ export function StatCards() {
             <div className="mb-1.5 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 tabular-nums">
               <span>0 cm</span>
               <span className="font-semibold text-slate-500 dark:text-slate-400">
-                Detect: 30 cm
+                Detection Range: 30 cm
               </span>
               <span>100 cm+</span>
             </div>
@@ -347,7 +347,7 @@ export function StatCards() {
                       ? 'Offline'
                       : isFlowActive
                         ? 'Water Flowing'
-                        : 'Idle (No Flow)'}
+                        : 'No Flow'}
                   </span>
                 </div>
               </div>
@@ -359,7 +359,7 @@ export function StatCards() {
             <div className="mb-1.5 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 tabular-nums">
               <span>0.0 L/m</span>
               <span className="font-semibold text-slate-500 dark:text-slate-400">
-                Capacity: 10.0 L/m
+                Max Flow: 10.0 L/min
               </span>
               <span>10.0</span>
             </div>
@@ -398,7 +398,7 @@ export function StatCards() {
                   )}
                 </div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Unit Connection
+                  Device Connection
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -450,7 +450,7 @@ export function StatCards() {
                         connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
                       }`}
                     />
-                    {connected ? 'Cloud Connected' : 'Connection Lost'}
+                    {connected ? 'Online' : 'Offline'}
                   </span>
                 </div>
               </div>
@@ -462,11 +462,11 @@ export function StatCards() {
             <div className="mb-1.5 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 tabular-nums">
               <span>
                 {connected
-                  ? `Seen: ${secondsAgo}s ago`
+                  ? `Last signal: ${secondsAgo}s ago`
                   : deviceReason || 'Disconnected'}
               </span>
               <span className="font-semibold text-slate-500 dark:text-slate-400">
-                {connected ? `${linkFreshnessPercent}% Health` : '0%'}
+                {connected ? `${linkFreshnessPercent}% Signal` : '0%'}
               </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -498,7 +498,7 @@ export function StatCards() {
                   <CurrentStateIcon className="h-4 w-4" />
                 </div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Operating State
+                  Current Mode
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
