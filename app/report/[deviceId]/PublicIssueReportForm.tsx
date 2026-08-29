@@ -103,7 +103,18 @@ export function PublicIssueReportForm({
         method: 'POST',
         body,
       });
-      const result = (await response.json()) as SuccessResponse | ErrorResponse;
+      let result: SuccessResponse | ErrorResponse;
+      try {
+        result = (await response.json()) as SuccessResponse | ErrorResponse;
+      } catch {
+        if (response.status === 413) {
+          setError('Photo is too large to upload. Please retake the photo.');
+        } else {
+          setError(`Server connection error (${response.status}). Please try again.`);
+        }
+        return;
+      }
+
       if (!response.ok || !result.success) {
         const errorMsg = !result.success
           ? result.details
@@ -117,8 +128,10 @@ export function PublicIssueReportForm({
         ...result.data,
         previewUrl: photo && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(photo) : null,
       });
-    } catch {
-      setError('Unable to submit report. Please try again.');
+    } catch (err: unknown) {
+      console.error('Submission failed:', err);
+      const message = err instanceof Error ? err.message : 'Unable to submit report. Please try again.';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
