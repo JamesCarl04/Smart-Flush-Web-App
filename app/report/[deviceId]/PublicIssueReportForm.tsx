@@ -49,6 +49,7 @@ interface SuccessResponse {
 interface ErrorResponse {
   success: false;
   error: string;
+  details?: string;
 }
 
 export function PublicIssueReportForm({
@@ -104,9 +105,12 @@ export function PublicIssueReportForm({
       });
       const result = (await response.json()) as SuccessResponse | ErrorResponse;
       if (!response.ok || !result.success) {
-        setError(
-          result.success ? 'Unable to submit report' : result.error,
-        );
+        const errorMsg = !result.success
+          ? result.details
+            ? `${result.error}: ${result.details}`
+            : result.error
+          : 'Unable to submit report';
+        setError(errorMsg);
         return;
       }
       setReceipt({

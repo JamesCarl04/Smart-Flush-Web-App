@@ -6,7 +6,8 @@ import { resolveFirebaseAdminConfig } from '@/lib/firebase-admin-config';
 if (!admin.apps.length) {
   try {
     const { values, missing } = resolveFirebaseAdminConfig(process.env);
-    const { projectId, clientEmail, privateKey, storageBucket } = values;
+    const { projectId, clientEmail, privateKey } = values;
+    const storageBucket = values.storageBucket || (projectId ? `${projectId}.appspot.com` : undefined);
 
     if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
@@ -17,9 +18,9 @@ if (!admin.apps.length) {
         }),
         ...(storageBucket ? { storageBucket } : {}),
       });
-      if (!storageBucket) {
-        console.error(
-          '[Firebase Admin] Storage configuration is incomplete. Missing: FIREBASE_STORAGE_BUCKET.',
+      if (!values.storageBucket) {
+        console.warn(
+          `[Firebase Admin] FIREBASE_STORAGE_BUCKET was not explicitly set. Defaulting to: ${storageBucket}`,
         );
       }
     } else {

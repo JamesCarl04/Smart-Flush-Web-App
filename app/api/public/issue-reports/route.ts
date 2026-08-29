@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase-admin';
+import * as admin from 'firebase-admin';
+import { adminDb, adminStorage } from '@/lib/firebase-admin';
+import { resolveFirebaseAdminConfig } from '@/lib/firebase-admin-config';
 import {
   issueReportEvidenceExists,
   notifyIssueReportAdmins,
@@ -113,9 +115,17 @@ export function createPublicIssueReportPostHandler(
       const maxRequestBytes =
         dependencies.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
       enforceDeclaredRequestSize(request.headers, maxRequestBytes);
+      const clientIp =
+        extractClientIp(request.headers, dependencies.trustedIpHeader) ||
+        '127.0.0.1';
+      const effectiveSecret =
+        dependencies.secret ||
+        process.env.PUBLIC_REPORT_FINGERPRINT_SECRET ||
+        process.env.FIREBASE_ADMIN_PROJECT_ID ||
+        'klir-public-report-default-salt';
       const fingerprint = createPublicReportFingerprint(
-        extractClientIp(request.headers, dependencies.trustedIpHeader),
-        dependencies.secret,
+        clientIp,
+        effectiveSecret,
       );
       const form = await request.formData();
       enforceParsedRequestSize(form, maxRequestBytes);
@@ -182,9 +192,14 @@ export function createPublicIssueReportPostHandler(
       );
     } catch (error) {
       if (error instanceof PublicIssueReportError) return errorResponse(error);
-      console.error('[Public Reports] Intake failed');
+      console.error('[Public Reports] Intake failed:', error);
+      const details = error instanceof Error ? error.message : String(error);
       return NextResponse.json(
-        { success: false, error: 'Unable to submit report' },
+        {
+          success: false,
+          error: 'Unable to submit report',
+          details,
+        },
         { status: 500 },
       );
     }
@@ -192,7 +207,77 @@ export function createPublicIssueReportPostHandler(
 }
 
 export const POST = createPublicIssueReportPostHandler({
-  secret: process.env.PUBLIC_REPORT_FINGERPRINT_SECRET,
+  secret:
+    process.env.PUBLIC_REPORT_FINGERPRINT_SECRET ||
+    process.env.FIREBASE_ADMIN_PROJECT_ID ||
+    'klir-public-report-default-salt',
   trustedIpHeader: process.env.PUBLIC_REPORT_TRUSTED_IP_HEADER,
   submit: submitWithFirebase,
 });
+
+/**
+ * Diagnostic health check endpoint:
+ * Allows administrators and developers to inspect Firebase Admin initialization,
+ * Firestore connectivity, and storage bucket configuration in production.
+ */
+export async function GET(request: Request) {
+  const { values, missing } = resolveFirebaseAdminConfig(process.env);
+  const isAppInitialized = admin.apps.length > 0;
+  let firestoreStatus = 'not_checked';
+  let firestoreError: string | null = null;
+  let storageStatus = 'not_checked';
+  let storageError: string | null = null;
+
+  if (isAppInitialized) {
+    try {
+      await adminDb.collection('devices').limit(1).get();
+      firestoreStatus = 'connected';
+    } catch (err: unknown) {
+      firestoreStatus = 'error';
+      firestoreError = err instanceof Error ? err.message : String(err);
+    }
+
+    try {
+      if (values.storageBucket) {
+        const bucket = adminStorage.bucket();
+        storageStatus = bucket ? 'configured' : 'missing';
+      } else {
+        storageStatus = 'no_bucket_specified';
+      }
+    } catch (err: unknown) {
+      storageStatus = 'error';
+      storageError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const clientIp = extractClientIp(
+    request.headers,
+    process.env.PUBLIC_REPORT_TRUSTED_IP_HEADER,
+  );
+
+  return NextResponse.json({
+    status:
+      missing.length === 0 && firestoreStatus === 'connected'
+        ? 'healthy'
+        : 'attention_required',
+    timestamp: new Date().toISOString(),
+    firebaseAdmin: {
+      initialized: isAppInitialized,
+      projectId: values.projectId ?? null,
+      hasClientEmail: !!values.clientEmail,
+      hasPrivateKey: !!values.privateKey,
+      storageBucket: values.storageBucket ?? null,
+      missingRequiredEnvVars: missing,
+    },
+    firestore: {
+      status: firestoreStatus,
+      error: firestoreError,
+    },
+    storage: {
+      status: storageStatus,
+      error: storageError,
+    },
+    clientIp,
+    fingerprintSecretSet: !!process.env.PUBLIC_REPORT_FINGERPRINT_SECRET,
+  });
+}

@@ -343,9 +343,20 @@ export function extractClientIp(
 ): string | null {
   const header = resolveTrustedProxyIpHeader(trustedHeader);
   const raw = headers.get(header)?.trim();
-  if (!raw) return null;
-  const candidate = raw.split(',')[0].trim();
-  return candidate && isIP(candidate) !== 0 ? candidate : null;
+  if (raw) {
+    const candidate = raw.split(',')[0].trim();
+    if (candidate && isIP(candidate) !== 0) return candidate;
+  }
+
+  for (const fallbackHeader of ['x-vercel-forwarded-for', 'x-forwarded-for', 'cf-connecting-ip', 'x-real-ip']) {
+    const candidateRaw = headers.get(fallbackHeader)?.trim();
+    if (candidateRaw) {
+      const candidate = candidateRaw.split(',')[0].trim();
+      if (candidate && isIP(candidate) !== 0) return candidate;
+    }
+  }
+
+  return null;
 }
 
 export function createPublicReportFingerprint(
