@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { apiFetch } from '@/lib/api-client';
 import type { UserRole } from '@/lib/auth-helpers';
 import { buildPublicReportUrl, sanitizeQrLabelFilename } from '@/lib/public-report-qr';
+import { CampusBatchQrModal } from './CampusBatchQrModal';
 
 interface DeviceForQr {
   id: string;
@@ -29,6 +30,7 @@ export function PublicReportingControls({
 }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const reportUrl = useMemo(() => buildPublicReportUrl(siteUrl, device.id), [device.id, siteUrl]);
 
   useEffect(() => {
@@ -98,8 +100,34 @@ export function PublicReportingControls({
       </div>
       <div className="mt-5 grid items-center gap-6 sm:grid-cols-[220px_1fr]">
         {qrDataUrl ? <img src={qrDataUrl} alt="Public issue report QR preview" width={220} height={220} className="rounded-xl border bg-white p-2" /> : <div className="h-[220px] animate-pulse rounded-xl bg-slate-100" />}
-        <div className="space-y-2"><p className="font-semibold">{device.name}</p><p className="text-sm text-slate-500">{device.location}</p><p className="break-all font-mono text-xs text-slate-500">{reportUrl}</p><button type="button" onClick={() => void downloadLabel()} className="mt-3 rounded-lg bg-[#B5121B] px-4 py-2 text-sm font-semibold text-white">Download printable PNG label</button></div>
+        <div className="space-y-2">
+          <p className="font-semibold">{device.name}</p>
+          <p className="text-sm text-slate-500">{device.location}</p>
+          <p className="break-all font-mono text-xs text-slate-500">{reportUrl}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void downloadLabel()}
+              className="rounded-lg bg-[#B5121B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8F0D16]"
+            >
+              Download printable PNG label
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBatchModal(true)}
+              className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              Campus Batch Print (All Stalls)
+            </button>
+          </div>
+        </div>
       </div>
+
+      <CampusBatchQrModal
+        isOpen={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        siteUrl={siteUrl}
+      />
     </section>
   );
 }

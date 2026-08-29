@@ -4,7 +4,28 @@ import { useState, type FormEvent } from 'react';
 import { CameraCapture } from './CameraCapture';
 import type { PhotoCaptureStatus, PublicReportingDevice } from '@/lib/public-issue-reports';
 
-const CATEGORY_OPTIONS = [
+const STALL_CATEGORY_OPTIONS = [
+  ['blockage_or_dirty', 'Toilet clogged or dirty'],
+  ['continuous_leak', 'Continuous leak or bidet running'],
+  ['no_water', 'No water flow'],
+  ['lid_malfunction', 'Flush sensor not responding'],
+  ['physical_damage', 'Stall door lock or hardware broken'],
+  ['other', 'Other stall issue'],
+] as const;
+
+const SMART_STALL_EXTRA_OPTIONS = [
+  ['uv_light_failure', 'UV light failure'],
+] as const;
+
+const COMMON_AREA_CATEGORY_OPTIONS = [
+  ['continuous_leak', 'Sink faucet leaking or running'],
+  ['blockage_or_dirty', 'Flooded or dirty floor'],
+  ['no_water', 'No water from sink faucets'],
+  ['physical_damage', 'Soap dispenser or mirror damaged'],
+  ['other', 'Other common area issue'],
+] as const;
+
+const DEFAULT_FALLBACK_OPTIONS = [
   ['lid_malfunction', 'Lid malfunction'],
   ['no_water', 'No water'],
   ['continuous_leak', 'Continuous leak'],
@@ -99,6 +120,14 @@ export function PublicIssueReportForm({
     }
   }
 
+  const categoryOptions = device.isCommonArea
+    ? COMMON_AREA_CATEGORY_OPTIONS
+    : device.isSmartHardware
+      ? [...STALL_CATEGORY_OPTIONS, ...SMART_STALL_EXTRA_OPTIONS]
+      : device.stallNumber
+        ? STALL_CATEGORY_OPTIONS
+        : DEFAULT_FALLBACK_OPTIONS;
+
   if (receipt) {
     return (
       <main className="flex min-h-screen items-center bg-slate-50 px-4 py-8 text-slate-900">
@@ -127,7 +156,18 @@ export function PublicIssueReportForm({
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:py-10">
       <section className="mx-auto w-full max-w-md rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-7">
         <header>
-          <p className="text-sm font-semibold text-emerald-700">Smart Flush</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-emerald-700">Smart Flush</p>
+            {device.isCommonArea ? (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                Common Area
+              </span>
+            ) : device.stallNumber ? (
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                {device.isSmartHardware ? 'Smart IoT Stall' : `Stall ${device.stallNumber}`}
+              </span>
+            ) : null}
+          </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
             Report a restroom issue
           </h1>
@@ -137,6 +177,10 @@ export function PublicIssueReportForm({
               .filter(Boolean)
               .join(' · ')}
           </p>
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Operational &amp; In Service
+          </div>
           <p className="mt-4 text-sm leading-6 text-slate-600">
             This anonymous report goes to facility administrators for review.
           </p>
@@ -173,7 +217,7 @@ export function PublicIssueReportForm({
               <option value="" disabled>
                 Select an issue
               </option>
-              {CATEGORY_OPTIONS.map(([value, label]) => (
+              {categoryOptions.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -196,7 +240,7 @@ export function PublicIssueReportForm({
             <p className="mt-1 text-xs text-slate-500">Maximum 500 characters</p>
           </div>
 
-          <CameraCapture onChange={handlePhotoChange} disabled={submitting} />
+          <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
 
           {error ? (
             <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { PublicIssueReportForm } from '@/app/report/[deviceId]/PublicIssueReportForm';
+import { CameraCapture } from '@/app/report/[deviceId]/CameraCapture';
 
 const device = {
   id: 'toilet-01',
@@ -89,5 +90,172 @@ describe('anonymous public issue report form', () => {
     expect(submitted.has('name')).toBe(false);
     expect(submitted.has('email')).toBe(false);
     expect(submitted.has('phone')).toBe(false);
+  });
+
+  it('renders standard stall categories without showing N/A or UV options', () => {
+    const standardStallDevice = {
+      id: 'SDCA-FL2-M1-S02',
+      name: 'SDCA Annex 2F Male Restroom 1 • Stall 2',
+      building: 'SDCA Annex',
+      floor: '2F',
+      location: '2F • Male Restroom 1 • Stall 2',
+      stallNumber: '2',
+      isSmartHardware: false,
+      isCommonArea: false,
+    };
+
+    render(<PublicIssueReportForm device={standardStallDevice} />);
+
+    expect(screen.getByText('Stall 2')).toBeInTheDocument();
+    expect(screen.getByText('Toilet clogged or dirty')).toBeInTheDocument();
+    expect(screen.getByText('Stall door lock or hardware broken')).toBeInTheDocument();
+    // Zero N/A policy: UV failure must not appear for standard stalls
+    expect(screen.queryByText('UV light failure')).not.toBeInTheDocument();
+  });
+
+  it('renders smart IoT prototype stall with active UV option', () => {
+    const smartStallDevice = {
+      id: 'toilet-01',
+      name: 'SDCA Annex 1F Canteen Female Restroom • Stall 1',
+      building: 'SDCA Annex',
+      floor: '1F',
+      location: '1F • Canteen Female Restroom • Stall 1',
+      stallNumber: '1',
+      isSmartHardware: true,
+      isCommonArea: false,
+    };
+
+    render(<PublicIssueReportForm device={smartStallDevice} />);
+
+    expect(screen.getByText('Smart IoT Stall')).toBeInTheDocument();
+    expect(screen.getByText('UV light failure')).toBeInTheDocument();
+  });
+
+  it('renders common area facility options without stall-specific options', () => {
+    const commonAreaDevice = {
+      id: 'SDCA-FL1-CANTEEN-M',
+      name: 'SDCA Annex 1F Canteen Male Restroom • Common Area',
+      building: 'SDCA Annex',
+      floor: '1F',
+      location: '1F • Canteen Male Restroom • Sinks & Entrance',
+      isSmartHardware: false,
+      isCommonArea: true,
+    };
+
+    render(<PublicIssueReportForm device={commonAreaDevice} />);
+
+    expect(screen.getByText('Common Area')).toBeInTheDocument();
+    expect(screen.getByText('Sink faucet leaking or running')).toBeInTheDocument();
+    expect(screen.getByText('Flooded or dirty floor')).toBeInTheDocument();
+    expect(screen.getByText('Soap dispenser or mirror damaged')).toBeInTheDocument();
+    expect(screen.queryByText('Toilet clogged or dirty')).not.toBeInTheDocument();
+  });
+
+  it('renders a clean, clutter-free camera viewfinder without distracting labels when opened', async () => {
+    const mockTrack = { stop: jest.fn() };
+    const mockStream = {
+      getTracks: () => [mockTrack],
+    };
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: jest.fn().mockResolvedValue(mockStream),
+      },
+      configurable: true,
+      writable: true,
+    });
+    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+
+    const stallDevice = {
+      id: 'SDCA-FL3-M1-S02',
+      name: 'SDCA Annex 3F Male Restroom 1 • Stall 2',
+      building: 'SDCA Annex',
+      floor: '3F',
+      location: '3F • Male Restroom 1 • Stall 2',
+      stallNumber: '2',
+      isSmartHardware: false,
+      isCommonArea: false,
+    };
+
+    render(<PublicIssueReportForm device={stallDevice} />);
+
+    // Open camera
+    fireEvent.press ? fireEvent.press(screen.getByRole('button', { name: 'Open camera' })) : fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+
+    await waitFor(() => {
+      // Clutter removal verification:
+      expect(screen.queryByText('AR LIVE VIEW')).not.toBeInTheDocument();
+      expect(screen.queryByText('SDCA ANNEX')).not.toBeInTheDocument();
+      expect(screen.queryByText('Aim at stall QR code to inspect')).not.toBeInTheDocument();
+      // Shutter button is present:
+      expect(screen.getByRole('button', { name: 'Take photo' })).toBeInTheDocument();
+    });
+  });
+
+  it('renders see-through glassmorphic card with stall name and In Service badge when QR is detected', async () => {
+    const mockTrack = { stop: jest.fn() };
+    const mockStream = { getTracks: () => [mockTrack] };
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: jest.fn().mockResolvedValue(mockStream) },
+      configurable: true,
+      writable: true,
+    });
+    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+
+    const stallDevice = {
+      id: 'SDCA-FL2-M1-S01',
+      name: 'SDCA Annex 2F Male Restroom 1 • Stall 1',
+      building: 'SDCA Annex',
+      floor: '2F',
+      location: '2F • Male Restroom 1 • Stall 1',
+      stallNumber: '1',
+      isSmartHardware: false,
+      isCommonArea: false,
+    };
+
+    render(<CameraCapture device={stallDevice} initialQrDetected={true} onChange={jest.fn()} />);
+
+    // Open camera to ready phase
+    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('SDCA Annex 2F Male Restroom 1 • Stall 1')).toBeInTheDocument();
+      // Verifying clean label: No 'In Service', no 'Ready', no 'AR LIVE VIEW'
+      expect(screen.queryByText('In Service')).not.toBeInTheDocument();
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+      expect(screen.queryByText('AR LIVE VIEW')).not.toBeInTheDocument();
+      expect(screen.queryByText('UV Disinfection')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders clean see-through glassmorphic pill with exact toilet name for prototype', async () => {
+    const mockTrack = { stop: jest.fn() };
+    const mockStream = { getTracks: () => [mockTrack] };
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: jest.fn().mockResolvedValue(mockStream) },
+      configurable: true,
+      writable: true,
+    });
+    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+
+    const smartDevice = {
+      id: 'toilet-01',
+      name: 'SDCA Annex Test Stall (toilet-01)',
+      building: 'SDCA Annex',
+      floor: '1F',
+      location: '1F • Canteen Female Restroom',
+      stallNumber: '1',
+      isSmartHardware: true,
+      isCommonArea: false,
+    };
+
+    render(<CameraCapture device={smartDevice} initialQrDetected={true} onChange={jest.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('SDCA Annex Test Stall (toilet-01)')).toBeInTheDocument();
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+      expect(screen.queryByText('In Service')).not.toBeInTheDocument();
+    });
   });
 });

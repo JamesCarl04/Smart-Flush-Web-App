@@ -39,6 +39,8 @@ export interface TaskDoc {
   id: string;
   deviceId: string;
   restroomName?: string | null;
+  stallId?: string | null;
+  stallNumber?: string | null;
   floor?: string | null;
   building?: string | null;
   location?: string | null;

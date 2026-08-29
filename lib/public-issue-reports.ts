@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { getStallById, SDCA_RESTROOM_ROOMS } from './restrooms';
 
 export const ISSUE_REPORT_CATEGORIES = [
   'lid_malfunction',
@@ -28,6 +29,10 @@ export interface PublicReportingDevice {
   building: string;
   floor: string;
   location: string;
+  stallId?: string | null;
+  stallNumber?: string | null;
+  isSmartHardware?: boolean;
+  isCommonArea?: boolean;
 }
 
 export type IssueReportEvidence =
@@ -106,7 +111,7 @@ export function sanitizePublicDevice(
   id: string,
   data: Record<string, unknown> | null | undefined,
 ): PublicReportingDevice {
-  if (!data || data.publicReportingEnabled === false) {
+  if (data && data.publicReportingEnabled === false) {
     throw new PublicIssueReportError(
       'Public reporting is unavailable for this device',
       404,
@@ -114,22 +119,70 @@ export function sanitizePublicDevice(
     );
   }
 
-  const name = requiredString(data.name);
-  if (!name) {
-    throw new PublicIssueReportError(
-      'Public reporting is unavailable for this device',
-      404,
-      'device_unavailable',
-    );
+  if (data) {
+    const name = requiredString(data.name);
+    if (!name) {
+      throw new PublicIssueReportError(
+        'Public reporting is unavailable for this device',
+        404,
+        'device_unavailable',
+      );
+    }
+
+    const device: PublicReportingDevice = {
+      id,
+      name,
+      building: requiredString(data.building) ?? '',
+      floor: requiredString(data.floor) ?? '',
+      location: requiredString(data.location) ?? '',
+    };
+
+    const stallId = requiredString(data.stallId);
+    if (stallId) device.stallId = stallId;
+    const stallNumber = requiredString(data.stallNumber);
+    if (stallNumber) device.stallNumber = stallNumber;
+    if (data.isSmartHardware === true) device.isSmartHardware = true;
+    if (data.isCommonArea === true) device.isCommonArea = true;
+
+    return device;
   }
 
-  return {
-    id,
-    name,
-    building: requiredString(data.building) ?? '',
-    floor: requiredString(data.floor) ?? '',
-    location: requiredString(data.location) ?? '',
-  };
+  // Fallback to SDCA Annex Restroom / Stall Inventory
+  const stall = getStallById(id);
+  if (stall) {
+    return {
+      id: stall.id,
+      name: stall.fullLabel,
+      building: stall.building,
+      floor: stall.floor,
+      location: `${stall.floor} • ${stall.roomName} • ${stall.stallLabel}`,
+      stallId: stall.id,
+      stallNumber: String(stall.stallNumber),
+      isSmartHardware: stall.id === 'toilet-01',
+      isCommonArea: false,
+    };
+  }
+
+  const room = SDCA_RESTROOM_ROOMS.find(
+    (r) => r.id === id || r.aliases?.includes(id),
+  );
+  if (room) {
+    return {
+      id: room.id,
+      name: `${room.roomName} • Common Area`,
+      building: room.building,
+      floor: room.floor,
+      location: `${room.floor} • ${room.roomName} • Sinks & Entrance`,
+      isSmartHardware: false,
+      isCommonArea: true,
+    };
+  }
+
+  throw new PublicIssueReportError(
+    'Public reporting is unavailable for this device',
+    404,
+    'device_unavailable',
+  );
 }
 
 export function validateIssueReportInput(

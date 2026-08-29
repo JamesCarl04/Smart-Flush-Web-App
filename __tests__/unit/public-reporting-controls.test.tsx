@@ -21,6 +21,7 @@ describe('administrator public reporting controls', () => {
     expect(screen.getByText('4F Restroom')).toBeTruthy();
     expect(screen.getByRole('checkbox')).toBeTruthy();
     expect(screen.getByRole('button', { name: /download printable png/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /campus batch print/i })).toBeTruthy();
     await waitFor(() => expect(screen.getByAltText(/public issue report qr/i)).toBeTruthy());
     expect(screen.getByText('https://klir.example/report/stall-1')).toBeTruthy();
   });

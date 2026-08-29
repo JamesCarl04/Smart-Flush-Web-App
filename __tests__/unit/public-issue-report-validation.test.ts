@@ -107,6 +107,34 @@ describe('public issue report validation', () => {
     ).toThrow('unavailable');
   });
 
+  it('resolves SDCA Annex stall devices directly from inventory when unprovisioned in DB', () => {
+    const stallDevice = sanitizePublicDevice('SDCA-FL1-CANTEEN-M-S01', null);
+    expect(stallDevice).toEqual({
+      id: 'SDCA-FL1-CANTEEN-M-S01',
+      name: 'SDCA Annex 1F Canteen Male Restroom • Stall 1',
+      building: 'SDCA Annex',
+      floor: '1F',
+      location: '1F • SDCA Annex 1F Canteen Male Restroom • Stall 1',
+      stallId: 'SDCA-FL1-CANTEEN-M-S01',
+      stallNumber: '1',
+      isSmartHardware: false,
+      isCommonArea: false,
+    });
+  });
+
+  it('resolves SDCA Annex common area entrance devices directly from inventory', () => {
+    const commonDevice = sanitizePublicDevice('SDCA-FL2-M1', null);
+    expect(commonDevice).toEqual({
+      id: 'SDCA-FL2-M1',
+      name: 'SDCA Annex 2F Male Restroom 1 • Common Area',
+      building: 'SDCA Annex',
+      floor: '2F',
+      location: '2F • SDCA Annex 2F Male Restroom 1 • Sinks & Entrance',
+      isSmartHardware: false,
+      isCommonArea: true,
+    });
+  });
+
   it('extracts the configured platform IP and fingerprints it without returning the raw value', () => {
     const headers = new Headers({
       'x-forwarded-for': '198.51.100.5, 10.0.0.1',
