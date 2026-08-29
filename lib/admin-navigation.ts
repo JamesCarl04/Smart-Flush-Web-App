@@ -1,7 +1,7 @@
 import type { UserRole } from '@/lib/auth-helpers';
 
 export interface OperationsNavigationItem {
-  name: 'Tasks' | 'Configuration' | 'Issue Reports' | 'Reports';
+  name: 'Tasks' | 'Configuration' | 'Issue Reports' | 'Exports';
   href: '/tasks' | '/configuration' | '/issue-reports' | '/reports';
   badge?: number | null;
 }
@@ -20,6 +20,6 @@ export function buildOperationsNavigation(
           badge: pendingIssueReportCount > 0 ? pendingIssueReportCount : null,
         }]
       : []),
-    { name: 'Reports', href: '/reports' },
+    { name: 'Exports', href: '/reports' },
   ];
 }

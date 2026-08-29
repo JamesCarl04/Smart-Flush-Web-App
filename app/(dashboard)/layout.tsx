@@ -14,7 +14,7 @@ import {
   BarChart3,
   ClipboardList,
   SlidersHorizontal,
-  FileText,
+  FileDown,
   Sun,
   Moon,
   LogOut,
@@ -155,7 +155,7 @@ export default function DashboardLayout({
               ? SlidersHorizontal
               : item.name === 'Issue Reports'
                 ? AlertTriangle
-                : FileText,
+                : FileDown,
         ...(item.name === 'Tasks' ? { badge: pendingTasksCount > 0 ? pendingTasksCount : null } : {}),
       })),
     },

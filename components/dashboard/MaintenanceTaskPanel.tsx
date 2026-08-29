@@ -799,7 +799,7 @@ export function MaintenanceTaskPanel() {
 
     try {
       await apiFetch<UpdateTaskResponse>(`/api/tasks/${editingTask.id}`, user, {
-        method: 'PUT',
+        method: 'PATCH',
         body: JSON.stringify({
           deviceId: editToiletId,
           message: trimmedMessage,

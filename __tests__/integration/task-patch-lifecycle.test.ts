@@ -19,7 +19,7 @@ jest.mock('@/lib/task-lifecycle', () => ({
   syncTechniciansAfterTaskRelease: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { PATCH } from '@/app/api/tasks/[id]/route';
+import { PATCH, PUT } from '@/app/api/tasks/[id]/route';
 import { adminDb } from '@/lib/firebase-admin';
 
 const mockCollection = adminDb.collection as jest.Mock;
@@ -134,5 +134,43 @@ describe('task PATCH lifecycle transaction', () => {
         autoAssignmentEligibleAt: null,
       }),
     );
+  });
+
+  it('supports updating tasks via PUT alias', async () => {
+    const supervisorTask = taskSnapshot({
+      status: 'pending',
+      assignedTo: null,
+      assignedToIds: [],
+    });
+    const updatedTask = taskSnapshot({
+      status: 'assigned',
+      assignedTo: 'tech-new',
+      assignedToIds: ['tech-new'],
+    });
+    const taskRef = {
+      get: jest.fn()
+        .mockResolvedValueOnce(supervisorTask)
+        .mockResolvedValueOnce(updatedTask),
+    };
+    const transaction = { get: jest.fn().mockResolvedValue(supervisorTask), update: jest.fn(), set: jest.fn() };
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') {
+        return { doc: jest.fn(() => taskRef) };
+      }
+      return {
+        doc: jest.fn(() => ({ id: 'tech-new' })),
+        where: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ docs: [] }) })),
+      };
+    });
+
+    const response = await PUT(new Request('http://localhost/api/tasks/task-1', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ assignedTo: 'tech-new', assignedToIds: ['tech-new'] }),
+    }), { params: Promise.resolve({ id: 'task-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(PUT).toBe(PATCH);
   });
 });

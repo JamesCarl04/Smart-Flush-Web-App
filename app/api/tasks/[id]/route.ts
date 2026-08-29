@@ -311,6 +311,8 @@ export async function PATCH(
   }
 }
 
+export { PATCH as PUT };
+
 export async function DELETE(
   request: Request,
   { params }: RouteParams,
