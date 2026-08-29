@@ -103,6 +103,18 @@ export function CameraCapture({
     }
   }, [phase]);
 
+  useEffect(() => {
+    const handleOrientationOrResize = () => {
+      currentAnchorRef.current = null;
+    };
+    window.addEventListener('resize', handleOrientationOrResize);
+    window.addEventListener('orientationchange', handleOrientationOrResize);
+    return () => {
+      window.removeEventListener('resize', handleOrientationOrResize);
+      window.removeEventListener('orientationchange', handleOrientationOrResize);
+    };
+  }, []);
+
   const markUnavailable = useCallback((detail?: string) => {
     stopCamera();
     setPhase('unavailable');
@@ -184,28 +196,60 @@ export function CameraCapture({
 
                 if (isOwnQr) {
                   const loc = code.location;
-                  const cxCanvas =
-                    (loc.topLeftCorner.x +
+
+                  // Dimensions of video element on screen
+                  const screenW = video.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 380);
+                  const screenH = video.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 640);
+
+                  // Scale factors between downsampled canvas (380px) and native camera stream
+                  const scaleToVidX = video.videoWidth / targetWidth;
+                  const scaleToVidY = video.videoHeight / targetHeight;
+
+                  const minX_vid = Math.min(loc.topLeftCorner.x, loc.bottomLeftCorner.x) * scaleToVidX;
+                  const maxX_vid = Math.max(loc.topRightCorner.x, loc.bottomRightCorner.x) * scaleToVidX;
+                  const minY_vid = Math.min(loc.topLeftCorner.y, loc.topRightCorner.y) * scaleToVidY;
+                  const maxY_vid = Math.max(loc.bottomLeftCorner.y, loc.bottomRightCorner.y) * scaleToVidY;
+                  const cx_vid =
+                    ((loc.topLeftCorner.x +
                       loc.topRightCorner.x +
                       loc.bottomRightCorner.x +
                       loc.bottomLeftCorner.x) /
-                    4;
-                  const minX = Math.min(loc.topLeftCorner.x, loc.bottomLeftCorner.x);
-                  const maxX = Math.max(loc.topRightCorner.x, loc.bottomRightCorner.x);
-                  const minY = Math.min(loc.topLeftCorner.y, loc.topRightCorner.y);
-                  const maxY = Math.max(loc.bottomLeftCorner.y, loc.bottomRightCorner.y);
+                      4) *
+                    scaleToVidX;
 
-                  const cx = (cxCanvas / targetWidth) * 100;
-                  const topY = (minY / targetHeight) * 100;
+                  // Pixel-perfect object-fit: cover mapping
+                  const scaleCover = Math.max(screenW / video.videoWidth, screenH / video.videoHeight);
+                  const renderedW = video.videoWidth * scaleCover;
+                  const renderedH = video.videoHeight * scaleCover;
+                  const offsetX = (screenW - renderedW) / 2;
+                  const offsetY = (screenH - renderedH) / 2;
+
+                  const minXPx = offsetX + minX_vid * scaleCover;
+                  const maxXPx = offsetX + maxX_vid * scaleCover;
+                  const minYPx = offsetY + minY_vid * scaleCover;
+                  const maxYPx = offsetY + maxY_vid * scaleCover;
+                  const cxPx = offsetX + cx_vid * scaleCover;
+
+                  const cx = (cxPx / screenW) * 100;
+                  const topY = (minYPx / screenH) * 100;
+                  const boxLeft = (minXPx / screenW) * 100;
+                  const boxTop = (minYPx / screenH) * 100;
+                  const boxWidth = ((maxXPx - minXPx) / screenW) * 100;
+                  const boxHeight = ((maxYPx - minYPx) / screenH) * 100;
+
+                  // Dynamic rotation handling: check landscape vs portrait
+                  const isLandscape = screenW > screenH;
+                  // In landscape, top space is shorter, so if boxTop < 32%, position below; otherwise above
+                  const isAbove = isLandscape ? boxTop > 32 : boxTop > 22;
 
                   const rawCoords: AnchorCoordinates = {
                     x: cx,
                     y: topY,
-                    boxLeft: (minX / targetWidth) * 100,
-                    boxTop: (minY / targetHeight) * 100,
-                    boxWidth: ((maxX - minX) / targetWidth) * 100,
-                    boxHeight: ((maxY - minY) / targetHeight) * 100,
-                    isAbove: topY > 28,
+                    boxLeft,
+                    boxTop,
+                    boxWidth,
+                    boxHeight,
+                    isAbove,
                   };
 
                   lastSeenQrTimeRef.current = Date.now();
@@ -231,9 +275,10 @@ export function CameraCapture({
                   setAnchor({ ...currentAnchorRef.current });
                 }
               } else if (lastSeenQrTimeRef.current > 0) {
-                // When QR leaves view, dock smoothly after 1.5s
-                if (Date.now() - lastSeenQrTimeRef.current > 1500) {
+                // When QR leaves view, cleanly remove tracking after 400ms without leaving docked clutter
+                if (Date.now() - lastSeenQrTimeRef.current > 400) {
                   setIsActivelyInView(false);
+                  setQrDetected(false);
                 }
               }
             } catch {
@@ -315,15 +360,15 @@ export function CameraCapture({
         />
 
           {/* Top Bar: Brand and Close button */}
-          <div className="relative z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/70 via-black/30 to-transparent">
-            <span className="text-base font-bold tracking-tight text-white">
+          <div className="relative z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/30 to-transparent">
+            <span className="text-base font-bold tracking-tight text-white drop-shadow-md">
               Klir<span className="text-[#B5121B]">.</span>
             </span>
             <button
               type="button"
               onClick={stopAndCloseCamera}
               aria-label="Close camera"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-lg font-bold"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-lg font-bold shadow-lg"
             >
               ✕
             </button>
@@ -331,51 +376,42 @@ export function CameraCapture({
 
           {/* Spatial AR Viewfinder Overlay */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden z-10">
-            {qrDetected ? (
-              isActivelyInView && anchor ? (
-                <>
-                  {/* Spatial Corner Brackets hugging the physical QR code */}
-                  <div
-                    className="pointer-events-none absolute transition-all duration-75 ease-out"
-                    style={{
-                      left: `${anchor.boxLeft}%`,
-                      top: `${anchor.boxTop}%`,
-                      width: `${anchor.boxWidth}%`,
-                      height: `${anchor.boxHeight}%`,
-                    }}
-                  >
-                    <div className="absolute top-0 left-0 h-3.5 w-3.5 border-t-2 border-l-2 border-white/90 rounded-tl-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                    <div className="absolute top-0 right-0 h-3.5 w-3.5 border-t-2 border-r-2 border-white/90 rounded-tr-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                    <div className="absolute bottom-0 left-0 h-3.5 w-3.5 border-b-2 border-l-2 border-white/90 rounded-bl-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                    <div className="absolute bottom-0 right-0 h-3.5 w-3.5 border-b-2 border-r-2 border-white/90 rounded-br-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                  </div>
+            {qrDetected && isActivelyInView && anchor ? (
+              <>
+                {/* Spatial Corner Brackets hugging the physical QR code */}
+                <div
+                  className="pointer-events-none absolute transition-all duration-75 ease-out"
+                  style={{
+                    left: `${anchor.boxLeft}%`,
+                    top: `${anchor.boxTop}%`,
+                    width: `${anchor.boxWidth}%`,
+                    height: `${anchor.boxHeight}%`,
+                  }}
+                >
+                  <div className="absolute top-0 left-0 h-3.5 w-3.5 border-t-2 border-l-2 border-white/90 rounded-tl-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                  <div className="absolute top-0 right-0 h-3.5 w-3.5 border-t-2 border-r-2 border-white/90 rounded-tr-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                  <div className="absolute bottom-0 left-0 h-3.5 w-3.5 border-b-2 border-l-2 border-white/90 rounded-bl-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                  <div className="absolute bottom-0 right-0 h-3.5 w-3.5 border-b-2 border-r-2 border-white/90 rounded-br-xs shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                </div>
 
-                  {/* Floating See-Through Glassmorphic Pill */}
-                  <div
-                    className="pointer-events-none absolute z-20 transition-all duration-75 ease-out"
-                    style={{
-                      left: `${Math.min(Math.max(anchor.x, 15), 85)}%`,
-                      top: anchor.isAbove
-                        ? `${anchor.boxTop}%`
-                        : `${anchor.boxTop + anchor.boxHeight}%`,
-                      transform: anchor.isAbove
-                        ? `translate(-50%, -100%) translateY(-${Math.max(12, anchor.boxHeight * 0.12)}px)`
-                        : `translate(-50%, 0%) translateY(${Math.max(12, anchor.boxHeight * 0.12)}px)`,
-                    }}
-                  >
-                    <div className="inline-flex items-center rounded-full border border-white/30 bg-white/20 dark:bg-black/40 px-3.5 py-1 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl whitespace-nowrap max-w-[85vw]">
-                      <span className="truncate drop-shadow-xs">{toiletName}</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* Docked Top Glass Pill */
-                <div className="animate-fade-in absolute inset-x-0 top-18 z-10 flex justify-center">
-                  <div className="flex items-center rounded-full border border-white/20 bg-white/20 dark:bg-black/40 px-3.5 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur-xl transition-all duration-300 max-w-[85vw]">
-                    <span className="truncate">{toiletName}</span>
+                {/* Floating See-Through Glassmorphic Pill with healthy non-overlapping clearance */}
+                <div
+                  className="pointer-events-none absolute z-20 transition-all duration-75 ease-out"
+                  style={{
+                    left: `${Math.min(Math.max(anchor.x, 15), 85)}%`,
+                    top: anchor.isAbove
+                      ? `${anchor.boxTop}%`
+                      : `${anchor.boxTop + anchor.boxHeight}%`,
+                    transform: anchor.isAbove
+                      ? 'translate(-50%, -100%) translateY(-18px)'
+                      : 'translate(-50%, 0%) translateY(18px)',
+                  }}
+                >
+                  <div className="inline-flex items-center rounded-full border border-white/30 bg-white/20 dark:bg-black/40 px-3.5 py-1 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl whitespace-nowrap max-w-[85vw]">
+                    <span className="truncate drop-shadow-xs">{toiletName}</span>
                   </div>
                 </div>
-              )
+              </>
             ) : null}
           </div>
 
