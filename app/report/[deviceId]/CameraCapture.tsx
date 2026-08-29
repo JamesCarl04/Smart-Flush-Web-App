@@ -205,19 +205,28 @@ export function CameraCapture({
                   const scaleToVidX = video.videoWidth / targetWidth;
                   const scaleToVidY = video.videoHeight / targetHeight;
 
-                  const minX_vid = Math.min(loc.topLeftCorner.x, loc.bottomLeftCorner.x) * scaleToVidX;
-                  const maxX_vid = Math.max(loc.topRightCorner.x, loc.bottomRightCorner.x) * scaleToVidX;
-                  const minY_vid = Math.min(loc.topLeftCorner.y, loc.topRightCorner.y) * scaleToVidY;
-                  const maxY_vid = Math.max(loc.bottomLeftCorner.y, loc.bottomRightCorner.y) * scaleToVidY;
-                  const cx_vid =
-                    ((loc.topLeftCorner.x +
-                      loc.topRightCorner.x +
-                      loc.bottomRightCorner.x +
-                      loc.bottomLeftCorner.x) /
-                      4) *
-                    scaleToVidX;
+                  // 1. Full 4-Corner Bounding Box (correctly handles any rotation: 0°, 45°, 90°, 180°, 270°)
+                  const allX_vid = [
+                    loc.topLeftCorner.x,
+                    loc.topRightCorner.x,
+                    loc.bottomRightCorner.x,
+                    loc.bottomLeftCorner.x,
+                  ].map((x) => x * scaleToVidX);
 
-                  // Pixel-perfect object-fit: cover mapping
+                  const allY_vid = [
+                    loc.topLeftCorner.y,
+                    loc.topRightCorner.y,
+                    loc.bottomRightCorner.y,
+                    loc.bottomLeftCorner.y,
+                  ].map((y) => y * scaleToVidY);
+
+                  const minX_vid = Math.min(...allX_vid);
+                  const maxX_vid = Math.max(...allX_vid);
+                  const minY_vid = Math.min(...allY_vid);
+                  const maxY_vid = Math.max(...allY_vid);
+                  const cx_vid = (allX_vid[0] + allX_vid[1] + allX_vid[2] + allX_vid[3]) / 4;
+
+                  // 2. Pixel-perfect object-fit: cover mapping
                   const scaleCover = Math.max(screenW / video.videoWidth, screenH / video.videoHeight);
                   const renderedW = video.videoWidth * scaleCover;
                   const renderedH = video.videoHeight * scaleCover;
@@ -230,17 +239,26 @@ export function CameraCapture({
                   const maxYPx = offsetY + maxY_vid * scaleCover;
                   const cxPx = offsetX + cx_vid * scaleCover;
 
+                  const boxLeftPx = minXPx;
+                  const boxTopPx = minYPx;
+                  const boxWidthPx = maxXPx - minXPx;
+                  const boxHeightPx = maxYPx - minYPx;
+
                   const cx = (cxPx / screenW) * 100;
                   const topY = (minYPx / screenH) * 100;
-                  const boxLeft = (minXPx / screenW) * 100;
-                  const boxTop = (minYPx / screenH) * 100;
-                  const boxWidth = ((maxXPx - minXPx) / screenW) * 100;
-                  const boxHeight = ((maxYPx - minYPx) / screenH) * 100;
+                  const boxLeft = (boxLeftPx / screenW) * 100;
+                  const boxTop = (boxTopPx / screenH) * 100;
+                  const boxWidth = (boxWidthPx / screenW) * 100;
+                  const boxHeight = (boxHeightPx / screenH) * 100;
 
-                  // Dynamic rotation handling: check landscape vs portrait
+                  // 3. Dynamic space-aware orientation engine for phone rotation
+                  const spaceAbovePx = boxTopPx;
+                  const spaceBelowPx = screenH - (boxTopPx + boxHeightPx);
                   const isLandscape = screenW > screenH;
-                  // In landscape, top space is shorter, so if boxTop < 32%, position below; otherwise above
-                  const isAbove = isLandscape ? boxTop > 32 : boxTop > 22;
+                  const minRequiredSpace = isLandscape ? 55 : 65;
+
+                  // If enough clearance above, position above; otherwise place below where there is open space
+                  const isAbove = spaceAbovePx >= minRequiredSpace || spaceAbovePx >= spaceBelowPx;
 
                   const rawCoords: AnchorCoordinates = {
                     x: cx,
@@ -398,13 +416,13 @@ export function CameraCapture({
                 <div
                   className="pointer-events-none absolute z-20 transition-all duration-75 ease-out"
                   style={{
-                    left: `${Math.min(Math.max(anchor.x, 15), 85)}%`,
+                    left: `${Math.min(Math.max(anchor.x, 18), 82)}%`,
                     top: anchor.isAbove
                       ? `${anchor.boxTop}%`
                       : `${anchor.boxTop + anchor.boxHeight}%`,
                     transform: anchor.isAbove
-                      ? 'translate(-50%, -100%) translateY(-18px)'
-                      : 'translate(-50%, 0%) translateY(18px)',
+                      ? 'translate(-50%, -100%) translateY(-22px)'
+                      : 'translate(-50%, 0%) translateY(22px)',
                   }}
                 >
                   <div className="inline-flex items-center rounded-full border border-white/30 bg-white/20 dark:bg-black/40 px-3.5 py-1 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl whitespace-nowrap max-w-[85vw]">
