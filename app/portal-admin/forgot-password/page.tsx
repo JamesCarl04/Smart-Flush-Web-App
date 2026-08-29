@@ -10,7 +10,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
   Sun,
   Moon,
-  Droplets,
   Mail,
   ArrowLeft,
   Send,
@@ -96,9 +95,6 @@ export default function ForgotPasswordPage() {
       <main className="relative z-10 w-full max-w-md bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-2xl p-8 sm:p-10 transition-all">
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-red-500/15 text-[#B5121B] dark:text-red-400 mb-3 shadow-inner ring-1 ring-[#C9A227]/40">
-            <Droplets className="w-6 h-6" />
-          </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Reset Password
           </h1>
@@ -180,7 +176,7 @@ export default function ForgotPasswordPage() {
             className="inline-flex items-center gap-1.5 font-semibold text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Sign In
+            Back to Login
           </Link>
         </div>
       </main>

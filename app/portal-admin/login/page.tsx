@@ -11,7 +11,7 @@ import { getErrorCode } from '@/lib/error-utils';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Eye, EyeOff, Droplets, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Sun, Moon, Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z
@@ -98,9 +98,6 @@ export default function LoginPage() {
       <main className="relative z-10 w-full max-w-md bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-2xl p-8 sm:p-10 transition-all">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-red-500/15 text-[#B5121B] dark:text-red-400 mb-3 shadow-inner ring-1 ring-[#C9A227]/40">
-            <Droplets className="w-6 h-6" />
-          </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Welcome to Klir
           </h1>
@@ -209,7 +206,7 @@ export default function LoginPage() {
                 <span className="loading loading-spinner loading-sm"></span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  Sign In to Dashboard
+                  Login to Dashboard
                   <ArrowRight className="w-4 h-4" />
                 </span>
               )}

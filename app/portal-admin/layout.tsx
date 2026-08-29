@@ -4,11 +4,11 @@ import { getSiteUrl } from '@/lib/site-url';
 export const metadata: Metadata = {
   title: 'Authentication | Klir',
   description:
-    'Secure sign-in, registration, and credential management for the Klir Smart Flush Console.',
+    'Secure login, registration, and credential management for the Klir Smart Flush Console.',
   openGraph: {
     title: 'Authentication | Klir Smart Flush Console',
     description:
-      'Access real-time IoT sanitation controls, telemetry feeds, and facility automation rules.',
+      'Access real-time restroom sanitation management, facility monitoring, and maintenance dispatch.',
     url: '/portal-admin/login',
     siteName: 'Klir',
     locale: 'en_US',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Authentication | Klir Smart Flush Console',
     description:
-      'Access real-time IoT sanitation controls, telemetry feeds, and facility automation rules.',
+      'Access real-time restroom sanitation management, facility monitoring, and maintenance dispatch.',
     images: ['/og-banner.jpg'],
     creator: '@KlirSmartFlush',
   },

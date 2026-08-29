@@ -10,7 +10,6 @@ import {
   EyeOff,
   Moon,
   Sun,
-  Droplets,
   Lock,
   KeyRound,
   CheckCircle2,
@@ -120,9 +119,6 @@ export function ResetPasswordForm() {
       <main className="relative z-10 w-full max-w-md bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-2xl p-8 sm:p-10 transition-all">
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-red-500/15 text-[#B5121B] dark:text-red-400 mb-3 shadow-inner ring-1 ring-[#C9A227]/40">
-            <Droplets className="w-6 h-6" />
-          </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Set New Password
           </h1>
