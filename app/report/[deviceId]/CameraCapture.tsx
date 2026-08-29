@@ -60,12 +60,10 @@ export function CameraCapture({ onChange, disabled = false }: CameraCaptureProps
         video: { facingMode: { ideal: 'environment' } },
       });
       streamRef.current = stream;
-      if (!videoRef.current) {
-        markUnavailable();
-        return;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
       }
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play().catch(() => undefined);
       setPhase('ready');
     } catch {
       markUnavailable('Camera permission was denied or the camera could not be opened. You may continue without a photo.');
@@ -118,12 +116,24 @@ export function CameraCapture({ onChange, disabled = false }: CameraCaptureProps
         <p className="mt-1 text-xs text-slate-600">Use the camera to take a photo. Gallery uploads are not accepted.</p>
       </div>
 
-      {phase === 'ready' ? (
-        <div className="space-y-3">
-          <video ref={videoRef} className="aspect-video w-full rounded-lg bg-black object-cover" playsInline muted aria-label="Camera preview" />
-          <button type="button" onClick={capture} disabled={disabled} className="min-h-11 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-60">Take photo</button>
-        </div>
-      ) : null}
+      <div className={phase === 'ready' ? 'space-y-3' : 'hidden'}>
+        <video
+          ref={videoRef}
+          className="aspect-video w-full rounded-lg bg-black object-cover"
+          playsInline
+          muted
+          autoPlay
+          aria-label="Camera preview"
+        />
+        <button
+          type="button"
+          onClick={capture}
+          disabled={disabled}
+          className="min-h-11 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-60"
+        >
+          Take photo
+        </button>
+      </div>
 
       {phase === 'captured' && previewUrl ? (
         <div className="space-y-3">

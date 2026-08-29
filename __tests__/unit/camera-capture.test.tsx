@@ -31,4 +31,23 @@ describe('camera-first evidence capture', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue without photo' })).toBeInTheDocument());
     expect(onChange).toHaveBeenCalledWith(null, null, 'unavailable');
   });
+
+  it('opens camera stream and displays live preview with take photo button', async () => {
+    const mockTrack = { stop: jest.fn() };
+    const mockStream = {
+      getTracks: () => [mockTrack],
+    };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: jest.fn().mockResolvedValue(mockStream) },
+    });
+    window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+
+    const onChange = jest.fn();
+    render(<CameraCapture onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open camera' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Take photo' })).toBeVisible());
+    expect(screen.getByLabelText('Camera preview')).toBeVisible();
+  });
 });

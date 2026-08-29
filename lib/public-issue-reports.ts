@@ -289,8 +289,10 @@ export function extractClientIp(
   trustedHeader: string | undefined,
 ): string | null {
   const header = resolveTrustedProxyIpHeader(trustedHeader);
-  const value = headers.get(header)?.trim();
-  return value && isIP(value) !== 0 ? value : null;
+  const raw = headers.get(header)?.trim();
+  if (!raw) return null;
+  const candidate = raw.split(',')[0].trim();
+  return candidate && isIP(candidate) !== 0 ? candidate : null;
 }
 
 export function createPublicReportFingerprint(

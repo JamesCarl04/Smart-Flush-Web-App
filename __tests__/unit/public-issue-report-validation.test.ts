@@ -122,6 +122,11 @@ describe('public issue report validation', () => {
     expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(fingerprint).not.toContain('198.51.100.2');
     expect(() => createPublicReportFingerprint(ip, '')).toThrow('configuration');
+
+    const multiIpHeaders = new Headers({
+      'x-vercel-forwarded-for': '203.0.113.195, 76.76.21.21',
+    });
+    expect(extractClientIp(multiIpHeaders, 'x-vercel-forwarded-for')).toBe('203.0.113.195');
   });
 
   it('accepts JPEG, PNG, and WebP magic bytes independently of the filename extension', async () => {
