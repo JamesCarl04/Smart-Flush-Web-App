@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -46,15 +45,12 @@ export default function IssueReportsPage() {
   const [status, setStatus] = useState<Status>('pending_review');
   const [reports, setReports] = useState<IssueReportView[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (showLoading = false) => {
     if (!user || role !== 'admin' || roleLoading) return;
     if (showLoading) {
       setLoading(true);
-    } else {
-      setIsRefreshing(true);
     }
     try {
       const response = await apiFetch<{ success: boolean; data?: IssueReportView[]; error?: string }>(
@@ -73,7 +69,6 @@ export default function IssueReportsPage() {
       if (showLoading) {
         setLoading(false);
       }
-      setIsRefreshing(false);
     }
   }, [role, roleLoading, status, user]);
 
@@ -133,30 +128,9 @@ export default function IssueReportsPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Issue Reports</h1>
-          <p className="text-sm text-slate-500">Review anonymous restroom reports without exposing submitter identifiers.</p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            Live (10s sync)
-          </span>
-          <button
-            type="button"
-            onClick={() => void load(false)}
-            disabled={loading || isRefreshing}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
-            title="Refresh reports"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-[#B5121B]' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Issue Reports</h1>
+        <p className="text-sm text-slate-500">Review anonymous restroom reports without exposing submitter identifiers.</p>
       </div>
       <div className="flex gap-2" role="tablist">
         {(Object.keys(STATUS_LABELS) as Status[]).map((value) => (

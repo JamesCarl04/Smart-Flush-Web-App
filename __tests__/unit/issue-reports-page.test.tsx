@@ -46,7 +46,7 @@ describe('issue reports page authority gate', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/issue-reports?status=pending_review', expect.objectContaining({ uid: 'admin-1' }));
   });
 
-  it('automatically refetches reports every 10 seconds and on refresh triggers', async () => {
+  it('automatically refetches reports every 10 seconds and on refresh events', async () => {
     jest.useFakeTimers();
     try {
       mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
@@ -61,18 +61,11 @@ describe('issue reports page authority gate', () => {
       });
       expect(mockApiFetch).toHaveBeenCalledTimes(2);
 
-      // Click manual refresh button
-      const refreshBtn = screen.getByRole('button', { name: /refresh/i });
-      await act(async () => {
-        fireEvent.click(refreshBtn);
-      });
-      expect(mockApiFetch).toHaveBeenCalledTimes(3);
-
       // Dispatch issue-reports:refresh event
       await act(async () => {
         window.dispatchEvent(new Event('issue-reports:refresh'));
       });
-      expect(mockApiFetch).toHaveBeenCalledTimes(4);
+      expect(mockApiFetch).toHaveBeenCalledTimes(3);
     } finally {
       jest.useRealTimers();
     }

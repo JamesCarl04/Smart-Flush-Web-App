@@ -87,20 +87,17 @@ export function PublicIssueReportForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (captureStatus === 'pending') {
-      setError('Please open the camera, or continue without a photo if camera access fails.');
-      return;
-    }
     setSubmitting(true);
     setError(null);
 
     try {
+      const effectiveCaptureStatus: PhotoCaptureStatus = photo ? 'captured' : 'unavailable';
       const body = new FormData(event.currentTarget);
       body.set('deviceId', device.id);
-      body.set('photoCaptureStatus', captureStatus);
+      body.set('photoCaptureStatus', effectiveCaptureStatus);
       body.delete('photo');
       if (photo) body.set('photo', photo, photo.name);
-      if (photoCapturedAt !== null) body.set('photoCapturedAt', String(photoCapturedAt));
+      if (photo && photoCapturedAt !== null) body.set('photoCapturedAt', String(photoCapturedAt));
       const response = await fetch('/api/public/issue-reports', {
         method: 'POST',
         body,
@@ -296,7 +293,7 @@ export function PublicIssueReportForm({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Photo evidence <span className="text-slate-400 font-normal">(required)</span>
+              Photo evidence <span className="text-slate-400 font-normal">(optional)</span>
             </label>
             <CameraCapture device={device} onChange={handlePhotoChange} disabled={submitting} />
           </div>

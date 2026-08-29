@@ -109,6 +109,39 @@ describe('anonymous public issue report form', () => {
     expect(submitted.has('phone')).toBe(false);
   });
 
+  it('submits successfully directly without photo without having to click continue without photo', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          referenceCode: 'IR-DIRECT123',
+          confirmation: 'Direct report received.',
+        },
+      }),
+    });
+    Object.defineProperty(global, 'fetch', {
+      configurable: true,
+      writable: true,
+      value: fetchMock,
+    });
+    render(<PublicIssueReportForm device={device} />);
+    fireEvent.change(screen.getByLabelText('Issue category'), {
+      target: { value: 'no_water' },
+    });
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Submit report' }).closest('form')!);
+
+    await waitFor(() => expect(screen.getByText('IR-DIRECT123')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/public/issue-reports',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const submitted = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
+    expect(submitted.get('photoCaptureStatus')).toBe('unavailable');
+    expect(submitted.has('photo')).toBe(false);
+  });
+
   it('renders standard stall categories without showing N/A or UV options', () => {
     const standardStallDevice = {
       id: 'SDCA-FL2-M1-S02',

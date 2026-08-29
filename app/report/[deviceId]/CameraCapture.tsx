@@ -119,13 +119,16 @@ async function compressImageForUpload(
     previewUrlRef.current = objectUrl;
     setPreviewUrl(objectUrl);
     setPhase('captured');
+    const captureTimestamp = Date.now();
+    // Synchronously notify parent immediately with the raw file so parent state transitions out of 'pending'
+    onChange(file, captureTimestamp, 'captured');
 
     // Compress client-side so high-res phone camera photos (5-15MB) don't exceed Vercel's 4.5MB limit
     try {
       const readyFile = await compressImageForUpload(file);
-      onChange(readyFile, Date.now(), 'captured');
+      onChange(readyFile, captureTimestamp, 'captured');
     } catch {
-      onChange(file, Date.now(), 'captured');
+      onChange(file, captureTimestamp, 'captured');
     }
 
     // Reset input value so taking another picture or re-selecting works smoothly
