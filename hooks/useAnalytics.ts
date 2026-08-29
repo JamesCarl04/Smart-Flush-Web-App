@@ -20,9 +20,13 @@ export type AnalyticsData = {
   summary: {
     totalFlushes: number;
     totalWater: number;
-    uvCompletion: number;
+    uvCompletion: number | null;
+    uvTotal?: number;
+    uvCompleted?: number;
+    uvFailed?: number;
     avgFlushesPerDay: number;
     systemUptime: number;
+    liveSnapshotUptime?: number;
   };
   charts: {
     flushCounts: FlushCountData[];
@@ -39,9 +43,15 @@ interface DashboardResponse {
   data: {
     totalFlushes: number;
     totalWaterLiters: number;
-    uvCompletionRate: number;
+    uvCompletionRate: number | null;
+    uvStats?: {
+      total: number;
+      completed: number;
+      failed: number;
+    };
     avgFlushesPerDay: number;
     uptimePercent: number;
+    liveSnapshotPercent?: number;
   };
 }
 
@@ -71,8 +81,10 @@ interface SystemPerformanceResponse {
   success: boolean;
   data: {
     uptimePercent: number;
+    liveSnapshotPercent?: number;
     onlineCount: number;
     totalCount: number;
+    daily?: Array<{ date: string; uptimePercent: number }>;
   };
 }
 
@@ -118,7 +130,7 @@ export function useAnalytics(range: DateRange) {
           { cache: 'no-store' },
         ),
         apiFetch<SystemPerformanceResponse>(
-          '/api/analytics/system-performance',
+          `/api/analytics/system-performance?from=${fromStr}&to=${toStr}`,
           user,
           { cache: 'no-store' },
         ),
@@ -126,12 +138,12 @@ export function useAnalytics(range: DateRange) {
 
       // Map water-usage response to chart data
       const flushCounts: FlushCountData[] = (waterRes.data ?? []).map((d) => ({
-        date: format(new Date(d.date), 'MMM dd'),
+        date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
         count: d.flushCount,
       }));
 
       const waterVolume: VolumeData[] = (waterRes.data ?? []).map((d) => ({
-        date: format(new Date(d.date), 'MMM dd'),
+        date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
         liters: d.totalVolume,
       }));
 
@@ -145,24 +157,39 @@ export function useAnalytics(range: DateRange) {
 
       // UV stats from dashboard
       const completedUV = dashboardRes.data.uvCompletionRate;
-      const uvStats: UvData[] = [
-        { name: 'Completed', value: completedUV },
-        { name: 'Failed', value: Math.max(0, 100 - completedUV) },
-      ];
+      const rawUvStats = dashboardRes.data.uvStats;
+      const uvStats: UvData[] =
+        typeof completedUV === 'number' && rawUvStats && rawUvStats.total > 0
+          ? [
+              { name: 'Completed', value: completedUV },
+              { name: 'Failed', value: Math.max(0, 100 - completedUV) },
+            ]
+          : [];
 
-      // Uptime stats: single-entry from system-performance
-      const uptimeStats: UptimeData[] = flushCounts.map((f) => ({
-        date: f.date,
-        uptime: perfRes.data.uptimePercent,
-      }));
+      // Uptime stats from system-performance daily breakdown
+      const dailyPerf = perfRes.data.daily ?? [];
+      const uptimeStats: UptimeData[] =
+        dailyPerf.length > 0
+          ? dailyPerf.map((d) => ({
+              date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
+              uptime: d.uptimePercent,
+            }))
+          : flushCounts.map((f) => ({
+              date: f.date,
+              uptime: perfRes.data.uptimePercent,
+            }));
 
       setData({
         summary: {
           totalFlushes: dashboardRes.data.totalFlushes,
           totalWater: dashboardRes.data.totalWaterLiters,
           uvCompletion: dashboardRes.data.uvCompletionRate,
+          uvTotal: rawUvStats?.total ?? 0,
+          uvCompleted: rawUvStats?.completed ?? 0,
+          uvFailed: rawUvStats?.failed ?? 0,
           avgFlushesPerDay: dashboardRes.data.avgFlushesPerDay,
           systemUptime: perfRes.data.uptimePercent,
+          liveSnapshotUptime: perfRes.data.liveSnapshotPercent,
         },
         charts: {
           flushCounts,

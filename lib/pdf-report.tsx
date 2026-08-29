@@ -28,7 +28,7 @@ export interface MaintenanceTaskRow {
   timeAcknowledged: string;
   timeCompleted: string;
   totalDuration: string;
-  status: 'pending' | 'acknowledged' | 'completed';
+  status: 'pending' | 'acknowledged' | 'completed' | 'flagged' | 'rechecking';
 }
 
 export interface MaintenanceTaskSummary {
@@ -37,6 +37,35 @@ export interface MaintenanceTaskSummary {
   pendingCount: number;
   averageResponseTime: string;
   averageCompletionTime: string;
+}
+
+export interface SupervisorAuditRow {
+  id: string;
+  deviceId: string;
+  location: string;
+  floor: string;
+  triggerType: string;
+  message: string;
+  status: string;
+  assignedToName: string;
+  inspectionStatus: string;
+  inspectedByName: string;
+  inspectedAt: string;
+  flagReason: string;
+  recheckCount: number;
+  timeAssigned: string;
+  timeCompleted: string;
+  workDuration: string;
+  biometricVerified: boolean;
+}
+
+export interface SupervisorAuditSummary {
+  totalSubmissions: number;
+  approvedCount: number;
+  flaggedCount: number;
+  pendingAuditCount: number;
+  approvalRate: string;
+  complianceRate: string;
 }
 
 interface PdfLine {
@@ -130,13 +159,22 @@ function buildReportLines(
       ? '100%'
       : `${Math.round((completedUvCycles / uvCycles.length) * 100)}%`;
 
+  const baselineWater = flushEvents.length * 6.0;
+  const waterSaved = Math.max(0, baselineWater - totalWater);
+  const savingsPct =
+    baselineWater > 0 ? Math.round((waterSaved / baselineWater) * 100) : 0;
+
   const lines: PdfLine[] = [
     { text: 'Smart Flush System Report', fontSize: 20, spacingAfter: 10 },
     { text: `Period: ${from} to ${to}`, fontSize: 11, spacingAfter: 14 },
     { text: 'Summary', fontSize: 14, spacingAfter: 6 },
     { text: `Total Flushes: ${flushEvents.length}`, fontSize: 11 },
     {
-      text: `Total Water Used: ${Math.round(totalWater * 100) / 100} L`,
+      text: `Total Water Metered: ${Math.round(totalWater * 100) / 100} L`,
+      fontSize: 11,
+    },
+    {
+      text: `Estimated Water Saved: ${Math.round(waterSaved * 100) / 100} L vs. 6L Std (${savingsPct}% Conservation)`,
       fontSize: 11,
     },
     { text: `UV Cycles: ${uvCycles.length}`, fontSize: 11 },
@@ -155,16 +193,16 @@ function buildReportLines(
       spacingAfter: 10,
     });
   } else {
-    for (const event of flushEvents.slice(0, 20)) {
+    for (const event of flushEvents.slice(0, 100)) {
       lines.push({
         text: `${event.timestamp.slice(0, 16)}  ${event.deviceId}  ${event.waterVolume} L  ${event.duration}s`,
         fontSize: 10,
       });
     }
 
-    if (flushEvents.length > 20) {
+    if (flushEvents.length > 100) {
       lines.push({
-        text: `... and ${flushEvents.length - 20} more flush events`,
+        text: `... and ${flushEvents.length - 100} more flush events`,
         fontSize: 10,
         spacingAfter: 10,
       });
@@ -185,16 +223,16 @@ function buildReportLines(
       fontSize: 11,
     });
   } else {
-    for (const cycle of uvCycles.slice(0, 12)) {
+    for (const cycle of uvCycles.slice(0, 50)) {
       lines.push({
         text: `${cycle.timestamp.slice(0, 16)}  ${cycle.deviceId}  ${cycle.completed ? 'Completed' : 'Failed'}  ${cycle.duration}s`,
         fontSize: 10,
       });
     }
 
-    if (uvCycles.length > 12) {
+    if (uvCycles.length > 50) {
       lines.push({
-        text: `... and ${uvCycles.length - 12} more UV cycles`,
+        text: `... and ${uvCycles.length - 50} more UV cycles`,
         fontSize: 10,
       });
     }
@@ -240,7 +278,7 @@ function buildMaintenanceTaskReportLines(
     return lines;
   }
 
-  for (const task of tasks.slice(0, 12)) {
+  for (const task of tasks.slice(0, 50)) {
     lines.push({
       text: `${task.timeAssigned.slice(0, 16)}  ${task.deviceId}  ${task.status.toUpperCase()}`,
       fontSize: 10,
@@ -260,9 +298,65 @@ function buildMaintenanceTaskReportLines(
     });
   }
 
-  if (tasks.length > 12) {
+  if (tasks.length > 50) {
     lines.push({
-      text: `... and ${tasks.length - 12} more maintenance tasks`,
+      text: `... and ${tasks.length - 50} more maintenance tasks`,
+      fontSize: 10,
+    });
+  }
+
+  return lines;
+}
+
+function buildSupervisorAuditReportLines(
+  from: string,
+  to: string,
+  tasks: SupervisorAuditRow[],
+  summary: SupervisorAuditSummary,
+): PdfLine[] {
+  const lines: PdfLine[] = [
+    { text: 'Supervisor QA & Approval Audit Report', fontSize: 20, spacingAfter: 10 },
+    { text: `Audit Period: ${from} to ${to}`, fontSize: 11, spacingAfter: 14 },
+    { text: 'Quality Assurance Summary', fontSize: 14, spacingAfter: 6 },
+    { text: `Total Submissions: ${summary.totalSubmissions}`, fontSize: 11 },
+    { text: `Approved Tasks: ${summary.approvedCount}`, fontSize: 11 },
+    { text: `Flagged for Rework: ${summary.flaggedCount}`, fontSize: 11 },
+    { text: `Pending Review: ${summary.pendingAuditCount}`, fontSize: 11 },
+    { text: `Supervisor Approval Rate: ${summary.approvalRate}`, fontSize: 11 },
+    { text: `Audit Compliance Rate: ${summary.complianceRate}`, fontSize: 11, spacingAfter: 14 },
+    { text: `Audited Work Orders (${tasks.length})`, fontSize: 14, spacingAfter: 6 },
+  ];
+
+  if (tasks.length === 0) {
+    lines.push({
+      text: 'No maintenance task submissions recorded for this period.',
+      fontSize: 11,
+    });
+    return lines;
+  }
+
+  for (const task of tasks.slice(0, 50)) {
+    const qaTag = (task.inspectionStatus || 'PENDING').toUpperCase();
+    lines.push({
+      text: `[${qaTag}] ${task.location} (${task.floor}) - Tech: ${task.assignedToName}`,
+      fontSize: 10,
+    });
+    lines.push({
+      text: `Completed: ${task.timeCompleted.slice(0, 16)} | Inspector: ${task.inspectedByName || 'Pending'} | Biometric: ${task.biometricVerified ? 'Yes' : 'No'}`,
+      fontSize: 9,
+    });
+    if (task.flagReason) {
+      lines.push({
+        text: `Flag Reason: ${task.flagReason}`,
+        fontSize: 9,
+      });
+    }
+    lines.push({ text: '', fontSize: 9, spacingAfter: 4 });
+  }
+
+  if (tasks.length > 50) {
+    lines.push({
+      text: `... and ${tasks.length - 50} more audited work orders`,
       fontSize: 10,
     });
   }
@@ -397,6 +491,17 @@ export async function generateMaintenanceTaskPDFBuffer(
   summary: MaintenanceTaskSummary,
 ): Promise<Uint8Array> {
   const lines = buildMaintenanceTaskReportLines(from, to, tasks, summary);
+  const pages = paginateLines(lines);
+  return buildPdfBuffer(pages);
+}
+
+export async function generateSupervisorAuditPDFBuffer(
+  from: string,
+  to: string,
+  tasks: SupervisorAuditRow[],
+  summary: SupervisorAuditSummary,
+): Promise<Uint8Array> {
+  const lines = buildSupervisorAuditReportLines(from, to, tasks, summary);
   const pages = paginateLines(lines);
   return buildPdfBuffer(pages);
 }

@@ -29,6 +29,7 @@ interface UVPayload {
   duration: number;
   completed: boolean;
   timestamp: number;
+  reason?: string;
 }
 
 interface FlushPayload {
@@ -147,7 +148,7 @@ export async function writeLidEvent(
       id: docRef.id,
       deviceId,
       status: payload.status,
-      timestamp: Timestamp.fromMillis(payload.timestamp * 1000),
+      timestamp: Timestamp.now(),
     });
     console.log(`[Firestore] lidEvent written: ${payload.status}`);
     // Only count lid OPENs (each open = one full open/close cycle)
@@ -177,7 +178,8 @@ export async function writeUVCycle(
       deviceId,
       duration: payload.duration,
       completed: payload.completed,
-      timestamp: Timestamp.fromMillis(payload.timestamp * 1000),
+      reason: payload.reason ?? null,
+      timestamp: Timestamp.now(),
     });
     console.log(
       `[Firestore] uvCycle written: ${payload.duration}s completed=${payload.completed}`,

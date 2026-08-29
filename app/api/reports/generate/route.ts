@@ -8,11 +8,19 @@ import type {
   FlushEventRow,
   MaintenanceTaskRow,
   MaintenanceTaskSummary,
+  SupervisorAuditRow,
+  SupervisorAuditSummary,
   UVCycleRow,
 } from '@/lib/pdf-report';
 
 interface ReportBody {
-  type: 'daily' | 'weekly' | 'monthly' | 'custom' | 'maintenance_tasks';
+  type:
+    | 'daily'
+    | 'weekly'
+    | 'monthly'
+    | 'custom'
+    | 'maintenance_tasks'
+    | 'supervisor_audit';
   from: string;
   to: string;
   format: 'csv' | 'json' | 'pdf';
@@ -39,8 +47,9 @@ interface TaskDoc {
   deviceId: string;
   triggerType: string;
   message: string;
-  status: 'pending' | 'acknowledged' | 'completed';
+  status: 'pending' | 'acknowledged' | 'completed' | 'flagged' | 'rechecking';
   assignedTo: string | null;
+  assignedToName?: string;
   createdAt?: Timestamp | null;
   acknowledgedAt?: Timestamp | null;
   completedAt?: Timestamp | null;
@@ -53,6 +62,7 @@ const VALID_REPORT_TYPES: ReportBody['type'][] = [
   'monthly',
   'custom',
   'maintenance_tasks',
+  'supervisor_audit',
 ];
 const VALID_FORMATS: ReportBody['format'][] = ['csv', 'json', 'pdf'];
 
@@ -60,11 +70,16 @@ function parseDateBoundary(
   date: string,
   boundary: 'start' | 'end',
 ): Date | null {
-  const candidate = new Date(
+  const time = boundary === 'start' ? '00:00:00.000' : '23:59:59.999';
+  const candidate = new Date(`${date}T${time}+08:00`);
+  if (!Number.isNaN(candidate.getTime())) {
+    return candidate;
+  }
+
+  const fallback = new Date(
     `${date}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`,
   );
-
-  return Number.isNaN(candidate.getTime()) ? null : candidate;
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 }
 
 function toDate(value?: Timestamp | Date | null): Date | null {
@@ -205,6 +220,213 @@ async function fetchMaintenanceTaskData(fromTs: Timestamp, toTs: Timestamp) {
   });
 }
 
+const DEVICE_FACILITY_DIRECTORY: Record<
+  string,
+  { name: string; floor: string; building: string }
+> = {
+  'SDCA-FL1-CANTEEN-M': {
+    name: '1F Canteen Male Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-CANTEEN-F': {
+    name: '1F Canteen Female Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-FACULTY-M': {
+    name: '1F Faculty Male Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL1-FACULTY-F': {
+    name: '1F Faculty Female Restroom',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-M1': {
+    name: '2F Male Restroom 1',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-M2': {
+    name: '2F Male Restroom 2',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-F1': {
+    name: '2F Female Restroom 1',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-F2': {
+    name: '2F Female Restroom 2',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL2-PWD': {
+    name: '2F PWD Restroom',
+    floor: '2nd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-M1': {
+    name: '3F Male Restroom 1',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-M2': {
+    name: '3F Male Restroom 2',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-F1': {
+    name: '3F Female Restroom 1',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-F2': {
+    name: '3F Female Restroom 2',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL3-PWD': {
+    name: '3F PWD Restroom',
+    floor: '3rd Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-M1': {
+    name: '4F Male Restroom 1',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-M2': {
+    name: '4F Male Restroom 2',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-F1': {
+    name: '4F Female Restroom 1',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-F2': {
+    name: '4F Female Restroom 2',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'SDCA-FL4-PWD': {
+    name: '4F PWD Restroom',
+    floor: '4th Floor',
+    building: 'SDCA Annex Building',
+  },
+  'toilet-01': {
+    name: '1st Floor Testing Lab',
+    floor: '1st Floor',
+    building: 'SDCA Annex Building',
+  },
+};
+
+interface SupervisorTaskDoc {
+  id: string;
+  deviceId: string;
+  triggerType: string;
+  message: string;
+  status: string;
+  assignedTo: string | null;
+  assignedToName?: string;
+  location?: string;
+  floor?: string;
+  building?: string;
+  inspectionStatus?: string | null;
+  inspectedBy?: string | null;
+  inspectedByName?: string | null;
+  inspectedAt?: Timestamp | null;
+  flagReason?: string | null;
+  recheckCount?: number;
+  workDuration?: number;
+  biometricVerified?: boolean;
+  createdAt?: Timestamp | null;
+  acknowledgedAt?: Timestamp | null;
+  completedAt?: Timestamp | null;
+  createdBy: string;
+}
+
+async function fetchSupervisorAuditData(fromTs: Timestamp, toTs: Timestamp) {
+  const [tasksSnap, usersSnap] = await Promise.all([
+    adminDb
+      .collection('tasks')
+      .where('createdAt', '>=', fromTs)
+      .where('createdAt', '<=', toTs)
+      .orderBy('createdAt', 'asc')
+      .get(),
+    adminDb.collection('users').get().catch(() => null),
+  ]);
+
+  const userNameMap = new Map<string, string>();
+  if (usersSnap) {
+    for (const doc of usersSnap.docs) {
+      const udata = doc.data();
+      const name = udata.displayName || udata.name || udata.email || doc.id;
+      userNameMap.set(doc.id, name);
+    }
+  }
+
+  return tasksSnap.docs.map<SupervisorTaskDoc>((doc) => {
+    const data = doc.data() as Partial<SupervisorTaskDoc>;
+    const deviceId =
+      typeof data.deviceId === 'string' && data.deviceId.trim()
+        ? data.deviceId
+        : 'Unknown';
+    const locInfo = DEVICE_FACILITY_DIRECTORY[deviceId];
+
+    const assignedTo =
+      typeof data.assignedTo === 'string' && data.assignedTo.trim()
+        ? data.assignedTo
+        : null;
+    const assignedToName = assignedTo
+      ? userNameMap.get(assignedTo) ?? assignedTo
+      : 'Unassigned';
+
+    const inspectedBy =
+      typeof data.inspectedBy === 'string' && data.inspectedBy.trim()
+        ? data.inspectedBy
+        : null;
+    const inspectedByName = inspectedBy
+      ? userNameMap.get(inspectedBy) ?? data.inspectedByName ?? 'Supervisor'
+      : (data.inspectedByName ?? '');
+
+    return {
+      id: typeof data.id === 'string' ? data.id : doc.id,
+      deviceId,
+      triggerType:
+        typeof data.triggerType === 'string' && data.triggerType.trim()
+          ? data.triggerType
+          : 'manual',
+      message: typeof data.message === 'string' ? data.message : '',
+      status: typeof data.status === 'string' ? data.status : 'pending',
+      assignedTo,
+      assignedToName,
+      location: data.location || locInfo?.name || deviceId,
+      floor: data.floor || locInfo?.floor || 'SDCA Annex',
+      building: data.building || locInfo?.building || 'SDCA Annex',
+      inspectionStatus:
+        data.inspectionStatus ??
+        (data.status === 'flagged' ? 'flagged' : null),
+      inspectedBy,
+      inspectedByName,
+      inspectedAt: data.inspectedAt ?? null,
+      flagReason: typeof data.flagReason === 'string' ? data.flagReason : '',
+      recheckCount: typeof data.recheckCount === 'number' ? data.recheckCount : 0,
+      workDuration: typeof data.workDuration === 'number' ? data.workDuration : 0,
+      biometricVerified: Boolean(data.biometricVerified),
+      createdAt: data.createdAt ?? null,
+      acknowledgedAt: data.acknowledgedAt ?? null,
+      completedAt: data.completedAt ?? null,
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+    };
+  });
+}
+
 function buildUsageCSV(
   flushEvents: FlushEventDoc[],
   uvCycles: UVCycleDoc[],
@@ -249,11 +471,20 @@ function buildUsageJSON(flushEvents: FlushEventDoc[], uvCycles: UVCycleDoc[]) {
     0,
   );
   const completedUvCycles = uvCycles.filter((cycle) => cycle.completed).length;
+  const baselineWater = flushEvents.length * 6.0;
+  const waterSaved = Math.max(0, baselineWater - totalWater);
+  const conservationPercent =
+    baselineWater > 0
+      ? Math.round((waterSaved / baselineWater) * 10000) / 100
+      : 0;
 
   return {
     summary: {
       totalFlushes: flushEvents.length,
       totalWaterLiters: Math.round(totalWater * 100) / 100,
+      baselineWaterLiters: Math.round(baselineWater * 100) / 100,
+      waterSavedLiters: Math.round(waterSaved * 100) / 100,
+      waterConservationPercent: conservationPercent,
       uvCycles: uvCycles.length,
       uvCompletionRate:
         uvCycles.length === 0
@@ -390,6 +621,127 @@ function buildMaintenanceTaskJSON(
   };
 }
 
+function buildSupervisorAuditDataset(tasks: SupervisorTaskDoc[]): {
+  rows: SupervisorAuditRow[];
+  summary: SupervisorAuditSummary;
+} {
+  const completedTasks = tasks.filter(
+    (t) =>
+      t.status === 'completed' ||
+      t.status === 'flagged' ||
+      t.status === 'rechecking' ||
+      Boolean(t.completedAt),
+  );
+
+  let approvedCount = 0;
+  let flaggedCount = 0;
+
+  for (const t of completedTasks) {
+    if (t.inspectionStatus === 'approved') {
+      approvedCount += 1;
+    } else if (t.inspectionStatus === 'flagged' || t.status === 'flagged') {
+      flaggedCount += 1;
+    }
+  }
+
+  const totalSubmissions = completedTasks.length;
+  const auditedCount = approvedCount + flaggedCount;
+  const pendingAuditCount = Math.max(0, totalSubmissions - auditedCount);
+  const approvalRate =
+    auditedCount > 0
+      ? `${Math.round((approvedCount / auditedCount) * 100)}%`
+      : '0%';
+  const complianceRate =
+    totalSubmissions > 0
+      ? `${Math.round((auditedCount / totalSubmissions) * 100)}%`
+      : '0%';
+
+  const rows: SupervisorAuditRow[] = completedTasks.map((t) => ({
+    id: t.id,
+    deviceId: t.deviceId,
+    location: t.location || t.deviceId,
+    floor: t.floor || 'SDCA Annex',
+    triggerType: t.triggerType,
+    message: t.message,
+    status: t.status,
+    assignedToName: t.assignedToName || 'Unassigned',
+    inspectionStatus:
+      t.inspectionStatus || (t.status === 'flagged' ? 'flagged' : 'pending_review'),
+    inspectedByName: t.inspectedByName || '',
+    inspectedAt: toIsoString(t.inspectedAt) ?? '',
+    flagReason: t.flagReason || '',
+    recheckCount: t.recheckCount || 0,
+    timeAssigned: toIsoString(t.createdAt) ?? 'Unknown',
+    timeCompleted: toIsoString(t.completedAt) ?? 'Not Completed',
+    workDuration: formatDuration(t.workDuration ? t.workDuration * 1000 : null),
+    biometricVerified: Boolean(t.biometricVerified),
+  }));
+
+  return {
+    rows,
+    summary: {
+      totalSubmissions,
+      approvedCount,
+      flaggedCount,
+      pendingAuditCount,
+      approvalRate,
+      complianceRate,
+    },
+  };
+}
+
+function buildSupervisorAuditCSV(
+  summary: SupervisorAuditSummary,
+  rows: SupervisorAuditRow[],
+): string {
+  const lines: string[] = [
+    '--- SUPERVISOR QA & APPROVAL AUDIT SUMMARY ---',
+    `Total Submissions,${summary.totalSubmissions}`,
+    `Approved Tasks,${summary.approvedCount}`,
+    `Flagged for Rework,${summary.flaggedCount}`,
+    `Pending Review,${summary.pendingAuditCount}`,
+    `Approval Rate,${escapeCsv(summary.approvalRate)}`,
+    `Audit Compliance Rate,${escapeCsv(summary.complianceRate)}`,
+    '',
+    'Task ID,Location,Floor,Trigger Type,Task Message,Status,Assigned Tech,QA Inspection Status,Inspected By,Inspected At,Flag Reason,Rechecks,Created At,Completed At,Work Duration,Biometric Verified',
+  ];
+
+  for (const row of rows) {
+    lines.push(
+      [
+        escapeCsv(row.id),
+        escapeCsv(row.location),
+        escapeCsv(row.floor),
+        escapeCsv(row.triggerType),
+        escapeCsv(row.message),
+        escapeCsv(row.status),
+        escapeCsv(row.assignedToName),
+        escapeCsv(row.inspectionStatus),
+        escapeCsv(row.inspectedByName),
+        escapeCsv(row.inspectedAt),
+        escapeCsv(row.flagReason),
+        String(row.recheckCount),
+        escapeCsv(row.timeAssigned),
+        escapeCsv(row.timeCompleted),
+        escapeCsv(row.workDuration),
+        row.biometricVerified ? 'Yes' : 'No',
+      ].join(','),
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function buildSupervisorAuditJSON(
+  summary: SupervisorAuditSummary,
+  rows: SupervisorAuditRow[],
+) {
+  return {
+    summary,
+    tasks: rows,
+  };
+}
+
 function getDownloadFilename(
   type: ReportBody['type'],
   format: ReportBody['format'],
@@ -397,9 +749,11 @@ function getDownloadFilename(
   to: string,
 ): string {
   const prefix =
-    type === 'maintenance_tasks'
-      ? 'smart-flush-maintenance-tasks'
-      : 'smart-flush';
+    type === 'supervisor_audit'
+      ? 'smart-flush-supervisor-qa-audit'
+      : type === 'maintenance_tasks'
+        ? 'smart-flush-maintenance-tasks'
+        : 'smart-flush';
 
   return `${prefix}-${from}-${to}.${format}`;
 }
@@ -525,6 +879,43 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
       const { generateMaintenanceTaskPDFBuffer } =
         await import('@/lib/pdf-report');
       const pdfBuffer = await generateMaintenanceTaskPDFBuffer(
+        from,
+        to,
+        rows,
+        summary,
+      );
+      await saveReportMetadata(user.uid, type, from, to, format);
+
+      return buildDownloadResponse(
+        Uint8Array.from(pdfBuffer).buffer as ArrayBuffer,
+        format,
+        filename,
+      );
+    }
+
+    if (type === 'supervisor_audit') {
+      const tasks = await fetchSupervisorAuditData(fromTs, toTs);
+      const { rows, summary } = buildSupervisorAuditDataset(tasks);
+
+      if (format === 'csv') {
+        const csv = buildSupervisorAuditCSV(summary, rows);
+        await saveReportMetadata(user.uid, type, from, to, format);
+        return buildDownloadResponse(csv, format, filename);
+      }
+
+      if (format === 'json') {
+        const json = buildSupervisorAuditJSON(summary, rows);
+        await saveReportMetadata(user.uid, type, from, to, format);
+        return buildDownloadResponse(
+          JSON.stringify(json, null, 2),
+          format,
+          filename,
+        );
+      }
+
+      const { generateSupervisorAuditPDFBuffer } =
+        await import('@/lib/pdf-report');
+      const pdfBuffer = await generateSupervisorAuditPDFBuffer(
         from,
         to,
         rows,

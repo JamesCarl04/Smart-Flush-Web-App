@@ -31,11 +31,20 @@ export async function GET(request: Request): Promise<NextResponse> {
       uvQuery = uvQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
     }
 
+    const uptimeDailyPromise = from && to
+      ? adminDb
+          .collection('deviceUptimeDaily')
+          .where('date', '>=', from)
+          .where('date', '<=', to)
+          .get()
+      : Promise.resolve(null);
+
     // Fetch all collections in parallel
-    const [flushSnap, uvSnap, devicesSnap] = await Promise.all([
+    const [flushSnap, uvSnap, devicesSnap, uptimeDailySnap] = await Promise.all([
       flushQuery.get(),
       uvQuery.get(),
       adminDb.collection('devices').get(),
+      uptimeDailyPromise,
     ]);
 
     // Total flushes and water usage
@@ -46,7 +55,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     for (const doc of flushSnap.docs) {
       const d = doc.data() as FlushEventDoc;
       totalWaterLiters += d.waterVolume ?? 0;
-      
+
       const ts = d.timestamp as any;
       let dateObj: Date | null = null;
       if (ts) {
@@ -73,10 +82,11 @@ export async function GET(request: Request): Promise<NextResponse> {
     const uvDocs = uvSnap.docs.map((d) => d.data() as UVCycleDoc);
     const totalUV = uvDocs.length;
     const completedUV = uvDocs.filter((d) => d.completed).length;
+    const failedUV = totalUV - completedUV;
     const uvCompletionRate =
-      totalUV === 0 ? 100 : Math.round((completedUV / totalUV) * 10000) / 100;
+      totalUV === 0 ? null : Math.round((completedUV / totalUV) * 10000) / 100;
 
-    // Uptime: devices with lastSeen within the last 5 minutes
+    // Live Snapshot: devices with lastSeen within the last 5 minutes
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
     const totalDevices = devicesSnap.size;
     const onlineDevices = devicesSnap.docs.filter((d) => {
@@ -94,10 +104,26 @@ export async function GET(request: Request): Promise<NextResponse> {
       return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;
 
-    const uptimePercent =
+    const liveSnapshotPercent =
       totalDevices === 0
         ? 0
         : Math.round((onlineDevices / totalDevices) * 10000) / 100;
+
+    // Calculate historical period SLA uptime if daily aggregation records exist
+    let periodUptimePercent = liveSnapshotPercent;
+    if (uptimeDailySnap && !uptimeDailySnap.empty) {
+      let totalOnlineMin = 0;
+      let totalTrackedMin = 0;
+      for (const doc of uptimeDailySnap.docs) {
+        const data = doc.data();
+        totalOnlineMin += Number(data.onlineMinutes ?? 0);
+        totalTrackedMin += Number(data.totalMinutes ?? 0);
+      }
+      if (totalTrackedMin > 0) {
+        periodUptimePercent =
+          Math.round((totalOnlineMin / totalTrackedMin) * 1000) / 10;
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -105,12 +131,17 @@ export async function GET(request: Request): Promise<NextResponse> {
         totalFlushes,
         totalWaterLiters: Math.round(totalWaterLiters * 100) / 100,
         uvCompletionRate,
+        uvStats: {
+          total: totalUV,
+          completed: completedUV,
+          failed: failedUV,
+        },
         avgFlushesPerDay,
-        uptimePercent,
+        uptimePercent: periodUptimePercent,
+        liveSnapshotPercent,
       },
     });
   } catch (error: any) {
-    // In some Next.js environments, instanceof Response can be unreliable.
     if (error instanceof Response || (error && error.status && typeof error.json === 'function')) {
       return new NextResponse(error.body, error);
     }

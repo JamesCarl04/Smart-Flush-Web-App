@@ -203,7 +203,11 @@ export default function AnalyticsPage() {
               ? `${uvCompletion.toFixed(1)}%`
               : '--'
           }
-          subtext="Sterilization rate"
+          subtext={
+            data?.summary.uvTotal
+              ? `${data.summary.uvCompleted}/${data.summary.uvTotal} cycles`
+              : 'Sterilization rate'
+          }
           loading={loading}
         />
         <StatCard
@@ -223,7 +227,11 @@ export default function AnalyticsPage() {
           icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
           iconBg="bg-teal-500/10 dark:bg-teal-500/15"
           value={formatUptime(systemUptime)}
-          subtext="Target SLA: 99.5%"
+          subtext={
+            typeof data?.summary.liveSnapshotUptime === 'number'
+              ? `Fleet live: ${data.summary.liveSnapshotUptime.toFixed(0)}% · SLA: 99.5%`
+              : 'Target SLA: 99.5%'
+          }
           loading={loading}
         />
       </div>
@@ -488,6 +496,9 @@ export default function AnalyticsPage() {
                     {typeof uvCompletion === 'number'
                       ? `${uvCompletion.toFixed(1)}%`
                       : '0%'}
+                    {typeof data?.summary.uvCompleted === 'number'
+                      ? ` · ${data.summary.uvCompleted}`
+                      : ''}
                     )
                   </span>
                 </div>
@@ -498,6 +509,9 @@ export default function AnalyticsPage() {
                     {typeof uvCompletion === 'number'
                       ? `${Math.max(0, 100 - uvCompletion).toFixed(1)}%`
                       : '0%'}
+                    {typeof data?.summary.uvFailed === 'number'
+                      ? ` · ${data.summary.uvFailed}`
+                      : ''}
                     )
                   </span>
                 </div>
@@ -731,8 +745,8 @@ function EmptyChartState({
   );
 }
 
-function formatUptime(value: number | undefined) {
-  if (typeof value !== 'number' || value <= 0) {
+function formatUptime(value: number | undefined | null) {
+  if (typeof value !== 'number' || isNaN(value) || value < 0) {
     return '--';
   }
   return `${value.toFixed(1)}%`;

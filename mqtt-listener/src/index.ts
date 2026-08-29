@@ -32,6 +32,10 @@ import {
   startUnassignedTaskSweeper,
   stopUnassignedTaskSweeper,
 } from './unassigned-task-sweeper';
+import {
+  startUptimeTracker,
+  stopUptimeTracker,
+} from './uptime-tracker';
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +58,7 @@ console.log('');
 const client = getMqttClient();
 void processPendingAutomationState();
 startUnassignedTaskSweeper();
+startUptimeTracker();
 const automationRecoveryInterval = setInterval(() => {
   void processPendingAutomationState().catch((error) => {
     console.error('[Automation] Pending-state recovery failed:', error);
@@ -65,6 +70,7 @@ const automationRecoveryInterval = setInterval(() => {
 function shutdown(signal: string): void {
   clearInterval(automationRecoveryInterval);
   stopUnassignedTaskSweeper();
+  stopUptimeTracker();
   console.log(
     `\n[${new Date().toISOString()}] Received ${signal} — shutting down …`,
   );
