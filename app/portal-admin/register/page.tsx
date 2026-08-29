@@ -524,7 +524,7 @@ export default function RegisterPage() {
         <div className="text-center text-xs sm:text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}
           <Link
-            href="/auth/login"
+            href="/portal-admin/login"
             className="font-semibold text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline ml-1"
           >
             Login here

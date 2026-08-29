@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: 'Authentication | Klir Smart Flush Console',
     description:
       'Access real-time IoT sanitation controls, telemetry feeds, and facility automation rules.',
-    url: '/auth/login',
+    url: '/portal-admin/login',
     siteName: 'Klir',
     locale: 'en_US',
     type: 'website',

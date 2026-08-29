@@ -156,7 +156,7 @@ export default function LoginPage() {
                 Password
               </label>
               <Link
-                href="/auth/forgot-password"
+                href="/portal-admin/forgot-password"
                 className="text-xs font-medium text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline"
               >
                 Forgot password?
@@ -224,7 +224,7 @@ export default function LoginPage() {
         <div className="text-center text-xs sm:text-sm text-slate-600 dark:text-slate-400">
           Don&apos;t have an account?{' '}
           <Link
-            href="/auth/register"
+            href="/portal-admin/register"
             className="font-semibold text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline ml-1"
           >
             Register here

@@ -7,21 +7,21 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should display login page', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     await expect(page.locator('h1')).toContainText('Login')
     await expect(page.locator('input[type="email"]')).toBeVisible()
     await expect(page.locator('input[type="password"]')).toBeVisible()
   })
 
   test('should navigate to registration from login', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     const registerLink = page.locator('a:has-text("Register")')
     await registerLink.click()
     await expect(page).toHaveURL(/\/auth\/register/)
   })
 
   test('should show validation errors for empty fields', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     const submitButton = page.locator('button:has-text("Login")')
     await submitButton.click()
     
@@ -31,7 +31,7 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should show validation errors for invalid email', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     await page.fill('input[type="email"]', 'invalid-email')
     await page.fill('input[type="password"]', 'password123')
     const submitButton = page.locator('button:has-text("Login")')
@@ -43,7 +43,7 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should show validation errors for weak password', async ({ page }) => {
-    await page.goto('/auth/register')
+    await page.goto('/portal-admin/register')
     await page.fill('input[type="email"]', 'newuser@test.com')
     await page.fill('input[type="password"]', 'weak')
     const submitButton = page.locator('button:has-text("Register")')
@@ -55,7 +55,7 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should have no auth token in accessible cookies (security check)', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     
     // Get all cookies
     const cookies = await page.context().cookies()
@@ -76,7 +76,7 @@ test.describe('Authentication Flow', () => {
 
 test.describe('Registration Security', () => {
   test('should reject duplicate email', async ({ page }) => {
-    await page.goto('/auth/register')
+    await page.goto('/portal-admin/register')
     
     // Fill in registration form
     await page.fill('input[name="email"]', 'duplicate@test.com')
@@ -91,7 +91,7 @@ test.describe('Registration Security', () => {
   })
 
   test('should sanitize display name input', async ({ page }) => {
-    await page.goto('/auth/register')
+    await page.goto('/portal-admin/register')
     
     // Try to inject XSS
     const xssPayload = '<script>alert("xss")</script>'
@@ -125,7 +125,7 @@ test.describe('Registration Security', () => {
 
 test.describe('Login Security', () => {
   test('should reject invalid credentials', async ({ page }) => {
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     
     await page.fill('input[type="email"]', 'test@test.com')
     await page.fill('input[type="password"]', 'wrongpassword')
@@ -142,7 +142,7 @@ test.describe('Login Security', () => {
     // RECOMMENDATION: Error messages should not reveal if email exists
     // Currently might say "User not found" vs "Password incorrect"
     
-    await page.goto('/auth/login')
+    await page.goto('/portal-admin/login')
     await page.fill('input[type="email"]', 'nonexistent@test.com')
     await page.fill('input[type="password"]', 'anypassword')
     

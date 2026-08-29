@@ -84,7 +84,7 @@ export function ResetPasswordForm() {
       }
 
       setSuccess('Password updated successfully. Redirecting to login...');
-      window.setTimeout(() => router.replace('/auth/login'), 1400);
+      window.setTimeout(() => router.replace('/portal-admin/login'), 1400);
     } catch (err: unknown) {
       console.warn('Confirm reset password error:', err);
       setError(getErrorMessage(err) ?? 'Failed to reset password.');
@@ -269,7 +269,7 @@ export function ResetPasswordForm() {
 
         <div className="mt-6 text-center text-xs sm:text-sm text-slate-600 dark:text-slate-400">
           <Link
-            href="/auth/forgot-password"
+            href="/portal-admin/forgot-password"
             className="font-semibold text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline"
           >
             Request a new reset link

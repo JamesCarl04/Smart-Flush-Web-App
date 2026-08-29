@@ -94,7 +94,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!loading && !user && !presentationMode && !isLoggingOut) {
-      router.replace('/auth/login');
+      router.replace('/portal-admin/login');
     }
   }, [loading, presentationMode, router, user, isLoggingOut]);
 
@@ -126,7 +126,7 @@ export default function DashboardLayout({
     try {
       await logout();
     } finally {
-      window.location.href = '/auth/login';
+      window.location.href = '/portal-admin/login';
     }
   };
 

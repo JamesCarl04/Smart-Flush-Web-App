@@ -14,7 +14,7 @@ test.describe('Dashboard - Authenticated User', () => {
     
     // If not authenticated, should redirect to login
     const currentUrl = page.url()
-    if (currentUrl.includes('/auth/login')) {
+    if (currentUrl.includes('/portal-admin/login')) {
       // Not authenticated, skip for now
       test.skip()
     }
