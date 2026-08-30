@@ -1277,25 +1277,6 @@ function DailyAuditReportCanvas({
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 print:hidden">
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onPrint}
-            >
-              <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
-              Print Audit
-            </button>
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onGenerate}
-            >
-              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
-              Export
-            </button>
-          </div>
         </div>
 
         {/* 24-Hour Bins Table */}
@@ -1452,25 +1433,6 @@ function UsageTelemetryReportCanvas({
                 Report period: {range.from} to {range.to} · SDCA Annex Restroom Network
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 print:hidden">
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onPrint}
-            >
-              <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
-              Print Report
-            </button>
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onGenerate}
-            >
-              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
-              Download Package
-            </button>
           </div>
         </div>
 
@@ -1707,30 +1669,6 @@ function MaintenanceTaskReport({
                 Work order history for the selected report period
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 print:hidden">
-            {onPrint && (
-              <button
-                type="button"
-                className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-                onClick={onPrint}
-                disabled={loading}
-                title="Print this log"
-              >
-                <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
-                Print Log
-              </button>
-            )}
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onExportCsv}
-              disabled={loading}
-            >
-              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
-              Export CSV
-            </button>
           </div>
         </div>
 
