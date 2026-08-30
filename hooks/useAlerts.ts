@@ -29,40 +29,46 @@ export function useAlerts() {
   const [alerts, setAlerts] = useState<AlertEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchAlerts = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const res = await apiFetch<{ success: boolean; data: AlertDoc[] }>(
-        '/api/alerts',
-        user,
-      );
-      if (res.success && res.data) {
-        setAlerts(
-          res.data.map((a) => ({
-            id: a.id,
-            title: a.type,
-            description: a.message,
-            severity: (a.severity as AlertSeverity) ?? 'low',
-            timestamp: new Date(
-              (a.timestamp?._seconds ?? a.timestamp?.seconds ?? 0) * 1000,
-            ),
-            acknowledged: a.acknowledged,
-          })),
+  const fetchAlerts = useCallback(
+    async (isInitial = false) => {
+      if (!user) return;
+      try {
+        if (isInitial) {
+          setLoading(true);
+        }
+        const res = await apiFetch<{ success: boolean; data: AlertDoc[] }>(
+          '/api/alerts',
+          user,
         );
+        if (res.success && res.data) {
+          setAlerts(
+            res.data.map((a) => ({
+              id: a.id,
+              title: a.type,
+              description: a.message,
+              severity: (a.severity as AlertSeverity) ?? 'low',
+              timestamp: new Date(
+                (a.timestamp?._seconds ?? a.timestamp?.seconds ?? 0) * 1000,
+              ),
+              acknowledged: a.acknowledged,
+            })),
+          );
+        }
+      } catch (err) {
+        console.warn('[useAlerts] alerts request failed:', err);
+      } finally {
+        if (isInitial) {
+          setLoading(false);
+        }
       }
-    } catch (err) {
-      console.warn('[useAlerts] alerts request failed:', err);
-      setAlerts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+    },
+    [user],
+  );
 
   useEffect(() => {
-    void fetchAlerts();
+    void fetchAlerts(true);
     const interval = window.setInterval(() => {
-      void fetchAlerts();
+      void fetchAlerts(false);
     }, 10_000);
 
     return () => window.clearInterval(interval);

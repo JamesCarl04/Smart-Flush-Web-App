@@ -313,7 +313,7 @@ export default function AlertsPage() {
 
         {/* Content List / Calm Empty State */}
         <div className="p-4 sm:p-6">
-          {loading ? (
+          {loading && dashboardAlerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
               <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#B5121B] border-t-transparent mb-3" aria-hidden="true" />
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading alerts...</p>
