@@ -5,6 +5,7 @@ import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useAlerts, AlertSeverity } from '@/hooks/useAlerts';
 import { useTasks } from '@/hooks/useTasks';
+import { getViewedTaskAlertIds, markTaskAlertsViewed } from '@/lib/viewed-alerts';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Bell,
@@ -39,7 +40,7 @@ type DashboardAlert =
       description: string;
       severity: 'medium';
       timestamp: Date;
-      acknowledged: false;
+      acknowledged: boolean;
       source: 'task';
       taskId: string;
       deviceId: string;
@@ -58,7 +59,29 @@ export default function AlertsPage() {
   const { tasks, loading: tasksLoading } = useTasks(50);
   const [filter, setFilter] = useState<AlertFilter>('all');
   const [dismissingIds, setDismissingIds] = useState<string[]>([]);
+  const [viewedTaskIds, setViewedTaskIds] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    setViewedTaskIds(getViewedTaskAlertIds());
+
+    const handleSync = (event: Event) => {
+      const customEvent = event as CustomEvent<string[]>;
+      if (Array.isArray(customEvent.detail)) {
+        setViewedTaskIds(customEvent.detail);
+      } else {
+        setViewedTaskIds(getViewedTaskAlertIds());
+      }
+    };
+
+    window.addEventListener('smartflush:task-alerts-viewed', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('smartflush:task-alerts-viewed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -83,14 +106,17 @@ export default function AlertsPage() {
       )
       .map((task) => {
         const pendingMinutes = Math.floor((now - task.createdAt) / 60_000);
+        const alertId = `task-overdue-${task.id}`;
+        const isAcknowledged =
+          viewedTaskIds.includes(task.id) || viewedTaskIds.includes(alertId);
 
         return {
-          id: `task-overdue-${task.id}`,
+          id: alertId,
           title: 'Maintenance Task Overdue',
           description: `Cleaning task for ${task.deviceId} has been pending for ${pendingMinutes} minutes without acknowledgment.`,
           severity: 'medium' as const,
           timestamp: new Date(task.createdAt + OVERDUE_TASK_THRESHOLD_MS),
-          acknowledged: false,
+          acknowledged: isAcknowledged,
           source: 'task' as const,
           taskId: task.id,
           deviceId: task.deviceId,
@@ -100,7 +126,7 @@ export default function AlertsPage() {
     return [...systemAlerts, ...overdueTaskAlerts].sort(
       (left, right) => right.timestamp.getTime() - left.timestamp.getTime(),
     );
-  }, [alerts, now, tasks]);
+  }, [alerts, now, tasks, viewedTaskIds]);
 
   const loading = alertsLoading || tasksLoading;
   const unreadCount = dashboardAlerts.filter((alert) => !alert.acknowledged).length;
@@ -163,37 +189,80 @@ export default function AlertsPage() {
     }
   };
 
-  const handleAcknowledge = async (id: string | 'ALL') => {
-    const idsToDismiss =
-      id === 'ALL'
-        ? filteredAlerts
-            .filter((alert) => alert.source === 'system' && !alert.acknowledged)
-            .map((alert) => alert.id)
-        : [id];
+  const handleViewTask = (alertId: string, taskId: string) => {
+    const next = markTaskAlertsViewed([taskId, alertId]);
+    setViewedTaskIds(next);
+  };
 
-    if (idsToDismiss.length === 0) {
+  const handleAcknowledge = async (id: string | 'ALL') => {
+    if (id === 'ALL') {
+      const unacknowledgedSystemAlertIds = filteredAlerts
+        .filter((alert) => alert.source === 'system' && !alert.acknowledged)
+        .map((alert) => alert.id);
+
+      const unacknowledgedTaskAlerts = filteredAlerts.filter(
+        (alert) => alert.source === 'task' && !alert.acknowledged,
+      );
+
+      const allIdsToDismiss = filteredAlerts
+        .filter((alert) => !alert.acknowledged)
+        .map((alert) => alert.id);
+
+      if (allIdsToDismiss.length === 0) {
+        return;
+      }
+
+      setDismissingIds((current) =>
+        Array.from(new Set([...current, ...allIdsToDismiss])),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+      if (unacknowledgedTaskAlerts.length > 0) {
+        const taskIds = unacknowledgedTaskAlerts.flatMap((a) =>
+          a.source === 'task' ? [a.taskId, a.id] : [],
+        );
+        const next = markTaskAlertsViewed(taskIds);
+        setViewedTaskIds(next);
+      }
+
+      let success = true;
+      if (unacknowledgedSystemAlertIds.length > 0) {
+        success = await acknowledgeAlerts(unacknowledgedSystemAlertIds);
+      }
+
+      if (success) {
+        toast.success('All alerts acknowledged');
+      } else {
+        toast.error('Failed to acknowledge some alerts');
+      }
+
+      setDismissingIds((current) =>
+        current.filter((dismissedId) => !allIdsToDismiss.includes(dismissedId)),
+      );
       return;
     }
 
-    setDismissingIds((current) =>
-      Array.from(new Set([...current, ...idsToDismiss])),
-    );
+    const targetAlert = dashboardAlerts.find((alert) => alert.id === id);
+    if (!targetAlert) return;
+
+    setDismissingIds((current) => Array.from(new Set([...current, id])));
     await new Promise((resolve) => window.setTimeout(resolve, 220));
 
-    const success =
-      id === 'ALL'
-        ? await acknowledgeAlerts(idsToDismiss)
-        : await acknowledgeAlert(id);
-    if (success) {
-      toast.success(
-        id === 'ALL' ? 'All alerts acknowledged' : 'Alert acknowledged',
-      );
+    if (targetAlert.source === 'task') {
+      const next = markTaskAlertsViewed([targetAlert.taskId, targetAlert.id]);
+      setViewedTaskIds(next);
+      toast.success('Task alert acknowledged');
     } else {
-      toast.error('Failed to acknowledge alert');
+      const success = await acknowledgeAlert(id);
+      if (success) {
+        toast.success('Alert acknowledged');
+      } else {
+        toast.error('Failed to acknowledge alert');
+      }
     }
 
     setDismissingIds((current) =>
-      current.filter((dismissedId) => !idsToDismiss.includes(dismissedId)),
+      current.filter((dismissedId) => dismissedId !== id),
     );
   };
 
@@ -230,9 +299,7 @@ export default function AlertsPage() {
             onClick={() => handleAcknowledge('ALL')}
             disabled={
               loading ||
-              filteredAlerts.every(
-                (alert) => alert.source !== 'system' || alert.acknowledged,
-              )
+              filteredAlerts.every((alert) => alert.acknowledged)
             }
           >
             Mark All as Read
@@ -398,12 +465,42 @@ export default function AlertsPage() {
                     {/* Quick Action Triggers */}
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                       {alert.source === 'task' ? (
-                        <Link
-                          href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
-                          className="tactile-btn inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 shadow-sm transition-all hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50"
-                        >
-                          View Task
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {!alert.acknowledged ? (
+                            <>
+                              {/* Dismiss Button */}
+                              <button
+                                type="button"
+                                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors"
+                                title="Dismiss Alert"
+                                onClick={() => handleDismiss(alert.id)}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+
+                              {/* View Task Button */}
+                              <Link
+                                href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
+                                onClick={() => handleViewTask(alert.id, alert.taskId)}
+                                className="tactile-btn inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 shadow-sm transition-all hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                              >
+                                View Task
+                              </Link>
+                            </>
+                          ) : (
+                            <>
+                              <div className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                                Acknowledged
+                              </div>
+                              <Link
+                                href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
+                                className="tactile-btn inline-flex items-center rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                View Task
+                              </Link>
+                            </>
+                          )}
+                        </div>
                       ) : !alert.acknowledged ? (
                         <div className="flex items-center gap-2">
                           {/* Dismiss Button */}

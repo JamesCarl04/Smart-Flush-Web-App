@@ -32,6 +32,7 @@ import { ToiletUnitSelect } from '@/components/dashboard/ToiletUnitSelect';
 import { apiFetch } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/error-utils';
 import { db } from '@/lib/firebase';
+import { markTaskAlertsViewed } from '@/lib/viewed-alerts';
 import type { Device, Task, TaskTriggerType } from '@/types';
 
 interface DevicesResponse {
@@ -253,6 +254,7 @@ export function MaintenanceTaskPanel() {
     }
 
     scrolledTaskIdRef.current = targetTaskId;
+    markTaskAlertsViewed([targetTaskId]);
 
     // Ensure the targeted task is visible within the active tab/filter
     if (filterStatus !== 'all' && filterStatus !== targetTask.status) {
