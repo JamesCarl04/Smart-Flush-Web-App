@@ -50,31 +50,26 @@ const NOTIF_ROWS: {
   key: keyof NotificationPrefs;
   label: string;
   description: string;
-  badge: string;
 }[] = [
   {
     key: 'criticalAlerts',
     label: 'Critical System Alerts',
     description: 'Immediate notifications for offline devices, water leaks, or hardware alerts',
-    badge: 'Urgent',
   },
   {
     key: 'highPriorityAlerts',
     label: 'High-Priority Dispatches',
     description: 'Alerts when UV cleaning needs attention or flush counts exceed limits',
-    badge: 'High Priority',
   },
   {
     key: 'dailySummaryEmail',
     label: 'Daily Summary Email',
     description: 'End-of-day email summarizing total water saved, flushes, and cleaning cycles',
-    badge: 'Daily',
   },
   {
     key: 'weeklyReportEmail',
     label: 'Weekly Summary Report',
     description: 'Weekly summary report sent every Monday at 8:00 AM',
-    badge: 'Weekly',
   },
 ];
 
@@ -275,9 +270,9 @@ export default function ProfilePage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Account &amp; Profile Settings
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <span className="sr-only">
             Manage your credentials, role authorizations, and telemetry email dispatch preferences.
-          </p>
+          </span>
         </div>
       </div>
 
@@ -598,7 +593,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="divide-y divide-base-200">
-            {NOTIF_ROWS.map(({ key, label, description, badge }) => (
+            {NOTIF_ROWS.map(({ key, label, description }) => (
               <div
                 key={key}
                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4"
@@ -606,9 +601,6 @@ export default function ProfilePage() {
                 <div className="space-y-1 max-w-xl">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-sm text-base-content">{label}</p>
-                    <span className="inline-flex rounded-md bg-base-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-base-content/60">
-                      {badge}
-                    </span>
                     {savedKey === key && (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-semibold animate-fade-in">
                         <CheckCircle2 className="w-3.5 h-3.5" />

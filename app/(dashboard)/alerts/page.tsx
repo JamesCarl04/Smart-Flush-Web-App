@@ -211,9 +211,9 @@ export default function AlertsPage() {
             <Bell className="h-7 w-7 text-[#B5121B] dark:text-red-400" />
             System Alerts
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <span className="sr-only">
             Monitor restroom equipment notifications, maintenance tasks, and system alerts.
-          </p>
+          </span>
         </div>
 
         {/* Quick Triage Actions */}

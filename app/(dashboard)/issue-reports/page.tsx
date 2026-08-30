@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -43,26 +43,42 @@ function categoryLabel(value: string | null): string {
 export default function IssueReportsPage() {
   const { user, role, roleLoading, roleError } = useAuth();
   const [status, setStatus] = useState<Status>('pending_review');
-  const [reports, setReports] = useState<IssueReportView[]>([]);
+  const [reportsByStatus, setReportsByStatus] = useState<Record<Status, IssueReportView[]>>({
+    pending_review: [],
+    confirmed: [],
+    dismissed: [],
+  });
+  const [loadedStatuses, setLoadedStatuses] = useState<Record<Status, boolean>>({
+    pending_review: false,
+    confirmed: false,
+    dismissed: false,
+  });
+  const loadedRef = useRef<Record<Status, boolean>>({
+    pending_review: false,
+    confirmed: false,
+    dismissed: false,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (showLoading = false) => {
+  const load = useCallback(async (targetStatus: Status, showLoading = false) => {
     if (!user || role !== 'admin' || roleLoading) return;
     if (showLoading) {
       setLoading(true);
     }
     try {
       const response = await apiFetch<{ success: boolean; data?: IssueReportView[]; error?: string }>(
-        `/api/issue-reports?status=${status}`,
+        `/api/issue-reports?status=${targetStatus}`,
         user,
       );
       if (!response.success) throw new Error(response.error ?? 'Failed to load reports');
-      setReports(response.data ?? []);
+      setReportsByStatus((prev) => ({ ...prev, [targetStatus]: response.data ?? [] }));
+      loadedRef.current[targetStatus] = true;
+      setLoadedStatuses((prev) => ({ ...prev, [targetStatus]: true }));
       setError(null);
     } catch (loadError) {
       if (showLoading) {
-        setReports([]);
+        setReportsByStatus((prev) => ({ ...prev, [targetStatus]: [] }));
       }
       setError(loadError instanceof Error ? loadError.message : 'Failed to load reports');
     } finally {
@@ -70,23 +86,24 @@ export default function IssueReportsPage() {
         setLoading(false);
       }
     }
-  }, [role, roleLoading, status, user]);
+  }, [role, roleLoading, user]);
 
   useEffect(() => {
     let cancelled = false;
 
-    // Initial fetch shows the loading indicator
-    void load(true);
+    // Initial fetch for target status
+    const isInitial = !loadedRef.current[status];
+    void load(status, isInitial);
 
     // Event listener for cross-component refresh (e.g. actions from layout or mutations)
     const handleRefresh = () => {
-      if (!cancelled) void load(false);
+      if (!cancelled) void load(status, false);
     };
     window.addEventListener('issue-reports:refresh', handleRefresh);
 
     // Polling interval every 10 seconds for real-time background sync
     const intervalId = window.setInterval(() => {
-      if (!cancelled) void load(false);
+      if (!cancelled) void load(status, false);
     }, 10_000);
 
     return () => {
@@ -94,13 +111,13 @@ export default function IssueReportsPage() {
       window.removeEventListener('issue-reports:refresh', handleRefresh);
       window.clearInterval(intervalId);
     };
-  }, [load]);
+  }, [load, status]);
 
   const mutate = async (path: string, body?: Record<string, unknown>) => {
     if (!user || role !== 'admin') return;
     await apiFetch(path, user, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
     window.dispatchEvent(new Event('issue-reports:refresh'));
-    await load(false);
+    await load(status, false);
   };
 
   const viewEvidence = async (reportId: string, submissionId: string) => {
@@ -126,20 +143,24 @@ export default function IssueReportsPage() {
     );
   }
 
+  const reports = reportsByStatus[status] ?? [];
+  const isStatusLoaded = loadedStatuses[status];
+  const isSectionLoading = loading && !isStatusLoaded;
+
   return (
     <section className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Issue Reports</h1>
-        <p className="text-sm text-slate-500">Review anonymous feedback and issue reports submitted by restroom users.</p>
+        <span className="sr-only">Review anonymous feedback and issue reports submitted by restroom users.</span>
       </div>
       <div className="flex gap-2" role="tablist">
         {(Object.keys(STATUS_LABELS) as Status[]).map((value) => (
           <button key={value} role="tab" aria-selected={status === value} onClick={() => setStatus(value)} className={`rounded-lg px-4 py-2 text-sm font-medium ${status === value ? 'bg-[#B5121B] text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{STATUS_LABELS[value]}</button>
         ))}
       </div>
-      {loading ? <p role="status">Loading reports…</p> : null}
+      {isSectionLoading ? <p role="status">Loading reports…</p> : null}
       {error ? <p role="alert" className="text-rose-600">{error}</p> : null}
-      {!loading && !error && reports.length === 0 ? <p className="rounded-xl border p-8 text-center text-slate-500">No {STATUS_LABELS[status].toLowerCase()} reports.</p> : null}
+      {!isSectionLoading && !error && isStatusLoaded && reports.length === 0 ? <p className="rounded-xl border p-8 text-center text-slate-500">No {STATUS_LABELS[status].toLowerCase()} reports.</p> : null}
       <div className="grid gap-4">
         {reports.map((report) => (
           <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">

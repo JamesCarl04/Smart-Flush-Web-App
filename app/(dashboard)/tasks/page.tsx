@@ -11,9 +11,9 @@ export default function TasksPage() {
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           Maintenance Tasks
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <span className="sr-only">
           Dispatch cleaning and repair tasks, track technician status, and monitor response times.
-        </p>
+        </span>
       </div>
 
       {/* Main Full-Width Maintenance Task Operations Panel */}

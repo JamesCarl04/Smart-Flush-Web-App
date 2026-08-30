@@ -140,9 +140,9 @@ export default function AnalyticsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
             Restroom Analytics
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <span className="sr-only">
             Flush counts, water usage trends, and cleaning performance
-          </p>
+          </span>
         </div>
 
         {/* Timeframe Segmented Pill Control */}

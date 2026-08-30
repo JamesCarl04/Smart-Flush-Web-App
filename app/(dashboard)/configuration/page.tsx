@@ -857,9 +857,9 @@ export default function ConfigurationPage() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           System Configuration
         </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+        <span className="sr-only">
           Adjust user detection sensitivity, flush and cleaning timers, and automatic maintenance rules.
-        </p>
+        </span>
       </div>
 
       <div className="flex flex-col gap-8">
@@ -874,9 +874,9 @@ export default function ConfigurationPage() {
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                   Restroom Unit Information
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="sr-only">
                   Unit name, restroom location, and device connection details.
-                </p>
+                </span>
               </div>
             </div>
 
