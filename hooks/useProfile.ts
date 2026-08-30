@@ -17,8 +17,6 @@ import type { NotificationPrefs } from '@/types';
 const DEFAULT_PREFS: NotificationPrefs = {
   criticalAlerts: true,
   highPriorityAlerts: true,
-  dailySummaryEmail: false,
-  weeklyReportEmail: false,
 };
 
 interface UpdateProfileArgs {

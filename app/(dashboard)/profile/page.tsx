@@ -61,16 +61,6 @@ const NOTIF_ROWS: {
     label: 'High-Priority Dispatches',
     description: 'Alerts when UV cleaning needs attention or flush counts exceed limits',
   },
-  {
-    key: 'dailySummaryEmail',
-    label: 'Daily Summary Email',
-    description: 'End-of-day email summarizing total water saved, flushes, and cleaning cycles',
-  },
-  {
-    key: 'weeklyReportEmail',
-    label: 'Weekly Summary Report',
-    description: 'Weekly summary report sent every Monday at 8:00 AM',
-  },
 ];
 
 // ── Page Component ───────────────────────────────────────────────────────────
@@ -575,7 +565,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── SECTION D: Email Notification Toggles ──────────────────────── */}
+      {/* ── SECTION D: Alert Notification Toggles ──────────────────────── */}
       <div className="card bg-base-100 border border-base-200 shadow-xl">
         <div className="card-body p-6 sm:p-8">
           <div className="flex items-center justify-between pb-4 border-b border-base-200 mb-2">
@@ -584,10 +574,10 @@ export default function ProfilePage() {
                 <Bell className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="card-title text-lg font-bold">Email Notification Preferences</h2>
-                <p className="text-xs text-base-content/60">
-                  Select which automated alerts and operational reports you receive via email
-                </p>
+                <h2 className="card-title text-lg font-bold">Notification Preferences</h2>
+                <span className="sr-only">
+                  Select which automated alerts and operational dispatches you receive.
+                </span>
               </div>
             </div>
           </div>
