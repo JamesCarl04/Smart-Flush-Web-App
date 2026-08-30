@@ -76,20 +76,13 @@ export function ActivityFeed() {
           )}
         </div>
 
-        {loading ? (
-          <div className="space-y-4 py-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex gap-4 items-center">
-                <div className="skeleton w-9 h-9 rounded-full shrink-0"></div>
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="skeleton h-4 w-1/3"></div>
-                  <div className="skeleton h-3 w-2/3"></div>
-                </div>
-              </div>
-            ))}
+        {loading && events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-3" aria-hidden="true" />
+            <p className="text-xs font-semibold text-base-content/60">Loading activity feed...</p>
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-10 px-4 text-base-content/50">
+          <div className="text-center py-12 px-4 text-base-content/50">
             <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="font-medium text-sm">No recent events recorded</p>
             <p className="text-xs text-base-content/40 mt-0.5">
@@ -97,11 +90,12 @@ export function ActivityFeed() {
             </p>
           </div>
         ) : (
-          <div className="relative pl-2 sm:pl-3">
-            {/* Timeline vertical bar */}
-            <div className="absolute left-6 top-3 bottom-3 w-[2px] bg-base-200 dark:bg-base-300 -z-0"></div>
+          <div className="max-h-[460px] overflow-y-auto pr-1.5 overscroll-contain">
+            <div className="relative pl-2 sm:pl-3">
+              {/* Timeline vertical bar */}
+              <div className="absolute left-6 top-3 bottom-3 w-[2px] bg-base-200 dark:bg-base-300 -z-0"></div>
 
-            <ul className="space-y-4 animate-fade-in">
+              <ul className="space-y-3 animate-fade-in">
               {events.map((event) => {
                 const config = getEventDetails(event);
                 const relTime = formatRelativeTime(new Date(event.timestamp));
@@ -156,6 +150,7 @@ export function ActivityFeed() {
               })}
             </ul>
           </div>
+        </div>
         )}
       </div>
     </div>
