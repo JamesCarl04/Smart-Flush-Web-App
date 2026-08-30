@@ -310,11 +310,6 @@ export default function ProfilePage() {
                   <span>Role: {userRole}</span>
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                  <span>Active Session</span>
-                </div>
-
                 {user?.uid && (
                   <div className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-mono text-slate-400 bg-base-200 border border-base-300">
                     <span>UID: {user.uid.slice(0, 8)}...</span>

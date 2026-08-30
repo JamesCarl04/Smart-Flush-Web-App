@@ -1697,16 +1697,14 @@ export default function ConfigurationPage() {
             </button>
             <button
               type="button"
-              className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none"
+              className="tactile-btn inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#B5121B] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none"
               disabled={creatingRule}
               data-loading={creatingRule}
               onClick={() => void handleCreateRule()}
             >
               {creatingRule ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2"></span>
+              ) : null}
               {editingRuleId ? 'Update Rule' : 'Create Rule'}
             </button>
           </div>
@@ -1825,20 +1823,17 @@ export default function ConfigurationPage() {
 
                 <button
                   type="button"
-                  className="btn btn-sm h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-sm flex items-center gap-2"
+                  className="btn btn-sm h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-sm flex items-center justify-center"
                   onClick={() => void handleConfirmPasswordSave()}
                   disabled={isVerifyingPassword || !confirmPassword.trim()}
                 >
                   {isVerifyingPassword ? (
                     <>
-                      <span className="loading loading-spinner loading-xs" />
+                      <span className="loading loading-spinner loading-xs mr-1.5" />
                       <span>Verifying...</span>
                     </>
                   ) : (
-                    <>
-                      <Lock className="h-3.5 w-3.5" />
-                      <span>Authorize &amp; Save</span>
-                    </>
+                    <span>Authorize &amp; Save</span>
                   )}
                 </button>
               </div>

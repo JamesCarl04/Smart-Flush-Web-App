@@ -68,15 +68,6 @@ export function ActivityFeed() {
             <h2 className="card-title text-xl font-bold tracking-tight">
               Activity Feed
             </h2>
-            <div className="flex items-center gap-1.5 ml-1">
-              <span className="relative flex h-2.5 w-2.5 items-center justify-center">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
-              </span>
-              <span className="text-xs font-semibold text-success uppercase tracking-wider">
-                Live
-              </span>
-            </div>
           </div>
           {!loading && events.length > 0 && (
             <span className="text-xs font-medium text-base-content/50 bg-base-200 px-2.5 py-1 rounded-full">

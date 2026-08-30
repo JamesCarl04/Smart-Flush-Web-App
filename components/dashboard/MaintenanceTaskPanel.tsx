@@ -898,13 +898,6 @@ export function MaintenanceTaskPanel() {
                   <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                     Maintenance Task Operations
                   </h2>
-                  <span className="relative flex h-2.5 w-2.5 items-center justify-center">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-                  </span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    Live Feed
-                  </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Dispatch cleaning and repair tasks, track technician status, and monitor response times.
