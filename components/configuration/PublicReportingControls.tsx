@@ -95,7 +95,7 @@ export function PublicReportingControls({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><h2 className="text-base font-bold">Public issue reporting</h2><p className="text-xs text-slate-500">Administrator-only QR label and anonymous reporting control.</p></div>
+        <div><h2 className="text-base font-bold">Public issue reporting</h2><span className="sr-only">Administrator-only QR label and anonymous reporting control.</span></div>
         <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={device.publicReportingEnabled} disabled={saving} onChange={() => void toggle()} />Enabled</label>
       </div>
       <div className="mt-5 grid items-center gap-6 sm:grid-cols-[220px_1fr]">

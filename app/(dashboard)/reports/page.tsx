@@ -873,18 +873,9 @@ export default function ReportsPage() {
 
       {/* Clean Slate Typography Headline (Hidden in Print) */}
       <div className="print:hidden">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#B5121B] dark:text-red-400 mb-1">
-          <FileBarChart className="h-3.5 w-3.5" aria-hidden="true" />
+        <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Restroom Reports &amp; Exports
-        </div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Restroom Reports &amp; Exports
-          </h1>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-            SDCA Annex
-          </span>
-        </div>
+        </h1>
         <span className="sr-only">
           Generate and download usage summaries, maintenance records, and inspection logs for SDCA Annex restrooms.
         </span>
