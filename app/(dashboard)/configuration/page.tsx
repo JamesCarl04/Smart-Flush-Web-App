@@ -1028,15 +1028,13 @@ export default function ConfigurationPage() {
 
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
-              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/40 active:translate-y-0.5"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/40 active:translate-y-0.5"
               disabled={loadingConfiguration || savingSection !== null}
               onClick={handleDeviceSave}
             >
               {savingSection === 'device' ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2" />
+              ) : null}
               <span>Save Unit Profile</span>
             </button>
           </div>
@@ -1146,16 +1144,14 @@ export default function ConfigurationPage() {
           {/* Unified Primary Action: Save Detection Range */}
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
-              className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
+              className="tactile-btn inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#B5121B] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
               disabled={loadingConfiguration || savingSection !== null}
               data-loading={savingSection === 'calibration'}
               onClick={handleCalibrationSave}
             >
               {savingSection === 'calibration' ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2"></span>
+              ) : null}
               Save Detection Range
             </button>
           </div>
@@ -1277,16 +1273,14 @@ export default function ConfigurationPage() {
           {/* Unified Primary Action: Save Timers */}
           <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
-              className="tactile-btn inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#B5121B] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
+              className="tactile-btn inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#B5121B] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none focus:ring-2 focus:ring-[#B5121B]/40"
               disabled={loadingConfiguration || savingSection !== null}
               data-loading={savingSection === 'timing'}
               onClick={handleTimingSave}
             >
               {savingSection === 'timing' ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2"></span>
+              ) : null}
               Save Timers
             </button>
           </div>
@@ -1312,10 +1306,9 @@ export default function ConfigurationPage() {
             {/* Add Rule Button */}
             <button
               type="button"
-              className="tactile-btn inline-flex items-center gap-2 rounded-xl bg-[#B5121B] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none"
+              className="tactile-btn inline-flex items-center rounded-xl bg-[#B5121B] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none"
               onClick={() => openRuleModal(activeRuleTab)}
             >
-              <Plus className="h-4 w-4" />
               Add Rule
             </button>
           </div>

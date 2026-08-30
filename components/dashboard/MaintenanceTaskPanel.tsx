@@ -950,10 +950,9 @@ export function MaintenanceTaskPanel() {
               {canManageTasks && (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all active:translate-y-0.5 min-h-[40px] whitespace-nowrap"
+                  className="inline-flex items-center rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-sdca-darkred focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-all active:translate-y-0.5 min-h-[40px] whitespace-nowrap"
                   onClick={openCreateDrawer}
                 >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
                   <span>Dispatch Task</span>
                 </button>
               )}
@@ -1525,10 +1524,7 @@ export function MaintenanceTaskPanel() {
                         <span>Dispatching...</span>
                       </>
                     ) : (
-                      <>
-                        <BrushCleaning className="h-4 w-4" aria-hidden="true" />
-                        <span>Create & Dispatch</span>
-                      </>
+                      <span>Create &amp; Dispatch</span>
                     )}
                   </button>
                 </div>

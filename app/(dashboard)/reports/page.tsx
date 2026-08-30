@@ -1069,7 +1069,7 @@ export default function ReportsPage() {
             <button
               id="generate-report-btn"
               type="button"
-              className={`tactile-btn flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-[10px] bg-[#B5121B] py-2.5 px-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none active:translate-y-0.5 ${
+              className={`tactile-btn flex min-h-[44px] flex-1 items-center justify-center rounded-[10px] bg-[#B5121B] py-2.5 px-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none active:translate-y-0.5 ${
                 isGenerating ? 'cursor-wait bg-[#B5121B]' : ''
               }`}
               onClick={handleGenerate}
@@ -1079,29 +1079,25 @@ export default function ReportsPage() {
               {isGenerating ? (
                 <>
                   <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2"
                     aria-hidden="true"
                   ></span>
                   <span className="truncate text-white font-bold">Generating...</span>
                 </>
               ) : (
-                <>
-                  <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span className="truncate">Generate &amp; Download</span>
-                </>
+                <span className="truncate">Generate &amp; Download</span>
               )}
             </button>
 
             <button
               id="print-report-btn"
               type="button"
-              className="tactile-btn flex min-h-[44px] items-center justify-center gap-1.5 rounded-[10px] border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-800 py-2.5 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-all hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus:outline-none active:translate-y-0.5"
+              className="tactile-btn flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[10px] border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-800 p-2.5 text-slate-700 dark:text-slate-200 shadow-sm transition-all hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus:outline-none active:translate-y-0.5"
               onClick={handlePrint}
-              title="Print official audit summary"
-              aria-label="Print official report summary"
+              title="Print report"
+              aria-label="Print report"
             >
-              <Printer className="h-4 w-4 shrink-0 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
-              <span>Print</span>
+              <Printer className="h-4 w-4 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -1889,12 +1885,12 @@ function RecentExportsHistory({
                   <td className="py-3 px-4 text-right whitespace-nowrap print:hidden">
                     <button
                       type="button"
-                      className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/50 transition-colors focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
+                      className="tactile-btn inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded-lg p-1.5 text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/50 transition-colors focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
                       onClick={() => onQuickDownload(report)}
+                      title={`Download ${report.name}`}
                       aria-label={`Download report ${report.name}`}
                     >
-                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                      Download
+                      <Download className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </td>
                 </tr>
