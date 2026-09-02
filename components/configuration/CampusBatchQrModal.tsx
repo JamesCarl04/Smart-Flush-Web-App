@@ -19,8 +19,9 @@ interface CampusBatchQrModalProps {
 interface PrintableQrItem {
   id: string;
   name: string;
+  roomName: string;
+  stallLabel: string;
   floor: string;
-  location: string;
   type: 'stall' | 'common';
   reportUrl: string;
 }
@@ -37,17 +38,23 @@ const QrCard = React.memo(function QrCard({
 }) {
   return (
     <div className="flex flex-col items-center justify-between rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
-      {/* Header Tag */}
-      <div className="w-full border-b border-slate-100 pb-2 dark:border-slate-800 print:border-slate-300">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 print:text-black">
-          Smart Flush Facilities
+      {/* Header Tag — Trust & Location Anchor */}
+      <div className="w-full border-b border-slate-100 pb-2.5 dark:border-slate-800 print:border-slate-300">
+        <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 print:text-black">
+          🌱 SDCA HYGIENE CARE • {item.floor}
         </span>
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white print:text-black line-clamp-1">
-          {item.name}
+        <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white print:text-black leading-snug">
+          {item.roomName}
         </h3>
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 print:text-slate-700">
-          {item.location}
-        </p>
+        {item.type === 'stall' ? (
+          <div className="mt-1.5 inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 print:bg-slate-100 print:border-slate-300 print:text-black">
+            {item.stallLabel}
+          </div>
+        ) : (
+          <div className="mt-1.5 inline-flex items-center rounded-md bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-100 print:text-black">
+            Main Room Entry QR
+          </div>
+        )}
       </div>
 
       {/* QR Code */}
@@ -55,7 +62,7 @@ const QrCard = React.memo(function QrCard({
         {qrDataUrl ? (
           <img
             src={qrDataUrl}
-            alt={`QR for ${item.name}`}
+            alt={`QR for ${item.roomName} ${item.stallLabel}`}
             width={180}
             height={180}
             decoding="async"
@@ -69,13 +76,16 @@ const QrCard = React.memo(function QrCard({
         )}
       </div>
 
-      {/* Footer Call to Action */}
+      {/* Footer Call to Action — Civic Duty Psychological Nudge */}
       <div className="w-full border-t border-slate-100 pt-2 text-[10px] dark:border-slate-800 print:border-slate-300">
-        <p className="font-bold text-slate-800 dark:text-slate-200 print:text-black">
-          Scan with camera to report issue or view live status
+        <p className="font-semibold text-emerald-800 dark:text-emerald-400 print:text-black">
+          ✨ Help us keep your restroom clean & fresh!
         </p>
-        <p className="mt-0.5 truncate font-mono text-[9px] text-slate-400 dark:text-slate-500 print:text-slate-600">
-          {item.reportUrl}
+        <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300 print:text-slate-700">
+          Scan to report an issue in 10s or view hygiene status
+        </p>
+        <p className="mt-1 font-mono text-[9px] text-slate-400 dark:text-slate-500 print:text-slate-600">
+          ID: {item.id}
         </p>
       </div>
     </div>
@@ -126,8 +136,9 @@ export function CampusBatchQrModal({
     const stallItems: PrintableQrItem[] = stalls.map((stall) => ({
       id: stall.id,
       name: stall.fullLabel,
+      roomName: stall.roomName,
+      stallLabel: stall.stallLabel,
       floor: stall.floor,
-      location: `${stall.building} • ${stall.floor} • ${stall.roomName}`,
       type: 'stall',
       reportUrl: buildPublicReportUrl(siteUrl, stall.id),
     }));
@@ -135,8 +146,9 @@ export function CampusBatchQrModal({
     const commonItems: PrintableQrItem[] = rooms.map((room) => ({
       id: room.id,
       name: `${room.roomName} • Common Entrance`,
+      roomName: room.roomName,
+      stallLabel: 'Main Entrance QR',
       floor: room.floor,
-      location: `${room.building} • ${room.floor} • Sinks & Entrance`,
       type: 'common',
       reportUrl: buildPublicReportUrl(siteUrl, room.id),
     }));

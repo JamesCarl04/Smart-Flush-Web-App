@@ -43,7 +43,7 @@ describe('Web App restrooms utility', () => {
           deviceId: 'generic-device',
           stallId: 'SDCA-FL1-CANTEEN-M-S03',
         }),
-      ).toBe('SDCA Annex 1F Canteen Male Restroom • Stall 3');
+      ).toBe('1F Canteen Male Restroom • Stall 3');
     });
 
     it('should resolve full stall label when deviceId is a stall ID', () => {
@@ -51,7 +51,7 @@ describe('Web App restrooms utility', () => {
         getRestroomLabel({
           deviceId: 'SDCA-FL2-PWD-S01',
         }),
-      ).toBe('SDCA Annex 2F PWD Restroom (Left Wing) • Single Stall');
+      ).toBe('2F Left Wing PWD Restroom • Single Stall');
     });
 
     it('should return predefined mapping for recognized device IDs when restroomName is null or undefined', () => {
@@ -140,7 +140,7 @@ describe('Web App restrooms utility', () => {
     it('should find stall by ID and aliases', () => {
       const stall = getStallById('SDCA-FL1-CANTEEN-F-S02');
       expect(stall).toBeDefined();
-      expect(stall?.roomName).toBe('SDCA Annex 1F Canteen Female Restroom');
+      expect(stall?.roomName).toBe('1F Canteen Female Restroom');
       expect(stall?.stallNumber).toBe(2);
 
       const aliasedStall = getStallById('SDCA-FL1-CANT-F-S02');
