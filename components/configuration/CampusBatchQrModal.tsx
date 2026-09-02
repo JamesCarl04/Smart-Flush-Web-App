@@ -70,9 +70,9 @@ const QrCard = React.memo(function QrCard({
             alt={`QR for ${displayRoomTitle} ${item.stallLabel}`}
             width={180}
             height={180}
-            decoding="async"
-            loading="lazy"
-            className="h-44 w-44 object-contain"
+            decoding="sync"
+            loading="eager"
+            className="h-44 w-44 object-contain print:h-44 print:w-44"
           />
         ) : (
           <div className="flex h-44 w-44 animate-pulse items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-xs text-slate-400">
@@ -169,23 +169,70 @@ export function CampusBatchQrModal({
     });
   }, [allItems, selectedFloor, selectedType]);
 
-  // Generate missing QR codes efficiently in a single batch with module-level caching
+  // Generate missing QR codes eagerly across the campus with progressive state updates
   useEffect(() => {
     if (!isOpen) return;
     let isCancelled = false;
 
-    async function generateMissingQrs() {
-      const missingItems = filteredItems.filter((item) => !QR_CACHE.has(item.id));
+    async function generateAllQrs() {
+      const missingItems = allItems.filter((item) => !QR_CACHE.has(item.id));
       if (missingItems.length === 0) {
         setQrMap(new Map(QR_CACHE));
+        setLoadingQrs(false);
         return;
       }
 
       setLoadingQrs(true);
 
-      // Process batch concurrently
+      // Process in batches of 25 to avoid freezing the UI thread while populating quickly
+      const batchSize = 25;
+      for (let i = 0; i < missingItems.length; i += batchSize) {
+        if (isCancelled) break;
+        const chunk = missingItems.slice(i, i + batchSize);
+        await Promise.all(
+          chunk.map(async (item) => {
+            try {
+              const dataUrl = await QRCode.toDataURL(item.reportUrl, {
+                width: 300,
+                margin: 2,
+                errorCorrectionLevel: 'H',
+              });
+              QR_CACHE.set(item.id, dataUrl);
+            } catch (err) {
+              console.error(`Failed to generate QR for ${item.id}`, err);
+            }
+          }),
+        );
+
+        if (!isCancelled) {
+          setQrMap(new Map(QR_CACHE));
+        }
+      }
+
+      if (!isCancelled) {
+        setLoadingQrs(false);
+      }
+    }
+
+    void generateAllQrs();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, allItems]);
+
+  if (!isOpen || !mounted) return null;
+
+  const readyCount = filteredItems.filter((item) => qrMap.has(item.id)).length;
+  const isReady = readyCount === filteredItems.length && filteredItems.length > 0;
+
+  const handlePrint = async () => {
+    // Ensure 100% of visible QRs are resolved before invoking window.print()
+    const missing = filteredItems.filter((item) => !QR_CACHE.has(item.id));
+    if (missing.length > 0) {
+      setLoadingQrs(true);
       await Promise.all(
-        missingItems.map(async (item) => {
+        missing.map(async (item) => {
           try {
             const dataUrl = await QRCode.toDataURL(item.reportUrl, {
               width: 300,
@@ -198,24 +245,14 @@ export function CampusBatchQrModal({
           }
         }),
       );
-
-      if (!isCancelled) {
-        setQrMap(new Map(QR_CACHE));
-        setLoadingQrs(false);
-      }
+      setQrMap(new Map(QR_CACHE));
+      setLoadingQrs(false);
     }
 
-    void generateMissingQrs();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isOpen, filteredItems]);
-
-  if (!isOpen || !mounted) return null;
-
-  const handlePrint = () => {
-    window.print();
+    // Short timeout to guarantee DOM rendering before print dialogue captures snapshot
+    setTimeout(() => {
+      window.print();
+    }, 60);
   };
 
   const modalContent = (
@@ -277,11 +314,15 @@ export function CampusBatchQrModal({
               <button
                 type="button"
                 onClick={handlePrint}
-                disabled={loadingQrs}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#B5121B] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#8F0D16] transition-colors disabled:opacity-50"
+                disabled={!isReady || loadingQrs}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#B5121B] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#8F0D16] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Printer className="h-4 w-4" />
-                <span>Print Sheet / Save PDF</span>
+                <span>
+                  {isReady
+                    ? 'Print Sheet / Save PDF'
+                    : `Generating QRs (${readyCount}/${filteredItems.length})…`}
+                </span>
               </button>
 
               <button
