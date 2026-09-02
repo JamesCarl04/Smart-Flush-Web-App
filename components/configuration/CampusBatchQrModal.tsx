@@ -40,28 +40,30 @@ const QrCard = React.memo(function QrCard({
   const displayRoomTitle = item.roomName.replace(/^[1-4]F\s+/i, '');
 
   return (
-    <div className="flex flex-col items-center justify-between rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
-      {/* Header Tag — Trust & Location Anchor */}
-      <div className="w-full border-b border-slate-100 pb-2.5 dark:border-slate-800 print:border-slate-300">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 print:text-black">
-          SDCA HYGIENE CARE • {item.floor}
-        </span>
-        <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white print:text-black leading-snug">
+    <div className="flex flex-col items-center justify-between rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-[#B5121B]/40 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
+      {/* Header Tag — SDCA Institutional Identity Anchor */}
+      <div className="w-full border-b border-slate-100 pb-3 dark:border-slate-800 print:border-slate-300">
+        <div className="flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-[#B5121B] dark:text-[#E46167] print:text-black">
+          <span>ST. DOMINIC COLLEGE OF ASIA</span>
+          <span className="text-[#C9A227] font-black print:text-black">•</span>
+          <span>{item.floor}</span>
+        </div>
+        <h3 className="mt-1.5 text-base font-extrabold text-slate-900 dark:text-white print:text-black leading-tight">
           {displayRoomTitle}
         </h3>
         {item.type === 'stall' ? (
-          <div className="mt-1.5 inline-flex items-center rounded-md bg-slate-900 px-3 py-0.5 text-xs font-bold text-white dark:bg-slate-100 dark:text-slate-900 print:bg-black print:text-white">
+          <div className="mt-2 inline-flex items-center rounded-md bg-[#B5121B] px-3.5 py-1 text-xs font-black uppercase tracking-wider text-white shadow-xs print:bg-black print:text-white">
             {item.stallLabel}
           </div>
         ) : (
-          <div className="mt-1.5 inline-flex items-center rounded-md border border-slate-300 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300 print:border-slate-400 print:text-black">
+          <div className="mt-2 inline-flex items-center rounded-md border border-[#B5121B]/30 bg-[#B5121B]/5 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#B5121B] dark:border-[#E46167]/30 dark:bg-[#E46167]/10 dark:text-[#E46167] print:border-black print:bg-transparent print:text-black">
             Main Room Entry QR
           </div>
         )}
       </div>
 
-      {/* QR Code */}
-      <div className="my-3 flex items-center justify-center p-1 bg-white rounded-lg">
+      {/* QR Code Framed Centerpiece */}
+      <div className="my-3 flex items-center justify-center rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40 print:border-transparent print:bg-transparent">
         {qrDataUrl ? (
           <img
             src={qrDataUrl}
@@ -79,15 +81,15 @@ const QrCard = React.memo(function QrCard({
         )}
       </div>
 
-      {/* Footer Call to Action — Clean Civic Duty Nudge without Emojis */}
-      <div className="w-full border-t border-slate-100 pt-2 text-[10px] dark:border-slate-800 print:border-slate-300">
-        <p className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
-          Help us keep your restroom clean & fresh
+      {/* Footer Call to Action — SDCA Institutional Civic Maintenance Prompt */}
+      <div className="w-full border-t border-slate-100 pt-2.5 text-[10px] dark:border-slate-800 print:border-slate-300">
+        <p className="font-bold text-[#B5121B] dark:text-[#E46167] print:text-black">
+          Help Maintain Our Campus Cleanliness
         </p>
         <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300 print:text-slate-700">
-          Scan to report an issue in 10s or view live status
+          Scan with camera to report an issue in 10s or view live status
         </p>
-        <p className="mt-1 font-mono text-[9px] text-slate-400 dark:text-slate-500 print:text-slate-600">
+        <p className="mt-1 font-mono text-[9px] font-semibold text-slate-400 dark:text-slate-500 print:text-slate-600">
           ID: {item.id}
         </p>
       </div>
