@@ -41,10 +41,10 @@ const QrCard = React.memo(function QrCard({
 
   return (
     <div className="flex flex-col items-center justify-between rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-[#B5121B]/40 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
-      {/* Header Tag — SDCA Institutional Identity Anchor */}
+      {/* Header Tag — SDCA Digital Campus Identity Anchor */}
       <div className="w-full border-b border-slate-100 pb-3 dark:border-slate-800 print:border-slate-300">
         <div className="flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-[#B5121B] dark:text-[#E46167] print:text-black">
-          <span>ST. DOMINIC COLLEGE OF ASIA</span>
+          <span>SDCA DIGITAL CAMPUS</span>
           <span className="text-[#C9A227] font-black print:text-black">•</span>
           <span>{item.floor}</span>
         </div>
