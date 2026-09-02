@@ -36,22 +36,25 @@ const QrCard = React.memo(function QrCard({
   item: PrintableQrItem;
   qrDataUrl?: string;
 }) {
+  // Strip redundant floor prefix (e.g. "1F ") since the floor is already in the top header tag
+  const displayRoomTitle = item.roomName.replace(/^[1-4]F\s+/i, '');
+
   return (
     <div className="flex flex-col items-center justify-between rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center shadow-xs transition-all duration-200 hover:shadow-md hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 print:border-slate-800 print:p-4 print:break-inside-avoid print:transform-none transform-gpu">
       {/* Header Tag — Trust & Location Anchor */}
       <div className="w-full border-b border-slate-100 pb-2.5 dark:border-slate-800 print:border-slate-300">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 print:text-black">
-          🌱 SDCA HYGIENE CARE • {item.floor}
+        <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 print:text-black">
+          SDCA HYGIENE CARE • {item.floor}
         </span>
-        <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white print:text-black leading-snug">
-          {item.roomName}
+        <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white print:text-black leading-snug">
+          {displayRoomTitle}
         </h3>
         {item.type === 'stall' ? (
-          <div className="mt-1.5 inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 print:bg-slate-100 print:border-slate-300 print:text-black">
+          <div className="mt-1.5 inline-flex items-center rounded-md bg-slate-900 px-3 py-0.5 text-xs font-bold text-white dark:bg-slate-100 dark:text-slate-900 print:bg-black print:text-white">
             {item.stallLabel}
           </div>
         ) : (
-          <div className="mt-1.5 inline-flex items-center rounded-md bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300 print:bg-slate-100 print:text-black">
+          <div className="mt-1.5 inline-flex items-center rounded-md border border-slate-300 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300 print:border-slate-400 print:text-black">
             Main Room Entry QR
           </div>
         )}
@@ -62,7 +65,7 @@ const QrCard = React.memo(function QrCard({
         {qrDataUrl ? (
           <img
             src={qrDataUrl}
-            alt={`QR for ${item.roomName} ${item.stallLabel}`}
+            alt={`QR for ${displayRoomTitle} ${item.stallLabel}`}
             width={180}
             height={180}
             decoding="async"
@@ -76,13 +79,13 @@ const QrCard = React.memo(function QrCard({
         )}
       </div>
 
-      {/* Footer Call to Action — Civic Duty Psychological Nudge */}
+      {/* Footer Call to Action — Clean Civic Duty Nudge without Emojis */}
       <div className="w-full border-t border-slate-100 pt-2 text-[10px] dark:border-slate-800 print:border-slate-300">
-        <p className="font-semibold text-emerald-800 dark:text-emerald-400 print:text-black">
-          ✨ Help us keep your restroom clean & fresh!
+        <p className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+          Help us keep your restroom clean & fresh
         </p>
         <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300 print:text-slate-700">
-          Scan to report an issue in 10s or view hygiene status
+          Scan to report an issue in 10s or view live status
         </p>
         <p className="mt-1 font-mono text-[9px] text-slate-400 dark:text-slate-500 print:text-slate-600">
           ID: {item.id}
