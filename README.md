@@ -58,32 +58,35 @@
 
 ---
 
-## 🗺️ Master Campus Facility Directory (19 Units across 4 Floors)
+## 🗺️ Master Campus Facility Directory (22 Units & 96 Fixtures across 4 Floors)
 
-All 19 restrooms across the 4 floors of the SDCA Annex Building plus the dedicated hardware testing lab unit are registered in the centralized directory:
+All 22 restrooms and 96 individual fixtures/stalls across the 4 floors of the SDCA Annex Building plus the dedicated hardware testing lab unit are registered in the centralized directory:
 
-| Floor | Restroom Facility Name | Device Hardware ID | Room Location Code | Default Lead Technician |
-| :--- | :--- | :--- | :--- | :--- |
-| **1st Floor** | **1F Canteen Male Restroom** | `SDCA-FL1-CANTEEN-M` | `SDCA-101-CM` | James Alvarez (`james@gmail.com`) |
-| **1st Floor** | **1F Canteen Female Restroom** | `SDCA-FL1-CANTEEN-F` | `SDCA-102-CF` | James Alvarez (`james@gmail.com`) |
-| **1st Floor** | **1F Faculty Male Restroom** | `SDCA-FL1-FACULTY-M` | `SDCA-103-FM` | James Alvarez (`james@gmail.com`) |
-| **1st Floor** | **1F Faculty Female Restroom** | `SDCA-FL1-FACULTY-F` | `SDCA-104-FF` | James Alvarez (`james@gmail.com`) |
-| **2nd Floor** | **2F Male Restroom 1** | `SDCA-FL2-M1` | `SDCA-201-M1` | Justine Lopez (`justine@gmail.com`) |
-| **2nd Floor** | **2F Male Restroom 2** | `SDCA-FL2-M2` | `SDCA-202-M2` | Justine Lopez (`justine@gmail.com`) |
-| **2nd Floor** | **2F Female Restroom 1** | `SDCA-FL2-F1` | `SDCA-203-F1` | Justine Lopez (`justine@gmail.com`) |
-| **2nd Floor** | **2F Female Restroom 2** | `SDCA-FL2-F2` | `SDCA-204-F2` | Justine Lopez (`justine@gmail.com`) |
-| **2nd Floor** | **2F PWD Restroom** | `SDCA-FL2-PWD` | `SDCA-205-PWD` | Justine Lopez (`justine@gmail.com`) |
-| **3rd Floor** | **3F Male Restroom 1** | `SDCA-FL3-M1` | `SDCA-301-M1` | Maria Lindog (`maria@gmail.com`) |
-| **3rd Floor** | **3F Male Restroom 2** | `SDCA-FL3-M2` | `SDCA-302-M2` | Maria Lindog (`maria@gmail.com`) |
-| **3rd Floor** | **3F Female Restroom 1** | `SDCA-FL3-F1` | `SDCA-303-F1` | Maria Lindog (`maria@gmail.com`) |
-| **3rd Floor** | **3F Female Restroom 2** | `SDCA-FL3-F2` | `SDCA-304-F2` | Maria Lindog (`maria@gmail.com`) |
-| **3rd Floor** | **3F PWD Restroom** | `SDCA-FL3-PWD` | `SDCA-305-PWD` | Maria Lindog (`maria@gmail.com`) |
-| **4th Floor** | **4F Male Restroom 1** | `SDCA-FL4-M1` | `SDCA-401-M1` | Supervisor Team |
-| **4th Floor** | **4F Male Restroom 2** | `SDCA-FL4-M2` | `SDCA-402-M2` | Supervisor Team |
-| **4th Floor** | **4F Female Restroom 1** | `SDCA-FL4-F1` | `SDCA-403-F1` | Supervisor Team |
-| **4th Floor** | **4F Female Restroom 2** | `SDCA-FL4-F2` | `SDCA-404-F2` | Supervisor Team |
-| **4th Floor** | **4F PWD Restroom** | `SDCA-FL4-PWD` | `SDCA-405-PWD` | Supervisor Team |
-| **Lab Unit** | **SDCA Annex Test Stall** | `toilet-01` | `LAB-BENCH-01` | *Diagnostic Hardware Unit* |
+| Floor | Restroom Facility Name | Device Hardware ID | Fixture Count | Room Location Code | Default Lead Technician |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| **1st Floor** | **1F Canteen Male Restroom** | `SDCA-FL1-CANTEEN-M` | 7 | `SDCA-101-CM` | James Alvarez (`james@gmail.com`) |
+| **1st Floor** | **1F Canteen Female Restroom** | `SDCA-FL1-CANTEEN-F` | 3 | `SDCA-102-CF` | James Alvarez (`james@gmail.com`) |
+| **1st Floor** | **1F Faculty Male Restroom** | `SDCA-FL1-FACULTY-M` | 6 | `SDCA-103-FM` | James Alvarez (`james@gmail.com`) |
+| **1st Floor** | **1F Faculty Female Restroom** | `SDCA-FL1-FACULTY-F` | 2 | `SDCA-104-FF` | James Alvarez (`james@gmail.com`) |
+| **2nd Floor** | **2F Male (Left Wing)** | `SDCA-FL2-M1` | 7 | `SDCA-201-M1` | Justine Lopez (`justine@gmail.com`) |
+| **2nd Floor** | **2F Male (Right Wing)** | `SDCA-FL2-M2` | 7 | `SDCA-202-M2` | Justine Lopez (`justine@gmail.com`) |
+| **2nd Floor** | **2F Female (Left Wing)** | `SDCA-FL2-F1` | 5 | `SDCA-203-F1` | Justine Lopez (`justine@gmail.com`) |
+| **2nd Floor** | **2F Female (Right Wing)** | `SDCA-FL2-F2` | 5 | `SDCA-204-F2` | Justine Lopez (`justine@gmail.com`) |
+| **2nd Floor** | **2F PWD (Left Wing)** | `SDCA-FL2-PWD1` | 1 | `SDCA-205-PWD1` | Justine Lopez (`justine@gmail.com`) |
+| **2nd Floor** | **2F PWD (Right Wing)** | `SDCA-FL2-PWD2` | 1 | `SDCA-206-PWD2` | Justine Lopez (`justine@gmail.com`) |
+| **3rd Floor** | **3F Male (Left Wing)** | `SDCA-FL3-M1` | 7 | `SDCA-301-M1` | Maria Lindog (`maria@gmail.com`) |
+| **3rd Floor** | **3F Male (Right Wing)** | `SDCA-FL3-M2` | 7 | `SDCA-302-M2` | Maria Lindog (`maria@gmail.com`) |
+| **3rd Floor** | **3F Female (Left Wing)** | `SDCA-FL3-F1` | 5 | `SDCA-303-F1` | Maria Lindog (`maria@gmail.com`) |
+| **3rd Floor** | **3F Female (Right Wing)** | `SDCA-FL3-F2` | 5 | `SDCA-304-F2` | Maria Lindog (`maria@gmail.com`) |
+| **3rd Floor** | **3F PWD (Left Wing)** | `SDCA-FL3-PWD1` | 1 | `SDCA-305-PWD1` | Maria Lindog (`maria@gmail.com`) |
+| **3rd Floor** | **3F PWD (Right Wing)** | `SDCA-FL3-PWD2` | 1 | `SDCA-306-PWD2` | Maria Lindog (`maria@gmail.com`) |
+| **4th Floor** | **4F Male (Left Wing)** | `SDCA-FL4-M1` | 7 | `SDCA-401-M1` | Supervisor Team |
+| **4th Floor** | **4F Male (Right Wing)** | `SDCA-FL4-M2` | 7 | `SDCA-402-M2` | Supervisor Team |
+| **4th Floor** | **4F Female (Left Wing)** | `SDCA-FL4-F1` | 5 | `SDCA-403-F1` | Supervisor Team |
+| **4th Floor** | **4F Female (Right Wing)** | `SDCA-FL4-F2` | 5 | `SDCA-404-F2` | Supervisor Team |
+| **4th Floor** | **4F PWD (Left Wing)** | `SDCA-FL4-PWD1` | 1 | `SDCA-405-PWD1` | Supervisor Team |
+| **4th Floor** | **4F PWD (Right Wing)** | `SDCA-FL4-PWD2` | 1 | `SDCA-406-PWD2` | Supervisor Team |
+| **Lab Unit** | **SDCA Annex Test Stall** | `toilet-01` | 1 | `LAB-BENCH-01` | *Diagnostic Hardware Unit* |
 
 ---
 
