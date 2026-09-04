@@ -24,14 +24,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const body = (await request.json()) as ApproveBody;
     const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : null;
-    const supervisorUid =
-      typeof body.supervisorUid === 'string'
-        ? body.supervisorUid.trim()
-        : user.uid;
+    const supervisorUid = user.uid;
     const supervisorName =
-      typeof body.supervisorName === 'string' && body.supervisorName.trim().length > 0
-        ? body.supervisorName.trim()
-        : user.email?.split('@')[0] || 'Supervisor';
+      (typeof user.name === 'string' && user.name.trim()) ||
+      user.email?.split('@')[0] ||
+      'Supervisor';
 
     if (!taskId) {
       return NextResponse.json(

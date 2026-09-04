@@ -76,6 +76,12 @@ export const RATE_LIMITS = {
   // Task creation
   tasks: { maxRequests: 20, windowMs: 60 * 60 * 1000 }, // 20 per hour
 
+  // Alert creation
+  alerts: { maxRequests: 30, windowMs: 60 * 1000 }, // 30 per minute
+
+  // Report generation
+  reports: { maxRequests: 10, windowMs: 60 * 1000 }, // 10 per minute
+
   // General API
   general: { maxRequests: 100, windowMs: 60 * 1000 }, // 100 per minute
 } as const;

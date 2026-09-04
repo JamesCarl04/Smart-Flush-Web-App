@@ -320,9 +320,9 @@ export async function DELETE(
   try {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
-    if (role === 'viewer' || role === null) {
+    if (role !== 'admin' && role !== 'supervisor') {
       return NextResponse.json(
-        { success: false, error: 'Forbidden' },
+        { success: false, error: 'Forbidden: admin or supervisor only' },
         { status: 403 },
       );
     }

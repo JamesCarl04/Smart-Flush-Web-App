@@ -113,10 +113,10 @@ describe('public issue report validation', () => {
     const stallDevice = sanitizePublicDevice('SDCA-FL1-CANTEEN-M-S01', null);
     expect(stallDevice).toEqual({
       id: 'SDCA-FL1-CANTEEN-M-S01',
-      name: 'SDCA Annex 1F Canteen Male Restroom • Stall 1',
+      name: '1F Canteen Male Restroom • Stall 1',
       building: 'SDCA Annex',
       floor: '1F',
-      location: '1F • SDCA Annex 1F Canteen Male Restroom • Stall 1',
+      location: '1F • 1F Canteen Male Restroom • Stall 1',
       stallId: 'SDCA-FL1-CANTEEN-M-S01',
       stallNumber: '1',
       isSmartHardware: false,
@@ -128,10 +128,10 @@ describe('public issue report validation', () => {
     const commonDevice = sanitizePublicDevice('SDCA-FL2-M1', null);
     expect(commonDevice).toEqual({
       id: 'SDCA-FL2-M1',
-      name: 'SDCA Annex 2F Male Restroom 1 • Common Area',
+      name: '2F Left Wing Male Restroom • Common Area',
       building: 'SDCA Annex',
       floor: '2F',
-      location: '2F • SDCA Annex 2F Male Restroom 1 • Sinks & Entrance',
+      location: '2F • 2F Left Wing Male Restroom • Sinks & Entrance',
       isSmartHardware: false,
       isCommonArea: true,
     });

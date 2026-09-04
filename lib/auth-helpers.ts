@@ -7,6 +7,7 @@ const USER_ROLES = [
   'admin',
   'supervisor',
   'maintenance',
+  'technician',
   'viewer',
   'user',
 ] as const;
@@ -149,7 +150,7 @@ export async function requireAdmin(user: DecodedIdToken): Promise<void> {
 
 /**
  * Throws a Response with HTTP 403 if the authenticated user does not have
- * role 'maintenance' in the Firestore users collection.
+ * role 'maintenance', 'technician', 'supervisor', or 'admin' in the Firestore users collection.
  * Must be called AFTER verifyAuthToken().
  */
 export async function requireMaintenance(
@@ -157,9 +158,38 @@ export async function requireMaintenance(
 ): Promise<void> {
   const role = await getUserRole(user);
 
-  if (role !== 'maintenance') {
+  if (
+    role !== 'maintenance' &&
+    role !== 'technician' &&
+    role !== 'supervisor' &&
+    role !== 'admin'
+  ) {
     throw new Response(
-      JSON.stringify({ success: false, error: 'Forbidden: maintenance only' }),
+      JSON.stringify({
+        success: false,
+        error: 'Forbidden: maintenance or supervisor only',
+      }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+}
+
+/**
+ * Throws a Response with HTTP 403 if the authenticated user does not have
+ * role 'supervisor' or 'admin' in the Firestore users collection.
+ * Must be called AFTER verifyAuthToken().
+ */
+export async function requireSupervisorOrAdmin(
+  user: DecodedIdToken,
+): Promise<void> {
+  const role = await getUserRole(user);
+
+  if (role !== 'supervisor' && role !== 'admin') {
+    throw new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Forbidden: supervisor or admin only',
+      }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },
     );
   }

@@ -4,6 +4,11 @@ import { NextResponse } from 'next/server';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import {
+  checkRateLimit,
+  RATE_LIMITS,
+  createRateLimitResponse,
+} from '@/lib/rate-limit';
 import type {
   FlushEventRow,
   MaintenanceTaskRow,
@@ -154,9 +159,12 @@ function averageDurationLabel(values: Array<number | null>): string {
   return formatDuration(Math.round(average));
 }
 
-function escapeCsv(value: string | null | undefined): string {
+export function escapeCsv(value: string | null | undefined): string {
   if (!value) return '';
-  const sanitized = value.replaceAll('"', '""');
+  let sanitized = value.replaceAll('"', '""');
+  if (/^[=+\-@\t\r]/.test(sanitized.replace(/^ +/, ''))) {
+    sanitized = `'${sanitized}`;
+  }
   return /[",\n]/.test(sanitized) ? `"${sanitized}"` : sanitized;
 }
 
@@ -803,6 +811,12 @@ async function saveReportMetadata(
 export async function POST(request: Request): Promise<NextResponse | Response> {
   try {
     const user = await verifyAuthToken(request);
+    const rateLimitKey = `report:${user.uid}`;
+    const rateLimitCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.reports);
+    if (!rateLimitCheck.success) {
+      return createRateLimitResponse(rateLimitCheck.retryAfter || 60);
+    }
+
     const body = (await request.json()) as Partial<ReportBody>;
     const { type, from, to, format } = body;
 

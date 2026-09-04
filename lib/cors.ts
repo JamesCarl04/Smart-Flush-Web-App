@@ -23,7 +23,7 @@ const ALLOWED_ORIGINS = [
  */
 export function addCorsHeaders(
   response: Response | NextResponse,
-  request: any, // NextRequest doesn't export, use any
+  request: Request,
 ): NextResponse {
   const nextResponse =
     response instanceof NextResponse
@@ -47,7 +47,7 @@ export function addCorsHeaders(
  * @param request - NextRequest
  * @returns Preflight response
  */
-export function handleCorsPreFlight(request: any): NextResponse {
+export function handleCorsPreFlight(request: Request): NextResponse {
   const origin = request.headers?.get('origin');
 
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -98,11 +98,11 @@ export function addSecurityHeaders(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Customize based on your needs
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
+      "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.pwnedpasswords.com", // HIBP for password check
+      "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://api.pwnedpasswords.com https://*.firebaseio.com wss://*.firebaseio.com",
       "frame-ancestors 'self'",
       "base-uri 'self'",
       "form-action 'self'",

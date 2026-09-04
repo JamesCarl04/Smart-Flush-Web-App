@@ -1,7 +1,11 @@
 // app/api/devices/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import {
+  verifyAuthToken,
+  requireAdmin,
+  requireSupervisorOrAdmin,
+} from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
 interface RouteParams {
@@ -60,6 +64,7 @@ export async function PUT(
 ): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
     const { id } = await params;
 
     const body = (await request.json()) as UpdateDeviceBody;

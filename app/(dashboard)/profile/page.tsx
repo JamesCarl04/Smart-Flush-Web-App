@@ -15,14 +15,13 @@ import {
   Lock,
   Bell,
   CheckCircle2,
-  Sparkles,
   Wrench,
   KeyRound,
-  Sliders,
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useProfile } from '@/hooks/useProfile';
+import { validatePassword } from '@/lib/password-validator';
 import type { NotificationPrefs } from '@/types';
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
@@ -34,7 +33,7 @@ const accountSchema = z.object({
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    newPassword: z.string().min(12, 'Password must be at least 12 characters'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {
@@ -75,7 +74,7 @@ export default function ProfilePage() {
   } = useProfile();
 
   const [userRole, setUserRole] = useState<string>('Operator');
-  const [roleLoading, setRoleLoading] = useState(true);
+  const [_roleLoading, _setRoleLoading] = useState(true);
 
   // ── Show/hide toggles for password fields ────────────────────────────────
   const [showCurrent, setShowCurrent] = useState(false);
@@ -95,7 +94,7 @@ export default function ProfilePage() {
       if (!user) {
         if (!cancelled) {
           setUserRole('Operator');
-          setRoleLoading(false);
+          _setRoleLoading(false);
         }
         return;
       }
@@ -118,7 +117,7 @@ export default function ProfilePage() {
         console.warn('[ProfilePage] Failed to fetch role:', err);
       } finally {
         if (!cancelled) {
-          setRoleLoading(false);
+          _setRoleLoading(false);
         }
       }
     };
@@ -178,6 +177,16 @@ export default function ProfilePage() {
 
   const onChangePassword = async (data: PasswordFormValues) => {
     try {
+      const validation = await validatePassword(data.newPassword);
+      if (!validation.valid) {
+        setPasswordError('newPassword', {
+          message:
+            validation.errors[0] ||
+            'Password does not meet security requirements',
+        });
+        return;
+      }
+
       await changePassword({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,

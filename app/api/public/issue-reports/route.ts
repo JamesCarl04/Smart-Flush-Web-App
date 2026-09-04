@@ -115,17 +115,13 @@ export function createPublicIssueReportPostHandler(
       const maxRequestBytes =
         dependencies.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
       enforceDeclaredRequestSize(request.headers, maxRequestBytes);
-      const clientIp =
-        extractClientIp(request.headers, dependencies.trustedIpHeader) ||
-        '127.0.0.1';
-      const effectiveSecret =
-        dependencies.secret ||
-        process.env.PUBLIC_REPORT_FINGERPRINT_SECRET ||
-        process.env.FIREBASE_ADMIN_PROJECT_ID ||
-        'klir-public-report-default-salt';
+      const clientIp = extractClientIp(
+        request.headers,
+        dependencies.trustedIpHeader,
+      );
       const fingerprint = createPublicReportFingerprint(
         clientIp,
-        effectiveSecret,
+        dependencies.secret,
       );
       const form = await request.formData();
       enforceParsedRequestSize(form, maxRequestBytes);

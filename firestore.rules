@@ -100,8 +100,7 @@ service cloud.firestore {
       allow create: if isSupervisor() || (
         isAuthenticated() &&
         request.auth.uid == userId &&
-        request.resource.data.get('role', 'maintenance') != 'admin' &&
-        request.resource.data.get('role', 'maintenance') != 'supervisor'
+        request.resource.data.get('role', 'user') in ['user', 'viewer']
       );
       allow update: if isSupervisor() || (
         isAuthenticated() &&
@@ -119,6 +118,32 @@ service cloud.firestore {
     match /sensors/{sensorId} {
       allow read: if isAuthenticated();
       allow write: if isSupervisor();
+    }
+
+    // Top-level collections
+    match /alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow write: if isSupervisor();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow write: if isSupervisor();
+    }
+
+    match /maintenanceNotes/{noteId} {
+      allow read: if isAuthenticated();
+      allow write: if isMaintenance();
+    }
+
+    match /automationRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isSupervisor();
+    }
+
+    match /sensorReadings/{readingId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
 
     // Anonymous issue-report intake is server-only. Administrator moderation

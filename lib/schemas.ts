@@ -59,20 +59,40 @@ export const deviceCreateSchema = z.object({
   deviceId: deviceIdSchema,
 });
 
-export const sensorConfigSchema = z.object({
-  pumpDuration: z
-    .number()
-    .min(1, 'Pump duration must be at least 1 second')
-    .max(30, 'Pump duration must not exceed 30 seconds'),
-  uvDuration: z
-    .number()
-    .min(10, 'UV duration must be at least 10 seconds')
-    .max(120, 'UV duration must not exceed 120 seconds'),
-  threshold: z
-    .number()
-    .min(10, 'Occupancy threshold must be at least 10%')
-    .max(100, 'Occupancy threshold must not exceed 100%'),
-});
+export const sensorConfigSchema = z
+  .object({
+    pumpDuration: z
+      .number()
+      .min(1, 'Pump duration must be at least 1 second')
+      .max(30, 'Pump duration must not exceed 30 seconds')
+      .optional(),
+    uvDuration: z
+      .number()
+      .min(10, 'UV duration must be at least 10 seconds')
+      .max(120, 'UV duration must not exceed 120 seconds')
+      .optional(),
+    threshold: z
+      .number()
+      .min(10, 'Occupancy threshold must be at least 10%')
+      .max(100, 'Occupancy threshold must not exceed 100%')
+      .optional(),
+    personGoneConfirm: z
+      .number()
+      .min(1, 'Departure confirm duration must be at least 1 second')
+      .max(10, 'Departure confirm duration must not exceed 10 seconds')
+      .optional(),
+  })
+  .refine(
+    (data) =>
+      data.pumpDuration !== undefined ||
+      data.uvDuration !== undefined ||
+      data.threshold !== undefined ||
+      data.personGoneConfirm !== undefined,
+    {
+      message:
+        'At least one config field is required (pumpDuration, uvDuration, threshold, personGoneConfirm)',
+    },
+  );
 
 // Task schemas
 export const taskCreateSchema = z.object({

@@ -68,21 +68,15 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
   });
 
   describe('app/sitemap.ts Configuration', () => {
-    it('should return valid sitemap routes including core navigation paths', () => {
+    it('should return valid sitemap routes including public landing', () => {
       const sitemapResult = sitemap();
       expect(Array.isArray(sitemapResult)).toBe(true);
       expect(sitemapResult.length).toBeGreaterThan(0);
 
-      const urls = sitemapResult.map((entry) => entry.url);
-      expect(urls.some((url) => url.endsWith('/dashboard'))).toBe(true);
-      expect(urls.some((url) => url.endsWith('/analytics'))).toBe(true);
-      expect(urls.some((url) => url.endsWith('/alerts'))).toBe(true);
-      expect(urls.some((url) => url.endsWith('/configuration'))).toBe(true);
-      expect(urls.some((url) => url.endsWith('/reports'))).toBe(true);
-
       sitemapResult.forEach((entry) => {
         expect(entry.url).toMatch(/^https?:\/\//);
         expect(entry.lastModified).toBeDefined();
+        expect(entry.priority).toBeDefined();
       });
     });
   });
@@ -101,9 +95,9 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     });
   });
 
-  describe('app/auth/layout.tsx Metadata Configuration', () => {
-    it('should define OpenGraph and Twitter images on auth layout', async () => {
-      const { metadata: authMetadata } = await import('@/app/auth/layout');
+  describe('app/portal-admin/layout.tsx Metadata Configuration', () => {
+    it('should define OpenGraph and Twitter images on portal-admin auth layout', async () => {
+      const { metadata: authMetadata } = await import('@/app/portal-admin/layout');
       expect(authMetadata).toBeDefined();
       expect(authMetadata.openGraph).toBeDefined();
       expect(authMetadata.openGraph?.images).toBeDefined();

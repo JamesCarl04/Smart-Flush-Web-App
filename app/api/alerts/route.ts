@@ -1,8 +1,13 @@
 // app/api/alerts/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireNotViewer } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
+import {
+  checkRateLimit,
+  RATE_LIMITS,
+  createRateLimitResponse,
+} from '@/lib/rate-limit';
 
 interface CreateAlertBody {
   type: string;
@@ -97,7 +102,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 // POST /api/alerts — create alert
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireNotViewer(user);
+
+    const rateLimitKey = `alert:${user.uid}`;
+    const rateLimitCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.alerts);
+    if (!rateLimitCheck.success) {
+      return createRateLimitResponse(rateLimitCheck.retryAfter || 60);
+    }
 
     const body = (await request.json()) as Partial<CreateAlertBody>;
     const { type, message, severity, deviceId } = body;

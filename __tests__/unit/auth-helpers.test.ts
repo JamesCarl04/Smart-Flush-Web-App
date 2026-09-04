@@ -1,7 +1,15 @@
-// __tests__/unit/auth-helpers.test.ts
-import { verifyAuthToken, getUserRole, getUserProfile } from '@/lib/auth-helpers'
-import { adminAuth, adminDb } from '@/lib/firebase-admin'
-import { createMockAuthToken, createMockRequest } from '../helpers/test-utils'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  verifyAuthToken,
+  getUserRole,
+  getUserProfile,
+  requireAdmin,
+  requireMaintenance,
+  requireSupervisorOrAdmin,
+  requireNotViewer,
+} from '@/lib/auth-helpers';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { createMockAuthToken, createMockRequest } from '@/__tests__/helpers/test-utils';
 
 // Mock Firebase modules
 jest.mock('@/lib/firebase-admin', () => ({
@@ -216,4 +224,94 @@ describe('auth-helpers', () => {
       expect(profile.displayName).toBe('Firebase User')
     })
   })
+
+  describe('Role guards', () => {
+    function mockRole(role: string | null) {
+      const mockCollectionRef = {
+        doc: jest.fn(() => ({
+          get: jest.fn().mockResolvedValue({
+            exists: role !== null,
+            data: jest.fn(() => (role ? { role } : {})),
+          }),
+        })),
+      };
+      (adminDb.collection as jest.Mock).mockReturnValue(mockCollectionRef);
+    }
+
+    describe('requireAdmin', () => {
+      it('should allow admin role', async () => {
+        mockRole('admin');
+        await expect(requireAdmin({ uid: 'admin-1' } as any)).resolves.toBeUndefined();
+      });
+
+      it('should throw 403 for non-admin role', async () => {
+        mockRole('maintenance');
+        await expect(requireAdmin({ uid: 'maint-1' } as any)).rejects.toBeInstanceOf(Response);
+      });
+    });
+
+    describe('requireMaintenance', () => {
+      it.each(['maintenance', 'technician', 'supervisor', 'admin'])(
+        'should allow %s role',
+        async (role) => {
+          mockRole(role);
+          await expect(requireMaintenance({ uid: 'u-1' } as any)).resolves.toBeUndefined();
+        },
+      );
+
+      it.each(['user', 'viewer', null])(
+        'should reject %s with 403',
+        async (role) => {
+          mockRole(role);
+          try {
+            await requireMaintenance({ uid: 'u-2' } as any);
+            fail('Should have thrown');
+          } catch (error: any) {
+            expect(error.status).toBe(403);
+          }
+        },
+      );
+    });
+
+    describe('requireSupervisorOrAdmin', () => {
+      it.each(['supervisor', 'admin'])('should allow %s role', async (role) => {
+        mockRole(role);
+        await expect(requireSupervisorOrAdmin({ uid: 'u-1' } as any)).resolves.toBeUndefined();
+      });
+
+      it.each(['maintenance', 'technician', 'user', 'viewer', null])(
+        'should reject %s with 403',
+        async (role) => {
+          mockRole(role);
+          try {
+            await requireSupervisorOrAdmin({ uid: 'u-2' } as any);
+            fail('Should have thrown');
+          } catch (error: any) {
+            expect(error.status).toBe(403);
+          }
+        },
+      );
+    });
+
+    describe('requireNotViewer', () => {
+      it('should reject viewer role with 403', async () => {
+        mockRole('viewer');
+        try {
+          await requireNotViewer({ uid: 'v-1' } as any);
+          fail('Should have thrown');
+        } catch (error: any) {
+          expect(error.status).toBe(403);
+        }
+      });
+
+      it.each(['admin', 'supervisor', 'maintenance', 'technician', 'user'])(
+        'should allow %s role',
+        async (role) => {
+          mockRole(role);
+          await expect(requireNotViewer({ uid: 'u-1' } as any)).resolves.toBeUndefined();
+        },
+      );
+    });
+  });
 })
+

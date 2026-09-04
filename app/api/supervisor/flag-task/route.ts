@@ -29,14 +29,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       typeof body.reason === 'string'
         ? body.reason.trim()
         : 'Requires supervisor re-inspection';
-    const supervisorUid =
-      typeof body.supervisorUid === 'string'
-        ? body.supervisorUid.trim()
-        : user.uid;
+    const supervisorUid = user.uid;
     const supervisorName =
-      typeof body.supervisorName === 'string' && body.supervisorName.trim().length > 0
-        ? body.supervisorName.trim()
-        : user.email?.split('@')[0] || 'Supervisor';
+      (typeof user.name === 'string' && user.name.trim()) ||
+      user.email?.split('@')[0] ||
+      'Supervisor';
     const flagPhotoUrls = Array.isArray(body.flagPhotoUrls)
       ? body.flagPhotoUrls.filter((url): url is string => typeof url === 'string')
       : [];

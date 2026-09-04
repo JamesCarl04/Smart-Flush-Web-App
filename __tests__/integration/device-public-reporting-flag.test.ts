@@ -5,6 +5,7 @@ jest.mock('@/lib/firebase-admin', () => ({
 jest.mock('@/lib/auth-helpers', () => ({
   verifyAuthToken: jest.fn().mockResolvedValue({ uid: 'admin-1' }),
   requireAdmin: jest.fn().mockResolvedValue(undefined),
+  requireSupervisorOrAdmin: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('firebase-admin/firestore', () => ({

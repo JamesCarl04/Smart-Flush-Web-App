@@ -177,7 +177,7 @@ describe('anonymous public issue report form', () => {
 
     render(<PublicIssueReportForm device={smartStallDevice} />);
 
-    expect(screen.getByText('Smart IoT Stall')).toBeInTheDocument();
+    expect(screen.getByText('Automated Restroom Stall')).toBeInTheDocument();
     expect(screen.getByText('UV light failure')).toBeInTheDocument();
   });
 

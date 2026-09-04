@@ -6,13 +6,34 @@
  * - Does NOT require complexity rules (humans make worse passwords with complexity rules)
  */
 
-import crypto from 'crypto';
-
 const MINIMUM_PASSWORD_LENGTH = 12;
 
 interface PasswordValidationResult {
   valid: boolean;
   errors: string[];
+}
+
+async function computeSha1(data: string): Promise<string> {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle) {
+    const msgUint8 = new TextEncoder().encode(data);
+    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase();
+  }
+
+  try {
+    const nodeCrypto = await import('crypto');
+    return nodeCrypto
+      .createHash('sha1')
+      .update(data)
+      .digest('hex')
+      .toUpperCase();
+  } catch {
+    throw new Error('No crypto implementation available');
+  }
 }
 
 /**
@@ -64,11 +85,7 @@ export async function validatePassword(
 async function isPasswordCompromised(password: string): Promise<boolean> {
   try {
     // Hash password with SHA-1
-    const sha1Hash = crypto
-      .createHash('sha1')
-      .update(password)
-      .digest('hex')
-      .toUpperCase();
+    const sha1Hash = await computeSha1(password);
 
     // Get prefix and suffix
     const prefix = sha1Hash.slice(0, 5);

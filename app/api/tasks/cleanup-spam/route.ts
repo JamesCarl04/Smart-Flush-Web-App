@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 
@@ -29,15 +29,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     }
 
-    const batch = adminDb.batch();
+    const BATCH_SIZE = 400;
+    const docs = snapshot.docs;
     let count = 0;
 
-    snapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      count++;
-    });
-
-    await batch.commit();
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const chunk = docs.slice(i, i + BATCH_SIZE);
+      const batch = adminDb.batch();
+      for (const doc of chunk) {
+        batch.delete(doc.ref);
+        count++;
+      }
+      await batch.commit();
+    }
 
     return NextResponse.json({
       success: true,
