@@ -108,6 +108,21 @@ function requiredString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+export function stripFloorPrefix(text: string): string {
+  return text
+    .replace(/^(?:[0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))\b[•·:\s-]*/i, '')
+    .trim();
+}
+
+export function sanitizeLocationString(location: string): string {
+  if (!location) return '';
+  let res = location.trim();
+  while (/(\b[0-9]+[fF])\s*[·•]\s*\1\b/i.test(res)) {
+    res = res.replace(/(\b[0-9]+[fF])\s*[·•]\s*\1\b[•·:\s-]*/gi, '$1 · ');
+  }
+  return res.replace(/[•·:\s-]+$/, '').trim();
+}
+
 export function sanitizePublicDevice(
   id: string,
   data: Record<string, unknown> | null | undefined,
@@ -135,7 +150,7 @@ export function sanitizePublicDevice(
       name,
       building: requiredString(data.building) ?? '',
       floor: requiredString(data.floor) ?? '',
-      location: requiredString(data.location) ?? '',
+      location: sanitizeLocationString(requiredString(data.location) ?? ''),
     };
 
     const stallId = requiredString(data.stallId);
@@ -151,12 +166,13 @@ export function sanitizePublicDevice(
   // Fallback to SDCA Annex Restroom / Stall Inventory
   const stall = getStallById(id);
   if (stall) {
+    const cleanRoomName = stripFloorPrefix(stall.roomName);
     return {
       id: stall.id,
       name: stall.fullLabel,
       building: stall.building,
       floor: stall.floor,
-      location: `${stall.floor} • ${stall.roomName} • ${stall.stallLabel}`,
+      location: `${stall.floor} · ${cleanRoomName} · ${stall.stallLabel}`,
       stallId: stall.id,
       stallNumber: String(stall.stallNumber),
       isSmartHardware: stall.id === 'toilet-01',
@@ -168,12 +184,13 @@ export function sanitizePublicDevice(
     (r) => r.id === id || r.aliases?.includes(id),
   );
   if (room) {
+    const cleanRoomName = stripFloorPrefix(room.roomName);
     return {
       id: room.id,
       name: `${room.roomName} • Common Area`,
       building: room.building,
       floor: room.floor,
-      location: `${room.floor} • ${room.roomName} • Sinks & Entrance`,
+      location: `${room.floor} · ${cleanRoomName} · Common Area`,
       isSmartHardware: false,
       isCommonArea: true,
     };

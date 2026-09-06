@@ -6,6 +6,8 @@ import {
   extractClientIp,
   isIssueReportImageMime,
   sanitizePublicDevice,
+  stripFloorPrefix,
+  sanitizeLocationString,
   validatePhotoCaptureMetadata,
   validateIssueReportInput,
   validateIssueReportPhoto,
@@ -116,8 +118,34 @@ describe('public issue report validation', () => {
       name: '1F Canteen Male Restroom • Stall 1',
       building: 'SDCA Annex',
       floor: '1F',
-      location: '1F • 1F Canteen Male Restroom • Stall 1',
+      location: '1F · Canteen Male Restroom · Stall 1',
       stallId: 'SDCA-FL1-CANTEEN-M-S01',
+      stallNumber: '1',
+      isSmartHardware: false,
+      isCommonArea: false,
+    });
+
+    const floor4Stall = sanitizePublicDevice('SDCA-FL4-F2-S05', null);
+    expect(floor4Stall).toEqual({
+      id: 'SDCA-FL4-F2-S05',
+      name: '4F Right Wing Female Restroom • Stall 5',
+      building: 'SDCA Annex',
+      floor: '4F',
+      location: '4F · Right Wing Female Restroom · Stall 5',
+      stallId: 'SDCA-FL4-F2-S05',
+      stallNumber: '5',
+      isSmartHardware: false,
+      isCommonArea: false,
+    });
+
+    const pwdStall = sanitizePublicDevice('SDCA-FL2-PWD1-S01', null);
+    expect(pwdStall).toEqual({
+      id: 'SDCA-FL2-PWD1-S01',
+      name: '2F Left Wing PWD Restroom • Single Stall',
+      building: 'SDCA Annex',
+      floor: '2F',
+      location: '2F · Left Wing PWD Restroom · Single Stall',
+      stallId: 'SDCA-FL2-PWD1-S01',
       stallNumber: '1',
       isSmartHardware: false,
       isCommonArea: false,
@@ -131,10 +159,55 @@ describe('public issue report validation', () => {
       name: '2F Left Wing Male Restroom • Common Area',
       building: 'SDCA Annex',
       floor: '2F',
-      location: '2F • 2F Left Wing Male Restroom • Sinks & Entrance',
+      location: '2F · Left Wing Male Restroom · Common Area',
       isSmartHardware: false,
       isCommonArea: true,
     });
+  });
+
+  it('sanitizes double floor prefix from legacy database location records', () => {
+    const legacyDevice = sanitizePublicDevice('legacy-01', {
+      name: '4F Right Wing Female Restroom • Stall 5',
+      building: 'SDCA Annex',
+      floor: '4F',
+      location: '4F • 4F Right Wing Female Restroom • Stall 5',
+    });
+    expect(legacyDevice.location).toBe('4F · Right Wing Female Restroom • Stall 5');
+  });
+
+  it('sanitizeLocationString handles edge cases cleanly without leaving dangling punctuation', () => {
+    // Repeated floor with bullet between second floor and name
+    expect(
+      sanitizeLocationString('4F • 4F • Right Wing Female Restroom • Stall 5'),
+    ).toBe('4F · Right Wing Female Restroom • Stall 5');
+
+    // Triple floor repetition
+    expect(
+      sanitizeLocationString('4F · 4F • 4F Right Wing Female Restroom'),
+    ).toBe('4F · Right Wing Female Restroom');
+
+    // Preceded by building name
+    expect(
+      sanitizeLocationString('SDCA Annex · 4F • 4F Right Wing Female Restroom'),
+    ).toBe('SDCA Annex · 4F · Right Wing Female Restroom');
+
+    // Just floor codes without trailing text
+    expect(sanitizeLocationString('4F • 4F')).toBe('4F');
+    expect(sanitizeLocationString('4F · 4F · 4F')).toBe('4F');
+
+    // Unaffected strings
+    expect(sanitizeLocationString('North wing')).toBe('North wing');
+    expect(sanitizeLocationString('')).toBe('');
+  });
+
+  it('stripFloorPrefix removes floor codes across formats and punctuation', () => {
+    expect(stripFloorPrefix('4F Right Wing Female Restroom')).toBe('Right Wing Female Restroom');
+    expect(stripFloorPrefix('4F • Right Wing Female Restroom')).toBe('Right Wing Female Restroom');
+    expect(stripFloorPrefix('4F · Right Wing Female Restroom')).toBe('Right Wing Female Restroom');
+    expect(stripFloorPrefix('4F - Right Wing Female Restroom')).toBe('Right Wing Female Restroom');
+    expect(stripFloorPrefix('4th Floor · Right Wing Female Restroom')).toBe('Right Wing Female Restroom');
+    expect(stripFloorPrefix('1st Floor Canteen Male Restroom')).toBe('Canteen Male Restroom');
+    expect(stripFloorPrefix('Faculty Female Restroom')).toBe('Faculty Female Restroom');
   });
 
   it('extracts the configured platform IP and fingerprints it without returning the raw value', () => {

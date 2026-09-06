@@ -52,6 +52,237 @@ interface ErrorResponse {
   details?: string;
 }
 
+function cleanRoomTitleCandidate(title: string, building?: string, floor?: string): string {
+  let res = (title || '').trim();
+  if (!res) return '';
+
+  // Strip building if present at start
+  if (building && res.toLowerCase().startsWith(building.toLowerCase())) {
+    res = res.slice(building.length).trim();
+  }
+  res = res.replace(/^[•·:\s-]+/, '').trim();
+
+  // Strip floor if present at start
+  if (floor && res.toLowerCase().startsWith(floor.toLowerCase())) {
+    res = res.slice(floor.length).trim();
+  }
+  res = res.replace(/^[•·:\s-]+/, '').trim();
+
+  // Strip standard floor codes like "4F", "4th Floor", "1F", "1st Floor"
+  res = res
+    .replace(/^(?:[0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))\b[•·:\s-]*/i, '')
+    .trim();
+  res = res.replace(/^[•·:\s-]+/, '').trim();
+
+  // Strip stall / common area / fixture suffixes (e.g. "• Stall 5", "- Stall 5", "(Stall 5)", "• Common Area", "• Sinks & Entrance")
+  res = res
+    .replace(
+      /(?:[•·:\s-]+\s*|\s*\()(?:Stall\s*#?\s*\d+|Single Stall|Common Area|Sinks\s*&?\s*Entrance)\b\)?.*$/i,
+      '',
+    )
+    .trim();
+
+  // Clean trailing punctuation
+  res = res.replace(/[•·:\s-]+$/, '').trim();
+
+  return res;
+}
+
+export function getDisplayRoomTitle(device: PublicReportingDevice): string {
+  let title = cleanRoomTitleCandidate(device.name, device.building, device.floor);
+
+  // If title is empty, or only equal to device ID, or only equal to stall/common area label, try extracting from location
+  const isGenericOrEmpty =
+    !title ||
+    title.toLowerCase() === device.id.toLowerCase() ||
+    /^(?:Stall\s*#?\s*\d+|Single Stall|Common Area)$/i.test(title);
+
+  if (isGenericOrEmpty && device.location) {
+    const segments = device.location
+      .split(/[·•]/)
+      .map((s) => cleanRoomTitleCandidate(s, device.building, device.floor))
+      .filter((s) => {
+        if (!s) return false;
+        if (device.building && s.toLowerCase() === device.building.toLowerCase()) return false;
+        if (device.floor && s.toLowerCase() === device.floor.toLowerCase()) return false;
+        if (/^(?:[0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))$/i.test(s)) return false;
+        if (/^(?:Stall\s*#?\s*\d+|Single Stall|Common Area)$/i.test(s)) return false;
+        return true;
+      });
+
+    if (segments.length > 0) {
+      title = segments[0];
+    }
+  }
+
+  return title || device.name || 'Restroom';
+}
+
+export function getDisplayBreadcrumb(device: PublicReportingDevice): string {
+  let building = (device.building || '').trim();
+  let floor = (device.floor || '').trim();
+
+  // If floor is empty, attempt to infer from location or name
+  if (!floor) {
+    const floorMatch =
+      (device.location || '').match(/\b([0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))\b/i) ||
+      (device.name || '').match(/\b([0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))\b/i);
+    if (floorMatch) {
+      floor = floorMatch[1].toUpperCase();
+    }
+  }
+
+  // If building is empty, check if location starts with known building
+  if (!building && device.location) {
+    const segs = device.location.split(/[·•]/).map((s) => s.trim()).filter(Boolean);
+    if (segs.length >= 2 && !/^(?:[0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))$/i.test(segs[0])) {
+      building = segs[0];
+    }
+  }
+
+  // Avoid repetitive building and floor
+  if (building && floor) {
+    if (building.toLowerCase() === floor.toLowerCase()) {
+      return building;
+    }
+    if (building.toLowerCase().endsWith(floor.toLowerCase())) {
+      return building;
+    }
+    return `${building} · ${floor}`;
+  }
+
+  if (building) return building;
+  if (floor) return floor;
+
+  return device.location || device.name || '';
+}
+
+export function getDisplayStallBadge(device: PublicReportingDevice): string | null {
+  if (
+    device.isCommonArea ||
+    /\bcommon\s*area\b/i.test(device.name) ||
+    /\bcommon\s*area\b/i.test(device.location) ||
+    /\bsinks\s*&?\s*entrance\b/i.test(device.name) ||
+    /\bsinks\s*&?\s*entrance\b/i.test(device.location)
+  ) {
+    return 'Common Area';
+  }
+
+  if (device.isSmartHardware) {
+    return 'Automated Restroom Stall';
+  }
+
+  const isSingleStall =
+    /\bsingle\s*stall\b/i.test(device.name) ||
+    /\bsingle\s*stall\b/i.test(device.location) ||
+    /\bpwd\b/i.test(device.name) ||
+    /\bpwd\b/i.test(device.id) ||
+    (device.stallId ? /\bpwd\b/i.test(device.stallId) : false);
+
+  if (isSingleStall) {
+    return 'Single Stall';
+  }
+
+  if (device.stallNumber) {
+    const cleanNum = String(device.stallNumber).replace(/^stall\s*#?\s*/i, '').trim();
+    if (cleanNum) {
+      return `Stall ${cleanNum}`;
+    }
+  }
+
+  const stallMatch =
+    device.name.match(/\bstall\s*#?\s*(\d+)\b/i) ||
+    device.location.match(/\bstall\s*#?\s*(\d+)\b/i);
+  if (stallMatch) {
+    return `Stall ${stallMatch[1]}`;
+  }
+
+  const idStallMatch = device.id.match(/-S0*(\d+)$/i);
+  if (idStallMatch) {
+    return `Stall ${idStallMatch[1]}`;
+  }
+
+  return null;
+}
+
+export function getDisplayReceiptLocation(device: PublicReportingDevice): string {
+  const parts: string[] = [];
+
+  const addUniquePart = (rawPart: string | null | undefined) => {
+    if (!rawPart) return;
+    let trimmed = rawPart.trim();
+    if (!trimmed) return;
+
+    trimmed = trimmed.replace(/^[•·:\s-]+/, '').replace(/[•·:\s-]+$/, '').trim();
+    if (!trimmed) return;
+
+    if (device.building && trimmed.toLowerCase().startsWith(device.building.toLowerCase())) {
+      trimmed = trimmed.slice(device.building.length).trim();
+      trimmed = trimmed.replace(/^[•·:\s-]+/, '').trim();
+    }
+    if (device.floor && trimmed.toLowerCase().startsWith(device.floor.toLowerCase())) {
+      trimmed = trimmed.slice(device.floor.length).trim();
+      trimmed = trimmed.replace(/^[•·:\s-]+/, '').trim();
+    }
+    trimmed = trimmed
+      .replace(/^(?:[0-9]+[fF]|[0-9]+(?:st|nd|rd|th)\s+(?:floor|fl))\b[•·:\s-]*/i, '')
+      .trim();
+    trimmed = trimmed.replace(/^[•·:\s-]+/, '').replace(/[•·:\s-]+$/, '').trim();
+
+    if (!trimmed) return;
+
+    const lower = trimmed.toLowerCase();
+    const alreadyExists = parts.some(
+      (p) => p.toLowerCase() === lower || p.toLowerCase().endsWith(lower),
+    );
+    if (!alreadyExists) {
+      parts.push(trimmed);
+    }
+  };
+
+  if (device.building && device.building.trim()) {
+    parts.push(device.building.trim());
+  }
+
+  if (device.floor && device.floor.trim()) {
+    const fl = device.floor.trim();
+    if (!parts.some((p) => p.toLowerCase() === fl.toLowerCase() || p.toLowerCase().endsWith(fl.toLowerCase()))) {
+      parts.push(fl);
+    }
+  }
+
+  const roomTitle = getDisplayRoomTitle(device);
+  if (roomTitle) {
+    addUniquePart(roomTitle);
+  }
+
+  const badge = getDisplayStallBadge(device);
+
+  const locationSegments = (device.location || '')
+    .split(/[·•]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const segment of locationSegments) {
+    const cleanSeg = segment.replace(/^Sinks\s*&?\s*Entrance$/i, 'Common Area').trim();
+    if (badge && cleanSeg.toLowerCase() === badge.toLowerCase()) {
+      continue;
+    }
+    addUniquePart(cleanSeg);
+  }
+
+  if (badge) {
+    addUniquePart(badge);
+  }
+
+  if (parts.length === 0) {
+    return device.name || '';
+  }
+
+  return parts.join(' · ');
+}
+
+
 export function PublicIssueReportForm({
   device,
   hasPendingReport = false,
@@ -62,7 +293,7 @@ export function PublicIssueReportForm({
   const [startedAt] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [captureStatus, setCaptureStatus] = useState<PhotoCaptureStatus | 'pending'>('pending');
+  const [_captureStatus, setCaptureStatus] = useState<PhotoCaptureStatus | 'pending'>('pending');
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoCapturedAt, setPhotoCapturedAt] = useState<number | null>(null);
   const [receipt, setReceipt] = useState<(SuccessResponse['data'] & { previewUrl: string | null }) | null>(null);
@@ -136,11 +367,18 @@ export function PublicIssueReportForm({
     }
   }
 
-  const categoryOptions = device.isCommonArea
+  const badge = getDisplayStallBadge(device);
+  const isCommonArea = device.isCommonArea || badge === 'Common Area';
+  const isSmartHardware = device.isSmartHardware || badge === 'Automated Restroom Stall';
+  const roomTitle = getDisplayRoomTitle(device);
+  const breadcrumb = getDisplayBreadcrumb(device);
+  const receiptLocation = getDisplayReceiptLocation(device);
+
+  const categoryOptions = isCommonArea
     ? COMMON_AREA_CATEGORY_OPTIONS
-    : device.isSmartHardware
+    : isSmartHardware
       ? [...STALL_CATEGORY_OPTIONS, ...SMART_STALL_EXTRA_OPTIONS]
-      : device.stallNumber
+      : device.stallNumber || badge
         ? STALL_CATEGORY_OPTIONS
         : DEFAULT_FALLBACK_OPTIONS;
 
@@ -174,8 +412,8 @@ export function PublicIssueReportForm({
           <dl className="mt-3 space-y-1.5 text-left text-xs border-t border-slate-100 dark:border-slate-800 pt-2.5">
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Location</dt>
-              <dd className="text-right font-medium truncate">
-                {[device.building, device.floor, device.location].filter(Boolean).join(' · ') || device.name}
+              <dd className="text-right font-medium truncate" title={receiptLocation}>
+                {receiptLocation}
               </dd>
             </div>
             {receipt.previewUrl ? (
@@ -203,24 +441,25 @@ export function PublicIssueReportForm({
             <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
               Klir<span className="text-[#B5121B]">.</span>
             </span>
-            {device.isCommonArea ? (
-              <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Common Area
-              </span>
-            ) : device.stallNumber ? (
-              <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-xs font-semibold text-[#B5121B] dark:text-red-400 border border-red-200 dark:border-red-900/40">
-                {device.isSmartHardware ? 'Automated Restroom Stall' : `Stall ${device.stallNumber}`}
+            {badge ? (
+              <span
+                className={
+                  isCommonArea
+                    ? 'inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300'
+                    : 'inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-xs font-semibold text-[#B5121B] dark:text-red-400 border border-red-200 dark:border-red-900/40'
+                }
+              >
+                {badge}
               </span>
             ) : null}
+
           </div>
           <div className="mt-1.5 min-w-0">
             <h1 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-              {device.name}
+              {roomTitle}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {[device.building, device.floor, device.location]
-                .filter(Boolean)
-                .join(' · ')}
+              {breadcrumb}
             </p>
           </div>
         </header>
