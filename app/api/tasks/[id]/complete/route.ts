@@ -61,9 +61,7 @@ export async function POST(
         [`completedBy.${user.uid}`]: now,
         ...(allCompleted
           ? { status: 'completed', completedAt: now, acknowledgedAt: acknowledgedBy[user.uid] }
-          : allAcknowledged
-            ? { status: 'acknowledged', acknowledgedAt: acknowledgedBy[user.uid], completedAt: null }
-            : { status: 'pending', acknowledgedAt: null, completedAt: null }),
+          : { status: 'acknowledged', acknowledgedAt: acknowledgedBy[user.uid], completedAt: null }),
       });
       return 'updated' as const;
     });

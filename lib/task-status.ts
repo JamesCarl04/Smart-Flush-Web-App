@@ -57,23 +57,6 @@ export function withDashboardTaskStatus(
     };
   }
 
-  const allAcknowledged = userIds.every(
-    (userId) => task.acknowledgedBy[userId],
-  );
-  if (allAcknowledged) {
-    return {
-      ...task,
-      status: 'completed',
-      acknowledgedAt:
-        task.acknowledgedAt ??
-        latestTimestamp(task.acknowledgedBy, userIds),
-      completedAt:
-        task.completedAt ??
-        latestTimestamp(task.completedBy, userIds) ??
-        latestTimestamp(task.acknowledgedBy, userIds),
-    };
-  }
-
   const acknowledgedAt = latestTimestamp(task.acknowledgedBy, userIds);
   if (acknowledgedAt !== null) {
     return {
