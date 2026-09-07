@@ -39,7 +39,12 @@ function readStringField(
 function buildPayload(task: TaskDoc): TaskNotificationPayload {
   return {
     notification: {
-      title: task.isBroadcast ? 'Maintenance Task Available' : 'Maintenance Task Assigned',
+      title:
+        typeof (task as any).title === 'string' && (task as any).title.trim()
+          ? (task as any).title.trim()
+          : task.isBroadcast
+            ? 'Maintenance Task Available'
+            : 'Maintenance Task Assigned',
       body: task.message,
     },
     data: {

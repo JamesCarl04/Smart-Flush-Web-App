@@ -7,8 +7,10 @@ import { syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
 interface ReassignBody {
   taskId?: unknown;
   newAssigneeUid?: unknown;
+  newAssigneeUids?: unknown;
   reason?: unknown;
   supervisorUid?: unknown;
+  supervisorName?: unknown;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -25,20 +27,30 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const body = (await request.json()) as ReassignBody;
     const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : null;
-    const newAssigneeUid =
-      typeof body.newAssigneeUid === 'string'
-        ? body.newAssigneeUid.trim()
-        : null;
+    let targetUids: string[] = [];
+    if (Array.isArray(body.newAssigneeUids)) {
+      targetUids = body.newAssigneeUids
+        .filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+        .map((uid) => uid.trim());
+    } else if (typeof body.newAssigneeUid === 'string' && body.newAssigneeUid.trim()) {
+      targetUids = [body.newAssigneeUid.trim()];
+    }
+
+    const primaryAssigneeUid = targetUids[0] ?? null;
     const reason =
       typeof body.reason === 'string' ? body.reason.trim() : 'Manual reassignment';
     const supervisorUid =
       typeof body.supervisorUid === 'string'
         ? body.supervisorUid.trim()
         : user.uid;
+    const supervisorName =
+      typeof body.supervisorName === 'string' && body.supervisorName.trim()
+        ? body.supervisorName.trim()
+        : (user as any).name || (user as any).displayName || 'Supervisor';
 
-    if (!taskId || !newAssigneeUid) {
+    if (!taskId || targetUids.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'taskId and newAssigneeUid are required' },
+        { success: false, error: 'taskId and newAssigneeUid or newAssigneeUids are required' },
         { status: 400 },
       );
     }
@@ -59,34 +71,52 @@ export async function POST(request: Request): Promise<NextResponse> {
           : []),
       ]);
       const now = Timestamp.now();
+      const releasedUids = Array.from(previousAssigneeUids).filter((uid) => !targetUids.includes(uid));
       await syncTechniciansAfterTaskRelease(
         transaction,
-        Array.from(previousAssigneeUids).filter((uid) => uid !== newAssigneeUid),
+        releasedUids,
         taskId,
         now,
       );
+
+      const existingHistory = Array.isArray(taskData.reassignmentHistory) ? taskData.reassignmentHistory : [];
+      const newHistoryEvent = {
+        reassignedAt: now,
+        reassignedByUid: supervisorUid,
+        reassignedByName: supervisorName,
+        previousAssigneeUids: Array.from(previousAssigneeUids),
+        newAssigneeUids: targetUids,
+        reason,
+      };
+
       transaction.update(taskRef, {
-        assignedTo: newAssigneeUid,
-        assignedToIds: [newAssigneeUid],
+        assignedTo: primaryAssigneeUid,
+        assignedToIds: targetUids,
         status: 'assigned',
         isBroadcast: false,
-        assignmentType: 'individual',
+        assignmentType: targetUids.length > 1 ? 'team' : 'individual',
         assignmentSource: 'supervisor',
         requiresSupervisorAssignment: false,
         autoAssignmentEligibleAt: null,
         reassignReason: reason,
+        reassignedByName: supervisorName,
         supervisorUid,
         acknowledgedAt: null,
         acknowledgedBy: {},
         reassignCount: Number(taskData.reassignCount ?? 0) + 1,
+        reassignmentHistory: [...existingHistory, newHistoryEvent],
         assignedAt: now,
         updatedAt: now,
       });
-      transaction.set(adminDb.collection('users').doc(newAssigneeUid), {
-        currentTaskId: taskId,
-        isAvailable: false,
-        updatedAt: now,
-      }, { merge: true });
+
+      for (const uid of targetUids) {
+        transaction.set(adminDb.collection('users').doc(uid), {
+          currentTaskId: taskId,
+          isAvailable: false,
+          updatedAt: now,
+        }, { merge: true });
+      }
+
       return { kind: 'updated' as const, taskData };
     });
     if (outcome.kind === 'not_found') {
@@ -116,25 +146,28 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const taskData = outcome.taskData;
 
-    // Dispatch FCM notification to the newly assigned technician
+    // Dispatch FCM notification to each newly assigned technician
     try {
       const { sendTaskNotification } = await import('@/lib/fcm');
-      await sendTaskNotification(
-        {
-          id: taskId,
-          deviceId: taskData?.deviceId ?? '',
-          triggerType: taskData?.triggerType ?? 'maintenance',
-          message: taskData?.message ?? 'Task reassigned to you by supervisor',
-          status: 'assigned',
-          assignedTo: newAssigneeUid,
-          assignedToIds: [newAssigneeUid],
-          createdAt: taskData?.createdAt,
-          acknowledgedAt: null,
-          completedAt: null,
-          createdBy: supervisorUid,
-        },
-        newAssigneeUid,
-      );
+      for (const uid of targetUids) {
+        await sendTaskNotification(
+          {
+            id: taskId,
+            deviceId: taskData?.deviceId ?? '',
+            triggerType: taskData?.triggerType ?? 'maintenance',
+            title: '🔄 Task Reassigned to You by Supervisor',
+            message: `Reason: ${reason}`,
+            status: 'assigned',
+            assignedTo: primaryAssigneeUid,
+            assignedToIds: targetUids,
+            createdAt: taskData?.createdAt,
+            acknowledgedAt: null,
+            completedAt: null,
+            createdBy: supervisorUid,
+          } as any,
+          uid,
+        );
+      }
     } catch (err) {
       console.warn('[ReassignTask] FCM notification warning:', err);
     }

@@ -51,6 +51,8 @@ export async function POST(
       const completedBy = { ...(task.completedBy ?? {}), [user.uid]: now };
       const allAcknowledged = requiredUserIds.every((uid) => acknowledgedBy[uid]);
       const allCompleted = requiredUserIds.every((uid) => completedBy[uid]);
+      // Immediately release submitting technician's availability upon submission
+      await syncTechniciansAfterTaskRelease(transaction, [user.uid], id, now);
       if (allCompleted) {
         await syncTechniciansAfterTaskRelease(transaction, requiredUserIds, id, now);
       }
