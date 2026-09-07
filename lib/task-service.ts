@@ -100,6 +100,29 @@ export function serializeTaskData(
   docId: string,
   data: Record<string, unknown>,
 ): TaskApiData {
+  const completedByMap =
+    typeof data.completedBy === 'string' && data.completedBy.trim()
+      ? {
+          [data.completedBy.trim()]:
+            timestampToMillis(data.completedAt) ?? Date.now(),
+        }
+      : timestampMapToMillis(data.completedBy);
+
+  if (data.submissions && typeof data.submissions === 'object') {
+    for (const [subUid, sub] of Object.entries(
+      data.submissions as Record<string, any>,
+    )) {
+      if (subUid && !completedByMap[subUid]) {
+        const subCompletedAt =
+          sub && typeof sub === 'object'
+            ? timestampToMillis(sub.completedAt)
+            : null;
+        completedByMap[subUid] =
+          subCompletedAt ?? timestampToMillis(data.completedAt) ?? Date.now();
+      }
+    }
+  }
+
   return {
     id: stringOrFallback(data.id, docId),
     deviceId: stringOrFallback(data.deviceId, 'unknown'),
@@ -158,7 +181,7 @@ export function serializeTaskData(
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),
     completedAt: timestampToMillis(data.completedAt),
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
-    completedBy: timestampMapToMillis(data.completedBy),
+    completedBy: completedByMap,
     submissions:
       data.submissions && typeof data.submissions === 'object'
         ? (data.submissions as Record<string, unknown>)

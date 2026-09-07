@@ -31,6 +31,20 @@ export function withDashboardTaskStatus(
   task: TaskApiData,
   maintenanceUserIds: string[],
 ): TaskApiData {
+  if (task.status === 'completed') {
+    if (!task.completedAt) {
+      const userIds = requiredUserIds(task, maintenanceUserIds);
+      const computedCompletedAt = latestTimestamp(task.completedBy, userIds);
+      if (computedCompletedAt) {
+        return {
+          ...task,
+          completedAt: computedCompletedAt,
+        };
+      }
+    }
+    return task;
+  }
+
   if (
     task.status === 'flagged' ||
     task.status === 'rechecking' ||
@@ -44,7 +58,12 @@ export function withDashboardTaskStatus(
     return task;
   }
 
-  const allCompleted = userIds.every((userId) => task.completedBy[userId]);
+  const allCompleted = userIds.every(
+    (userId) =>
+      Boolean(task.completedBy?.[userId]) ||
+      Boolean(task.submissions?.[userId]) ||
+      (typeof task.completedBy === 'string' && task.completedBy === userId),
+  );
   if (allCompleted) {
     return {
       ...task,
@@ -53,7 +72,7 @@ export function withDashboardTaskStatus(
         task.acknowledgedAt ??
         latestTimestamp(task.acknowledgedBy, userIds),
       completedAt:
-        task.completedAt ?? latestTimestamp(task.completedBy, userIds),
+        task.completedAt ?? latestTimestamp(task.completedBy, userIds) ?? Date.now(),
     };
   }
 
@@ -69,7 +88,7 @@ export function withDashboardTaskStatus(
 
   return {
     ...task,
-    status: task.status === 'unassigned' || task.status === 'assigned' ? task.status : 'pending',
+    status: task.status === 'unassigned' ? 'unassigned' : 'assigned',
     acknowledgedAt: null,
     completedAt: null,
   };
@@ -79,6 +98,10 @@ export function withMaintenanceUserStatus(
   task: TaskApiData,
   userId: string,
 ): TaskApiData {
+  if (task.status === 'completed') {
+    return task;
+  }
+
   if (
     task.status === 'flagged' ||
     task.status === 'rechecking' ||
@@ -91,17 +114,23 @@ export function withMaintenanceUserStatus(
     return task;
   }
 
-  const completedAt = task.completedBy[userId] ?? null;
+  const userSubmission = task.submissions?.[userId] as { completedAt?: number } | undefined;
+  const completedAt =
+    task.completedBy?.[userId] ??
+    userSubmission?.completedAt ??
+    (typeof task.completedBy === 'string' && task.completedBy === userId ? task.completedAt : null) ??
+    null;
+
   if (completedAt !== null) {
     return {
       ...task,
       status: 'completed',
-      acknowledgedAt: task.acknowledgedBy[userId] ?? task.acknowledgedAt,
+      acknowledgedAt: task.acknowledgedBy?.[userId] ?? task.acknowledgedAt,
       completedAt,
     };
   }
 
-  const acknowledgedAt = task.acknowledgedBy[userId] ?? null;
+  const acknowledgedAt = task.acknowledgedBy?.[userId] ?? null;
   if (acknowledgedAt !== null) {
     return {
       ...task,
@@ -113,7 +142,7 @@ export function withMaintenanceUserStatus(
 
   return {
     ...task,
-    status: task.status === 'unassigned' || task.status === 'assigned' ? task.status : 'pending',
+    status: task.status === 'unassigned' ? 'unassigned' : 'assigned',
     acknowledgedAt: null,
     completedAt: null,
   };
