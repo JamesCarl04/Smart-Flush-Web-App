@@ -51,6 +51,7 @@ export interface TaskDoc {
   status: TaskStatus;
   assignedTo: string | null;
   assignedToIds: string[];
+  assignedToNames?: Record<string, string>;
   isBroadcast?: boolean;
   assignmentType?: 'broadcast' | 'individual' | 'team';
   automationRuleId?: string;
@@ -99,6 +100,7 @@ export interface TaskApiData {
   status: TaskStatus;
   assignedTo: string | null;
   assignedToIds: string[];
+  assignedToNames?: Record<string, string>;
   isBroadcast?: boolean;
   assignmentType?: 'broadcast' | 'individual' | 'team';
   automationRuleId?: string;

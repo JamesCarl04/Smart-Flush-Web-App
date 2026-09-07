@@ -11,6 +11,7 @@ interface ReassignBody {
   reason?: unknown;
   supervisorUid?: unknown;
   supervisorName?: unknown;
+  assigneeNames?: unknown;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -55,6 +56,37 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    const assignedToNames: Record<string, string> = {};
+    if (
+      body.assigneeNames &&
+      typeof body.assigneeNames === 'object' &&
+      !Array.isArray(body.assigneeNames)
+    ) {
+      for (const [k, v] of Object.entries(body.assigneeNames)) {
+        if (typeof v === 'string' && v.trim()) {
+          assignedToNames[k] = v.trim();
+        }
+      }
+    }
+
+    for (const uid of targetUids) {
+      if (!assignedToNames[uid]) {
+        try {
+          const userDoc = await adminDb.collection('users').doc(uid).get();
+          if (userDoc.exists) {
+            const uData = userDoc.data();
+            const name =
+              uData?.displayName || uData?.name || uData?.fullName;
+            if (name && typeof name === 'string' && name.trim()) {
+              assignedToNames[uid] = name.trim();
+            }
+          }
+        } catch {
+          // ignore lookup error
+        }
+      }
+    }
+
     const taskRef = adminDb.collection('tasks').doc(taskId);
     const outcome = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(taskRef);
@@ -92,6 +124,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       transaction.update(taskRef, {
         assignedTo: primaryAssigneeUid,
         assignedToIds: targetUids,
+        assignedToNames,
         status: 'assigned',
         isBroadcast: false,
         assignmentType: targetUids.length > 1 ? 'team' : 'individual',

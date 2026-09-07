@@ -23,16 +23,20 @@ import {
   FileX,
   History,
   Hourglass,
+  Info,
   Layers,
   Printer,
+  QrCode,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Timer,
   Waves,
+  WifiOff,
   Wrench,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDeviceStatus } from '@/hooks/useDeviceStatus';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { useTasks } from '@/hooks/useTasks';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -363,8 +367,14 @@ function downloadTextFile(content: string, filename: string, type: string) {
 
 const DEVICE_FACILITY_DIRECTORY: Record<
   string,
-  { name: string; floor: string; building: string }
+  { name: string; floor: string; building: string; isPilot?: boolean }
 > = {
+  'toilet-01': {
+    name: 'SDCA Smart Flush Pilot Unit',
+    floor: '1st Floor (Testing Lab / Pilot Bench)',
+    building: 'SDCA Annex Building',
+    isPilot: true,
+  },
   'SDCA-FL1-CANTEEN-M': {
     name: '1F Canteen Male Restroom',
     floor: '1st Floor',
@@ -458,11 +468,6 @@ const DEVICE_FACILITY_DIRECTORY: Record<
   'SDCA-FL4-PWD': {
     name: '4F PWD Restroom',
     floor: '4th Floor',
-    building: 'SDCA Annex Building',
-  },
-  'toilet-01': {
-    name: '1st Floor Testing Lab',
-    floor: '1st Floor',
     building: 'SDCA Annex Building',
   },
 };
@@ -1366,6 +1371,7 @@ function UsageTelemetryReportCanvas({
 }) {
   const isMonthly = reportType === 'monthly';
   const isWeekly = reportType === 'weekly';
+  const { connected: pilotConnected } = useDeviceStatus('toilet-01');
 
   const title = isMonthly
     ? 'Monthly Executive Conservation Summary'
@@ -1380,35 +1386,35 @@ function UsageTelemetryReportCanvas({
         <SummaryCard
           icon={<Waves className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
           label="Total Flushes"
-          sublabel="Completed flushes"
+          sublabel="Pilot Unit completed flushes"
           loading={loading}
           value={String(telemetry.flushes)}
         />
         <SummaryCard
           icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
           label="Water Used"
-          sublabel="Total consumed"
+          sublabel="Pilot Unit metered volume"
           loading={loading}
           value={`${telemetry.waterLiters} L`}
         />
         <SummaryCard
           icon={<Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
           label="Water Conserved"
-          sublabel={`${telemetry.conservationRate}% vs 6.0L baseline`}
+          sublabel={`${telemetry.conservationRate}% vs 6.0L baseline (Pilot)`}
           loading={loading}
           value={`${telemetry.waterSaved} L`}
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
           label="Disinfection Rate"
-          sublabel="UV Cleaning Status"
+          sublabel="Pilot Unit UV-C status"
           loading={loading}
           value={telemetry.uvRate}
         />
         <SummaryCard
           icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
           label="System Reliability"
-          sublabel="Target: 99.5%"
+          sublabel="Target: 99.5% uptime"
           loading={loading}
           value={telemetry.uptime}
         />
@@ -1448,33 +1454,96 @@ function UsageTelemetryReportCanvas({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
-              {Object.entries(DEVICE_FACILITY_DIRECTORY).slice(0, 8).map(([devId, info]) => (
-                <tr
-                  key={devId}
-                  className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent"
-                >
-                  <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
-                    {info.name}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                    {info.floor} · {info.building}
-                  </td>
-                  <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                    {devId}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-                      <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                      Online &amp; Monitored
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    {telemetry.conservationRate}% Conserved
-                  </td>
-                </tr>
-              ))}
+              {Object.entries(DEVICE_FACILITY_DIRECTORY).slice(0, 9).map(([devId, info]) => {
+                const isPilot = info.isPilot === true;
+                return (
+                  <tr
+                    key={devId}
+                    className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent ${
+                      isPilot ? 'bg-sky-50/30 dark:bg-sky-950/10' : ''
+                    }`}
+                  >
+                    <td className="py-3 px-4">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                        <span>{info.name}</span>
+                        {isPilot && (
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-800 dark:bg-sky-950/70 dark:text-sky-300">
+                            IoT Pilot Bench
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                      {info.floor} · {info.building}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-[11px]">
+                      {isPilot ? (
+                        <span className="font-bold text-sky-700 dark:text-sky-400">{devId}</span>
+                      ) : (
+                        <span className="text-slate-500 dark:text-slate-400">{devId}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {isPilot ? (
+                        pilotConnected ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Online &amp; Monitored
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                            <WifiOff className="h-3 w-3 text-slate-500" />
+                            Offline / Standby
+                          </span>
+                        )
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400">
+                          <QrCode className="h-3 w-3 text-slate-500" />
+                          Standard (QR Dispatch Active)
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {isPilot ? (
+                        <div>
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                            {telemetry.conservationRate}% Conserved
+                          </span>
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400">
+                            YF-S201 Flow Sensor
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-medium text-slate-400 dark:text-slate-500">
+                            —
+                          </span>
+                          <span className="block text-[10px] text-slate-400 dark:text-slate-500">
+                            Unmetered Fixture
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </div>
+
+        {/* Footnote Notice */}
+        <div className="border-t border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/30 text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2.5 print:bg-white print:border-slate-300">
+          <Info className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" aria-hidden="true" />
+          <div>
+            <span className="font-bold text-slate-800 dark:text-slate-200 print:text-black">
+              Campus Restroom Infrastructure Note:
+            </span>{' '}
+            Live water conservation, automated flushing, and UV-C disinfection are metered directly on the{' '}
+            <strong className="text-slate-800 dark:text-slate-200 print:text-black">SDCA Smart Flush Pilot Unit (<code className="font-mono text-[11px]">toilet-01</code>)</strong>.
+            All other SDCA Annex campus facilities operate standard gravity/flushometer fixtures managed through{' '}
+            <strong className="text-slate-800 dark:text-slate-200 print:text-black">QR-code public incident reporting</strong> and{' '}
+            <strong className="text-slate-800 dark:text-slate-200 print:text-black">mobile custodial workforce dispatch</strong>.
+          </div>
         </div>
       </div>
     </div>

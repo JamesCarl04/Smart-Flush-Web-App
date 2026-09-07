@@ -114,6 +114,10 @@ export function serializeTaskData(
     status: statusOrPending(data.status),
     assignedTo: nullableString(data.assignedTo),
     assignedToIds: stringArray(data.assignedToIds),
+    assignedToNames:
+      data.assignedToNames && typeof data.assignedToNames === 'object'
+        ? (data.assignedToNames as Record<string, string>)
+        : undefined,
     isBroadcast: data.isBroadcast === true,
     assignmentType:
       data.assignmentType === 'broadcast' ||
@@ -233,6 +237,22 @@ export async function createTaskDocument(
   ]));
   const isAssigned = assignedToIds.length > 0;
 
+  const assignedToNames: Record<string, string> = {};
+  for (const uid of assignedToIds) {
+    try {
+      const uSnap = await adminDb.collection('users').doc(uid).get();
+      if (uSnap.exists) {
+        const u = uSnap.data();
+        const n = u?.displayName || u?.name || u?.fullName;
+        if (n && typeof n === 'string' && n.trim()) {
+          assignedToNames[uid] = n.trim();
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const task: TaskDoc = {
     id: docRef.id,
     deviceId: input.deviceId,
@@ -245,6 +265,7 @@ export async function createTaskDocument(
     status: isAssigned ? 'assigned' : 'unassigned',
     assignedTo: assignedToIds.length === 1 ? assignedToIds[0] : null,
     assignedToIds,
+    assignedToNames,
     isBroadcast: false,
     ...(isAssigned ? { assignmentType: 'individual' as const } : {}),
     requiresSupervisorAssignment: !isAssigned,
