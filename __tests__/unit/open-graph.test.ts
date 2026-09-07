@@ -16,13 +16,13 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
     it('should define metadataBase as a valid URL', () => {
       expect(metadata.metadataBase).toBeDefined();
       expect(metadata.metadataBase instanceof URL).toBe(true);
-      expect(metadata.metadataBase?.protocol).toMatch(/^https?:$/);
+      expect((metadata.metadataBase as URL)?.protocol).toMatch(/^https?:$/);
     });
 
     it('should define OpenGraph metadata with title, type, and images', () => {
       expect(metadata.openGraph).toBeDefined();
       expect(metadata.openGraph?.title).toBeDefined();
-      expect(metadata.openGraph?.type).toBe('website');
+      expect((metadata.openGraph as Record<string, unknown>)?.type).toBe('website');
       expect(metadata.openGraph?.images).toBeDefined();
 
       const images = Array.isArray(metadata.openGraph?.images)
@@ -43,7 +43,7 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
 
     it('should define Twitter metadata with large image card', () => {
       expect(metadata.twitter).toBeDefined();
-      expect(metadata.twitter?.card).toBe('summary_large_image');
+      expect((metadata.twitter as Record<string, unknown>)?.card).toBe('summary_large_image');
       expect(metadata.twitter?.title).toBeDefined();
       expect(metadata.twitter?.images).toBeDefined();
     });
@@ -108,7 +108,7 @@ describe('Open Graph, Twitter, and SEO Metadata Suite', () => {
 
       expect(images.length).toBeGreaterThan(0);
       expect(authMetadata.twitter).toBeDefined();
-      expect(authMetadata.twitter?.card).toBe('summary_large_image');
+      expect((authMetadata.twitter as Record<string, unknown>)?.card).toBe('summary_large_image');
       expect(authMetadata.twitter?.images).toBeDefined();
     });
   });

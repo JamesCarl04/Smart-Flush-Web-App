@@ -111,4 +111,35 @@ describe('serializeTaskSnapshot', () => {
       cycleCountAtTrigger: 2,
     }));
   });
+
+  it('preserves flagged and rechecking statuses with QA audit fields', () => {
+    const recheckingSnapshot = {
+      id: 'task-rechecking',
+      data: () => ({
+        deviceId: 'toilet-02',
+        triggerType: 'manual',
+        message: 'Re-clean stall.',
+        status: 'rechecking',
+        inspectionStatus: 'flagged',
+        inspectedBy: 'sup-1',
+        inspectedByName: 'Supervisor Jane',
+        inspectedAt: { toMillis: () => 70_000 },
+        flagReason: 'Floor not dry',
+        flagPhotoUrls: ['https://storage.example/flag.jpg'],
+        recheckCount: 1,
+        recheckedBy: 'tech-1',
+        recheckedAt: { toMillis: () => 75_000 },
+        createdBy: 'user-1',
+      }),
+    } as unknown as FirebaseFirestore.QueryDocumentSnapshot;
+
+    const result = serializeTaskSnapshot(recheckingSnapshot);
+    expect(result.status).toBe('rechecking');
+    expect(result.inspectionStatus).toBe('flagged');
+    expect(result.inspectedByName).toBe('Supervisor Jane');
+    expect(result.inspectedAt).toBe(70_000);
+    expect(result.flagReason).toBe('Floor not dry');
+    expect(result.recheckCount).toBe(1);
+    expect(result.recheckedBy).toBe('tech-1');
+  });
 });

@@ -44,16 +44,19 @@ export interface SupervisorAuditRow {
   deviceId: string;
   location: string;
   floor: string;
+  building?: string;
   triggerType: string;
   message: string;
-  status: string;
-  assignedToName: string;
+  status?: string;
+  assignedToName?: string;
+  technician?: string;
   inspectionStatus: string;
-  inspectedByName: string;
+  inspectedByName?: string;
+  inspectedBy?: string;
   inspectedAt: string;
   flagReason: string | null;
   recheckCount: number;
-  timeAssigned: string;
+  timeAssigned?: string;
   timeCompleted: string;
   workDuration: string;
   biometricVerified: boolean;
@@ -337,12 +340,14 @@ function buildSupervisorAuditReportLines(
 
   for (const task of tasks.slice(0, 50)) {
     const qaTag = (task.inspectionStatus || 'PENDING').toUpperCase();
+    const techName = task.assignedToName || task.technician || 'Unassigned';
+    const inspectorName = task.inspectedByName || task.inspectedBy || 'Pending';
     lines.push({
-      text: `[${qaTag}] ${task.location} (${task.floor}) - Tech: ${task.assignedToName}`,
+      text: `[${qaTag}] ${task.location} (${task.floor}) - Tech: ${techName}`,
       fontSize: 10,
     });
     lines.push({
-      text: `Completed: ${task.timeCompleted.slice(0, 16)} | Inspector: ${task.inspectedByName || 'Pending'} | Biometric: ${task.biometricVerified ? 'Yes' : 'No'}`,
+      text: `Completed: ${task.timeCompleted.slice(0, 16)} | Inspector: ${inspectorName} | Biometric: ${task.biometricVerified ? 'Yes' : 'No'}`,
       fontSize: 9,
     });
     if (task.flagReason) {

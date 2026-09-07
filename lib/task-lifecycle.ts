@@ -35,7 +35,7 @@ export function technicianAvailabilityAfterRelease(
 
 export function shouldClearAutomationGuard(
   taskId: string,
-  guard: { taskId?: unknown } | undefined,
+  guard: { taskId?: unknown; [key: string]: unknown } | undefined,
 ): boolean {
   return guard?.taskId === taskId;
 }

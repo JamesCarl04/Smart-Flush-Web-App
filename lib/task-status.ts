@@ -31,6 +31,20 @@ export function withDashboardTaskStatus(
   task: TaskApiData,
   maintenanceUserIds: string[],
 ): TaskApiData {
+  if (task.status === 'rechecking') {
+    return {
+      ...task,
+      status: 'rechecking',
+    };
+  }
+
+  if (task.inspectionStatus === 'flagged' || task.status === 'flagged') {
+    return {
+      ...task,
+      status: 'flagged',
+    };
+  }
+
   if (task.status === 'completed') {
     if (!task.completedAt) {
       const userIds = requiredUserIds(task, maintenanceUserIds);
@@ -45,11 +59,7 @@ export function withDashboardTaskStatus(
     return task;
   }
 
-  if (
-    task.status === 'flagged' ||
-    task.status === 'rechecking' ||
-    task.status === 'reassignment_needed'
-  ) {
+  if (task.status === 'reassignment_needed') {
     return task;
   }
 
@@ -98,15 +108,25 @@ export function withMaintenanceUserStatus(
   task: TaskApiData,
   userId: string,
 ): TaskApiData {
+  if (task.status === 'rechecking') {
+    return {
+      ...task,
+      status: 'rechecking',
+    };
+  }
+
+  if (task.inspectionStatus === 'flagged' || task.status === 'flagged') {
+    return {
+      ...task,
+      status: 'flagged',
+    };
+  }
+
   if (task.status === 'completed') {
     return task;
   }
 
-  if (
-    task.status === 'flagged' ||
-    task.status === 'rechecking' ||
-    task.status === 'reassignment_needed'
-  ) {
+  if (task.status === 'reassignment_needed') {
     return task;
   }
 

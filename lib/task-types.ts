@@ -75,7 +75,7 @@ export interface TaskDoc {
   createdBy: string;
 
   // QA & Supervisor Audit Fields
-  inspectionStatus?: 'approved' | 'flagged' | 'pending_review';
+  inspectionStatus?: 'approved' | 'flagged' | 'pending_review' | null;
   inspectedBy?: string | null;
   inspectedByName?: string | null;
   inspectedAt?: Timestamp | null;
@@ -133,7 +133,7 @@ export interface TaskApiData {
   biometricVerified?: boolean;
 
   // QA & Supervisor Audit Fields
-  inspectionStatus?: 'approved' | 'flagged' | 'pending_review';
+  inspectionStatus?: 'approved' | 'flagged' | 'pending_review' | null;
   inspectedBy?: string | null;
   inspectedByName?: string | null;
   inspectedAt?: number | null;

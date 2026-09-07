@@ -312,7 +312,10 @@ describe('automation rule API validation', () => {
     ['action', { action: 'Send Task to Available Maintenance' }],
   ])(
     'rejects a %s update that would duplicate an enabled task-dispatch trigger',
-    async (_field, body) => {
+    async (
+      _field,
+      body: { trigger?: string; threshold?: number; action?: string },
+    ) => {
       const ruleDocument: RuleDocument = {
         get: jest.fn().mockResolvedValue({
           exists: true,

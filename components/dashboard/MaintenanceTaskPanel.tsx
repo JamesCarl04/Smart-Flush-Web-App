@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Clock,
   Droplets,
+  Flag,
   Pencil,
   Plus,
   RefreshCw,
@@ -64,7 +65,7 @@ interface DeleteTaskResponse {
 
 type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
 type ToastKind = 'success' | 'error';
-type FilterStatus = 'all' | 'pending' | 'acknowledged' | 'completed';
+type FilterStatus = 'all' | 'pending' | 'acknowledged' | 'completed' | 'flagged';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
 
 function getDefaultMessage(deviceLabel: string): string {
@@ -132,7 +133,27 @@ function getPriorityBadge(
   }
 }
 
-function getStatusBadge(status: Task['status']) {
+function getStatusBadge(
+  status: Task['status'],
+  inspectionStatus?: Task['inspectionStatus'],
+) {
+  if (status === 'rechecking') {
+    return {
+      label: 'Rechecking',
+      className:
+        'bg-purple-500/15 text-purple-800 dark:text-purple-300 border border-purple-500/40',
+      icon: <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />,
+    };
+  }
+  if (status === 'flagged' || inspectionStatus === 'flagged') {
+    return {
+      label: 'Flagged for Re-inspection',
+      className:
+        'bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-500/40',
+      icon: <Flag className="w-3.5 h-3.5" aria-hidden="true" />,
+    };
+  }
+
   switch (status) {
     case 'acknowledged':
       return {
@@ -147,6 +168,27 @@ function getStatusBadge(status: Task['status']) {
         className:
           'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40',
         icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'reassignment_needed':
+      return {
+        label: 'Reassignment Needed',
+        className:
+          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'assigned':
+      return {
+        label: 'Assigned',
+        className:
+          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'unassigned':
+      return {
+        label: 'Unassigned',
+        className:
+          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'pending':
     default:
@@ -554,16 +596,57 @@ export function MaintenanceTaskPanel() {
   // Filter & Stats calculation
   const stats = useMemo(() => {
     const total = tasks.length;
-    const pending = tasks.filter((t) => t.status === 'pending').length;
-    const acknowledged = tasks.filter((t) => t.status === 'acknowledged').length;
-    const completed = tasks.filter((t) => t.status === 'completed').length;
-    return { total, pending, acknowledged, completed };
+    const flagged = tasks.filter(
+      (t) =>
+        t.status === 'flagged' ||
+        t.status === 'rechecking' ||
+        t.inspectionStatus === 'flagged',
+    ).length;
+    const completed = tasks.filter(
+      (t) =>
+        t.status === 'completed' &&
+        t.inspectionStatus !== 'flagged',
+    ).length;
+    const acknowledged = tasks.filter(
+      (t) =>
+        t.status === 'acknowledged' &&
+        t.inspectionStatus !== 'flagged',
+    ).length;
+    const pending = tasks.filter(
+      (t) =>
+        (t.status === 'pending' ||
+          t.status === 'unassigned' ||
+          t.status === 'assigned' ||
+          t.status === 'reassignment_needed') &&
+        t.inspectionStatus !== 'flagged',
+    ).length;
+    return { total, pending, acknowledged, completed, flagged };
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      if (filterStatus !== 'all' && task.status !== filterStatus) {
-        return false;
+      if (filterStatus !== 'all') {
+        const isFlagged =
+          task.status === 'flagged' ||
+          task.status === 'rechecking' ||
+          task.inspectionStatus === 'flagged';
+
+        if (filterStatus === 'flagged') {
+          if (!isFlagged) return false;
+        } else if (isFlagged) {
+          return false;
+        } else if (filterStatus === 'pending') {
+          if (
+            task.status !== 'pending' &&
+            task.status !== 'unassigned' &&
+            task.status !== 'assigned' &&
+            task.status !== 'reassignment_needed'
+          ) {
+            return false;
+          }
+        } else if (task.status !== filterStatus) {
+          return false;
+        }
       }
 
       if (searchQuery.trim()) {
@@ -574,8 +657,12 @@ export function MaintenanceTaskPanel() {
           task.assignedTo,
           task.assignedToIds,
         ).toLowerCase();
+        const flagReason = (task.flagReason || '').toLowerCase();
         return (
-          deviceName.includes(q) || msg.includes(q) || assignee.includes(q)
+          deviceName.includes(q) ||
+          msg.includes(q) ||
+          assignee.includes(q) ||
+          flagReason.includes(q)
         );
       }
 
@@ -926,6 +1013,13 @@ export function MaintenanceTaskPanel() {
                     <span>Done:</span>
                     <span className="font-bold tabular-nums">{stats.completed}</span>
                   </span>
+                  {stats.flagged > 0 && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-800 dark:text-rose-300">
+                      <Flag className="w-3.5 h-3.5" />
+                      <span>Flagged:</span>
+                      <span className="font-bold tabular-nums">{stats.flagged}</span>
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1002,6 +1096,19 @@ export function MaintenanceTaskPanel() {
                   }`}
                 >
                   Completed ({stats.completed})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('flagged')}
+                  className={`px-3 py-1.5 font-semibold rounded-lg transition-all ${
+                    filterStatus === 'flagged'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : stats.flagged > 0
+                        ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400'
+                  }`}
+                >
+                  Flagged ({stats.flagged})
                 </button>
               </div>
 
@@ -1127,7 +1234,7 @@ export function MaintenanceTaskPanel() {
                   task.triggerType,
                   task.automationTrigger,
                 );
-                const statusInfo = getStatusBadge(task.status);
+                const statusInfo = getStatusBadge(task.status, task.inspectionStatus);
                 const isHighlighted = highlightedTaskId === task.id;
                 const requiresSupervisorAssignment =
                   task.status === 'unassigned' &&
@@ -1169,7 +1276,11 @@ export function MaintenanceTaskPanel() {
                         >
                           {statusInfo.icon}
                           <span>{statusInfo.label}</span>
-                          {acknowledgementSummary ? (
+                          {acknowledgementSummary &&
+                          task.status !== 'completed' &&
+                          task.status !== 'flagged' &&
+                          task.status !== 'rechecking' &&
+                          task.inspectionStatus !== 'flagged' ? (
                             <span className="ml-1 flex items-center gap-1">
                               <span className="text-[11px] font-bold tabular-nums">
                                 ({acknowledgementSummary.acknowledgedCount})
@@ -1200,6 +1311,22 @@ export function MaintenanceTaskPanel() {
                     <p className="my-3 break-words text-sm font-medium text-slate-900 dark:text-slate-100 leading-relaxed">
                       {task.message || 'No message provided'}
                     </p>
+
+                    {task.flagReason ? (
+                      <div className="my-2.5 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+                        <div className="flex items-center gap-1.5 font-bold mb-1">
+                          <Flag className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          <span>Flagged Reason:</span>
+                        </div>
+                        <p className="leading-relaxed">{task.flagReason}</p>
+                        {task.inspectedByName ? (
+                          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                            By {task.inspectedByName}
+                            {task.inspectedAt ? ` · ${formatTimestamp(task.inspectedAt)}` : ''}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {/* Footer Row: Meta details + Action Buttons */}
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2.5 border-t border-slate-100 text-xs text-slate-500 dark:border-slate-800/80 dark:text-slate-400">

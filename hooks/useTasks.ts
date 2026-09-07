@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
-import type { Task, TaskTriggerType } from '@/types';
+import type { Task, TaskStatus, TaskTriggerType } from '@/types';
 
 function toMillis(value: unknown): number {
   if (typeof value === 'number') {
@@ -67,6 +67,29 @@ function mapTask(data: Record<string, unknown>): Task | null {
       ? data.triggerType
       : 'manual';
 
+  const validStatuses: readonly TaskStatus[] = [
+    'pending',
+    'unassigned',
+    'assigned',
+    'acknowledged',
+    'completed',
+    'flagged',
+    'rechecking',
+    'reassignment_needed',
+  ];
+
+  let status: TaskStatus = 'pending';
+  if (data.status === 'rechecking') {
+    status = 'rechecking';
+  } else if (data.inspectionStatus === 'flagged' || data.status === 'flagged') {
+    status = 'flagged';
+  } else if (
+    typeof data.status === 'string' &&
+    validStatuses.includes(data.status as TaskStatus)
+  ) {
+    status = data.status as TaskStatus;
+  }
+
   return {
     id,
     deviceId: typeof data.deviceId === 'string' ? data.deviceId : 'Unknown',
@@ -75,18 +98,38 @@ function mapTask(data: Record<string, unknown>): Task | null {
     assignedTo:
       typeof data.assignedTo === 'string' ? data.assignedTo : (null as null),
     assignedToIds: Array.isArray(data.assignedToIds)
-      ? data.assignedToIds.filter((id): id is string => typeof id === 'string')
+      ? data.assignedToIds.filter((item): item is string => typeof item === 'string')
       : [],
-    status:
-      data.status === 'acknowledged' || data.status === 'completed'
-        ? data.status
-        : 'pending',
+    status,
     createdAt: toMillis(data.createdAt),
     acknowledgedAt: data.acknowledgedAt ? toMillis(data.acknowledgedAt) : null,
     completedAt: data.completedAt ? toMillis(data.completedAt) : null,
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
+    inspectionStatus:
+      data.inspectionStatus === 'approved' ||
+      data.inspectionStatus === 'flagged' ||
+      data.inspectionStatus === 'pending_review'
+        ? data.inspectionStatus
+        : null,
+    inspectedBy: typeof data.inspectedBy === 'string' ? data.inspectedBy : null,
+    inspectedByName:
+      typeof data.inspectedByName === 'string' ? data.inspectedByName : null,
+    inspectedAt: data.inspectedAt ? toMillis(data.inspectedAt) : null,
+    flagReason: typeof data.flagReason === 'string' ? data.flagReason : null,
+    flagPhotoUrls: Array.isArray(data.flagPhotoUrls)
+      ? data.flagPhotoUrls.filter((u): u is string => typeof u === 'string')
+      : [],
+    recheckCount: typeof data.recheckCount === 'number' ? data.recheckCount : 0,
+    recheckedBy: typeof data.recheckedBy === 'string' ? data.recheckedBy : null,
+    recheckedAt: data.recheckedAt ? toMillis(data.recheckedAt) : null,
+    location: typeof data.location === 'string' ? data.location : undefined,
+    restroomName:
+      typeof data.restroomName === 'string' ? data.restroomName : undefined,
+    floor: typeof data.floor === 'string' ? data.floor : undefined,
+    building: typeof data.building === 'string' ? data.building : undefined,
+    component: typeof data.component === 'string' ? data.component : undefined,
   };
 }
 
@@ -268,7 +311,15 @@ export function useTasks(maxResults?: number): UseTasksResult {
       : !!user && liveTasksState.readyForUserId !== user.uid;
 
   const pendingCount = useMemo(
-    () => tasks.filter((task) => task.status === 'pending').length,
+    () =>
+      tasks.filter(
+        (task) =>
+          (task.status === 'pending' ||
+            task.status === 'unassigned' ||
+            task.status === 'assigned' ||
+            task.status === 'reassignment_needed') &&
+          task.inspectionStatus !== 'flagged',
+      ).length,
     [tasks],
   );
   const error = presentationMode ? null : liveTasksState.error;
