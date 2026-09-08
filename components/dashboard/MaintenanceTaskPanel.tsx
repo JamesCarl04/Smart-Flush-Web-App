@@ -794,6 +794,11 @@ export function MaintenanceTaskPanel() {
 
     setTaskAction('create');
 
+    const isBroadcast = modalAssignedToIds.length === 0;
+    const cleanAssignedToIds = modalAssignedToIds.filter(
+      (userId) => userId !== NO_ASSIGNEES_VALUE,
+    );
+
     try {
       await apiFetch<CreateTaskResponse>('/api/tasks', user, {
         method: 'POST',
@@ -802,10 +807,14 @@ export function MaintenanceTaskPanel() {
           triggerType: modalTriggerType,
           message: trimmedMsg,
           assignedTo:
-            modalAssignedToIds.length === 1 ? modalAssignedToIds[0] : null,
-          assignedToIds: modalAssignedToIds.filter(
-            (userId) => userId !== NO_ASSIGNEES_VALUE,
-          ),
+            !isBroadcast && cleanAssignedToIds.length === 1 ? cleanAssignedToIds[0] : null,
+          assignedToIds: isBroadcast ? [] : cleanAssignedToIds,
+          isBroadcast,
+          assignmentType: isBroadcast
+            ? 'broadcast'
+            : cleanAssignedToIds.length > 1
+              ? 'team'
+              : 'individual',
         }),
       });
 
@@ -886,6 +895,11 @@ export function MaintenanceTaskPanel() {
 
     setTaskAction('edit');
 
+    const isBroadcast = editAssignedToIds.length === 0;
+    const cleanAssignedToIds = editAssignedToIds.filter(
+      (userId) => userId !== NO_ASSIGNEES_VALUE,
+    );
+
     try {
       await apiFetch<UpdateTaskResponse>(`/api/tasks/${editingTask.id}`, user, {
         method: 'PATCH',
@@ -893,10 +907,14 @@ export function MaintenanceTaskPanel() {
           deviceId: editToiletId,
           message: trimmedMessage,
           assignedTo:
-            editAssignedToIds.length === 1 ? editAssignedToIds[0] : null,
-          assignedToIds: editAssignedToIds.filter(
-            (userId) => userId !== NO_ASSIGNEES_VALUE,
-          ),
+            !isBroadcast && cleanAssignedToIds.length === 1 ? cleanAssignedToIds[0] : null,
+          assignedToIds: isBroadcast ? [] : cleanAssignedToIds,
+          isBroadcast,
+          assignmentType: isBroadcast
+            ? 'broadcast'
+            : cleanAssignedToIds.length > 1
+              ? 'team'
+              : 'individual',
         }),
       });
 

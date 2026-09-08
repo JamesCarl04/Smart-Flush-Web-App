@@ -207,6 +207,227 @@ describe('Staff Management and Registration APIs', () => {
       expect(juan.active).toBe(false);
       expect(juan.isAvailable).toBe(false); // because deactivated
     });
+
+    it('resolves technician assigned by email as On Task and isAvailable: false', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
+      mockRequireAdmin.mockResolvedValue(undefined);
+
+      const mockUsers = [
+        {
+          id: 'u-email',
+          data: () => ({
+            displayName: 'Email Tech',
+            email: 'emailtech@sdca.edu.ph',
+            role: 'technician',
+            active: true,
+            status: 'online',
+          }),
+        },
+      ];
+
+      const mockTasks = [
+        {
+          id: 'task-email-assign',
+          data: () => ({
+            assignedTo: 'emailtech@sdca.edu.ph',
+            status: 'assigned',
+            location: '2nd Floor Restroom',
+            message: 'Repair flush valve',
+          }),
+        },
+      ];
+
+      mockAdminDb.collection.mockImplementation((col: string) => {
+        if (col === 'users') {
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+        }
+        if (col === 'tasks') {
+          return {
+            where: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({ docs: mockTasks }),
+            }),
+          } as any;
+        }
+        return {} as any;
+      });
+
+      const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      const tech = json.data.find((s: any) => s.id === 'u-email');
+      expect(tech.currentTaskId).toBe('task-email-assign');
+      expect(tech.isAvailable).toBe(false);
+      expect(tech.activeTask).toEqual(
+        expect.objectContaining({
+          id: 'task-email-assign',
+          location: '2nd Floor Restroom',
+          message: 'Repair flush valve',
+        }),
+      );
+    });
+
+    it('discards stale currentTaskId when task is deleted or completed and marks available', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
+      mockRequireAdmin.mockResolvedValue(undefined);
+
+      const mockUsers = [
+        {
+          id: 'u-stale',
+          data: () => ({
+            displayName: 'Stale Tech',
+            email: 'stale@sdca.edu.ph',
+            role: 'technician',
+            active: true,
+            status: 'online',
+            currentTaskId: 'deleted-task-404',
+          }),
+        },
+      ];
+
+      mockAdminDb.collection.mockImplementation((col: string) => {
+        if (col === 'users') {
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+        }
+        if (col === 'tasks') {
+          return {
+            where: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({ docs: [] }), // Task was deleted
+            }),
+          } as any;
+        }
+        return {} as any;
+      });
+
+      const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      const tech = json.data.find((s: any) => s.id === 'u-stale');
+      expect(tech.currentTaskId).toBeNull();
+      expect(tech.activeTask).toBeNull();
+      expect(tech.isAvailable).toBe(true);
+    });
+
+    it('resolves technician busy when referenced in acknowledgedBy or recheckedBy', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
+      mockRequireAdmin.mockResolvedValue(undefined);
+
+      const mockUsers = [
+        {
+          id: 'u-ack',
+          data: () => ({
+            displayName: 'Ack Tech',
+            email: 'ack@sdca.edu.ph',
+            role: 'technician',
+            active: true,
+            status: 'online',
+          }),
+        },
+        {
+          id: 'u-recheck',
+          data: () => ({
+            displayName: 'Recheck Tech',
+            email: 'recheck@sdca.edu.ph',
+            role: 'technician',
+            active: true,
+            status: 'online',
+          }),
+        },
+      ];
+
+      const mockTasks = [
+        {
+          id: 'task-ack',
+          data: () => ({
+            status: 'acknowledged',
+            acknowledgedBy: { 'u-ack': 123456789 },
+          }),
+        },
+        {
+          id: 'task-recheck',
+          data: () => ({
+            status: 'rechecking',
+            recheckedBy: 'u-recheck',
+          }),
+        },
+      ];
+
+      mockAdminDb.collection.mockImplementation((col: string) => {
+        if (col === 'users') {
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+        }
+        if (col === 'tasks') {
+          return {
+            where: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({ docs: mockTasks }),
+            }),
+          } as any;
+        }
+        return {} as any;
+      });
+
+      const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      const ackTech = json.data.find((s: any) => s.id === 'u-ack');
+      expect(ackTech.currentTaskId).toBe('task-ack');
+      expect(ackTech.isAvailable).toBe(false);
+
+      const recheckTech = json.data.find((s: any) => s.id === 'u-recheck');
+      expect(recheckTech.currentTaskId).toBe('task-recheck');
+      expect(recheckTech.isAvailable).toBe(false);
+    });
+
+    it('does not mark technician busy when a broadcast pending task is unassigned', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
+      mockRequireAdmin.mockResolvedValue(undefined);
+
+      const mockUsers = [
+        {
+          id: 'u-free',
+          data: () => ({
+            displayName: 'Free Tech',
+            email: 'free@sdca.edu.ph',
+            role: 'technician',
+            active: true,
+            status: 'online',
+          }),
+        },
+      ];
+
+      const mockTasks = [
+        {
+          id: 'task-broadcast',
+          data: () => ({
+            status: 'pending',
+            isBroadcast: true,
+            assignmentType: 'broadcast',
+            assignedTo: null,
+            assignedToIds: [],
+          }),
+        },
+      ];
+
+      mockAdminDb.collection.mockImplementation((col: string) => {
+        if (col === 'users') {
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+        }
+        if (col === 'tasks') {
+          return {
+            where: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({ docs: mockTasks }),
+            }),
+          } as any;
+        }
+        return {} as any;
+      });
+
+      const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      const tech = json.data.find((s: any) => s.id === 'u-free');
+      expect(tech.currentTaskId).toBeNull();
+      expect(tech.isAvailable).toBe(true);
+    });
   });
 
   describe('POST /api/staff', () => {
@@ -256,6 +477,9 @@ describe('Staff Management and Registration APIs', () => {
           building: 'SDCA Annex',
           shift: '3rd',
           active: true,
+          isOnline: true,
+          status: 'online',
+          isAvailable: true,
         }),
       );
     });

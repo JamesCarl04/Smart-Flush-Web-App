@@ -560,5 +560,23 @@ describe('StaffManagementPage', () => {
 
       document.body.removeChild(main);
     });
+
+    it('portals modal dialog to document.body with z-[100] covering the entire viewport and top header', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByText('+ Add Staff Member'));
+
+      const dialog = screen.getByRole('dialog', { name: /provision new staff member/i });
+      expect(dialog).toBeTruthy();
+      expect(dialog.parentElement).toBe(document.body);
+      expect(dialog.className).toContain('z-[100]');
+      expect(dialog.className).toContain('fixed');
+      expect(dialog.className).toContain('inset-0');
+      expect(dialog.className).toContain('bg-slate-900/60');
+    });
   });
 });

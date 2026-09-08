@@ -100,6 +100,8 @@ export const taskCreateSchema = z.object({
   note: noteSchema,
   assignedTo: z.string().optional(),
   assignedToIds: z.array(z.string().min(1)).optional(),
+  isBroadcast: z.boolean().optional(),
+  assignmentType: z.enum(['broadcast', 'individual', 'team']).optional(),
 });
 
 export const taskUpdateSchema = z.object({

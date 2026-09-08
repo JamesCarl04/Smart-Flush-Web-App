@@ -38,18 +38,34 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const { toiletId, note } = validation.data;
+    const isBroadcast =
+      validation.data.isBroadcast === true ||
+      validation.data.assignmentType === 'broadcast';
+
     const assignment = normalizeTaskAssignment(
-      undefined,
-      validation.data.assignedToIds,
+      isBroadcast ? undefined : validation.data.assignedTo,
+      isBroadcast ? [] : validation.data.assignedToIds,
     );
+
+    const assignmentType: 'broadcast' | 'individual' | 'team' | undefined =
+      isBroadcast
+        ? 'broadcast'
+        : validation.data.assignmentType ??
+          (assignment.assignedToIds.length > 1
+            ? 'team'
+            : assignment.assignedToIds.length === 1
+              ? 'individual'
+              : undefined);
 
     const task = await createTaskAndNotify({
       deviceId: toiletId,
       triggerType: 'manual',
       message: note || `Manual cleaning requested for ${toiletId}.`,
-      assignedTo: assignment.assignedTo,
-      assignedToIds: assignment.assignedToIds,
+      assignedTo: isBroadcast ? null : assignment.assignedTo,
+      assignedToIds: isBroadcast ? [] : assignment.assignedToIds,
       createdBy: user.uid,
+      isBroadcast,
+      assignmentType,
     });
 
     let response = NextResponse.json(

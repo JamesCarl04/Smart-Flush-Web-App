@@ -254,25 +254,34 @@ export async function createTaskDocument(
     console.warn('[task-service] Could not fetch device doc for metadata:', err);
   }
 
-  const assignedToIds = Array.from(new Set([
-    ...input.assignedToIds,
-    ...(input.assignedTo?.trim() ? [input.assignedTo.trim()] : []),
-  ]));
-  const isAssigned = assignedToIds.length > 0;
+  const isBroadcast = Boolean(
+    input.isBroadcast ||
+    input.assignmentType === 'broadcast',
+  );
+
+  const assignedToIds = isBroadcast
+    ? []
+    : Array.from(new Set([
+        ...input.assignedToIds,
+        ...(input.assignedTo?.trim() ? [input.assignedTo.trim()] : []),
+      ]));
+  const isAssigned = !isBroadcast && assignedToIds.length > 0;
 
   const assignedToNames: Record<string, string> = {};
-  for (const uid of assignedToIds) {
-    try {
-      const uSnap = await adminDb.collection('users').doc(uid).get();
-      if (uSnap.exists) {
-        const u = uSnap.data();
-        const n = u?.displayName || u?.name || u?.fullName;
-        if (n && typeof n === 'string' && n.trim()) {
-          assignedToNames[uid] = n.trim();
+  if (!isBroadcast) {
+    for (const uid of assignedToIds) {
+      try {
+        const uSnap = await adminDb.collection('users').doc(uid).get();
+        if (uSnap.exists) {
+          const u = uSnap.data();
+          const n = u?.displayName || u?.name || u?.fullName;
+          if (n && typeof n === 'string' && n.trim()) {
+            assignedToNames[uid] = n.trim();
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
   }
 
@@ -285,14 +294,16 @@ export async function createTaskDocument(
     location: location ?? restroomName ?? input.deviceId,
     triggerType: input.triggerType,
     message: input.message,
-    status: isAssigned ? 'assigned' : 'unassigned',
-    assignedTo: assignedToIds.length === 1 ? assignedToIds[0] : null,
+    status: isBroadcast ? 'pending' : (isAssigned ? 'assigned' : 'unassigned'),
+    assignedTo: isBroadcast ? null : (assignedToIds.length === 1 ? assignedToIds[0] : null),
     assignedToIds,
     assignedToNames,
-    isBroadcast: false,
-    ...(isAssigned ? { assignmentType: 'individual' as const } : {}),
-    requiresSupervisorAssignment: !isAssigned,
-    autoAssignmentEligibleAt: isAssigned
+    isBroadcast,
+    assignmentType: isBroadcast
+      ? 'broadcast'
+      : (isAssigned ? (input.assignmentType ?? (assignedToIds.length > 1 ? 'team' : 'individual')) : undefined),
+    requiresSupervisorAssignment: isBroadcast ? false : !isAssigned,
+    autoAssignmentEligibleAt: isBroadcast || isAssigned
       ? null
       : Timestamp.fromMillis(now.toMillis() + UNASSIGNED_RETRY_MS),
     createdAt: now,

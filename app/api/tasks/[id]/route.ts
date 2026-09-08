@@ -22,6 +22,8 @@ interface UpdateTaskBody {
   message?: unknown;
   assignedTo?: unknown;
   assignedToIds?: unknown;
+  isBroadcast?: unknown;
+  assignmentType?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -169,7 +171,21 @@ export async function PATCH(
       updates.message = message;
     }
 
-    if ('assignedTo' in body || 'assignedToIds' in body) {
+    const isBroadcastRequested =
+      body.isBroadcast === true || body.assignmentType === 'broadcast';
+
+    if (isBroadcastRequested) {
+      updates.isBroadcast = true;
+      updates.assignmentType = 'broadcast';
+      updates.status = 'pending';
+      updates.assignedTo = null;
+      updates.assignedToIds = [];
+      updates.assignmentSource = 'supervisor';
+      updates.requiresSupervisorAssignment = false;
+      updates.autoAssignmentEligibleAt = null;
+      updates.acknowledgedAt = null;
+      updates.acknowledgedBy = {};
+    } else if ('assignedTo' in body || 'assignedToIds' in body) {
       const assignment = normalizeTaskAssignment(
         body.assignedTo,
         body.assignedToIds,
@@ -179,8 +195,13 @@ export async function PATCH(
       const hasAssignees = assignment.assignedToIds.length > 0;
       updates.status = hasAssignees ? 'assigned' : 'pending';
       updates.isBroadcast = false;
+      updates.assignmentType = hasAssignees
+        ? body.assignmentType === 'team' || assignment.assignedToIds.length > 1
+          ? 'team'
+          : 'individual'
+        : undefined;
       updates.assignmentSource = 'supervisor';
-      updates.requiresSupervisorAssignment = false;
+      updates.requiresSupervisorAssignment = !hasAssignees;
       updates.autoAssignmentEligibleAt = null;
       updates.acknowledgedAt = null;
       updates.acknowledgedBy = {};

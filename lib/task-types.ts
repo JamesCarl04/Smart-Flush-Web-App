@@ -152,6 +152,8 @@ export interface CreateTaskInput {
   assignedToIds: string[];
   createdBy: string;
   taskOrigin?: TaskOrigin;
+  isBroadcast?: boolean;
+  assignmentType?: 'broadcast' | 'individual' | 'team';
 }
 
 export function isTaskStatus(value: unknown): value is TaskStatus {

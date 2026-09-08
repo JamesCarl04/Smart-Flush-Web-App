@@ -51,6 +51,58 @@ describe('createTaskDocument', () => {
     const task = mockTransactionSet.mock.calls[0][1] as { autoAssignmentEligibleAt: { toMillis(): number } };
     expect(task.autoAssignmentEligibleAt.toMillis()).toBe(180_000);
   });
+
+  it('persists broadcast task with pending status and requiresSupervisorAssignment: false', async () => {
+    await createTaskDocument({
+      deviceId: 'toilet-02',
+      triggerType: 'maintenance',
+      message: 'All team urgent check',
+      assignedTo: null,
+      assignedToIds: [],
+      createdBy: 'supervisor-1',
+      isBroadcast: true,
+      assignmentType: 'broadcast',
+    });
+
+    expect(mockTransactionSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'task-1',
+        status: 'pending',
+        isBroadcast: true,
+        assignmentType: 'broadcast',
+        assignedTo: null,
+        assignedToIds: [],
+        requiresSupervisorAssignment: false,
+        autoAssignmentEligibleAt: null,
+      }),
+    );
+  });
+
+  it('persists individual assignment with assigned status and user workload tracking', async () => {
+    await createTaskDocument({
+      deviceId: 'toilet-03',
+      triggerType: 'manual',
+      message: 'Fix flush handle',
+      assignedTo: 'tech-1',
+      assignedToIds: ['tech-1'],
+      createdBy: 'supervisor-1',
+    });
+
+    expect(mockTransactionSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'task-1',
+        status: 'assigned',
+        isBroadcast: false,
+        assignmentType: 'individual',
+        assignedTo: 'tech-1',
+        assignedToIds: ['tech-1'],
+        requiresSupervisorAssignment: false,
+        autoAssignmentEligibleAt: null,
+      }),
+    );
+  });
 });
 
 describe('serializeTaskSnapshot', () => {

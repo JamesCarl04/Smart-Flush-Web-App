@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -32,22 +33,10 @@ export async function GET(request: Request): Promise<NextResponse> {
         .catch(() => ({ docs: [] })),
     ]);
 
-    const activeTaskByPerson = new Map<string, string>();
-    for (const doc of activeTasksSnapshot.docs) {
-      const data = doc.data();
-      if (data.completedAt != null) continue;
-      const assignedTo = typeof data.assignedTo === 'string' ? data.assignedTo : null;
-      if (assignedTo && !activeTaskByPerson.has(assignedTo)) {
-        activeTaskByPerson.set(assignedTo, doc.id);
-      }
-      if (Array.isArray(data.assignedToIds)) {
-        for (const pid of data.assignedToIds) {
-          if (typeof pid === 'string' && !activeTaskByPerson.has(pid)) {
-            activeTaskByPerson.set(pid, doc.id);
-          }
-        }
-      }
-    }
+    const activeTasks = activeTasksSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     const staff = usersSnapshot.docs
       .map((doc) => {
@@ -63,13 +52,11 @@ export async function GET(request: Request): Promise<NextResponse> {
           stringOrNull(data.name) ??
           email ??
           doc.id;
-        const currentTaskId =
-          stringOrNull(data.currentTaskId) ??
-          activeTaskByPerson.get(doc.id) ??
-          null;
         const isActive = data.active !== false && data.isActive !== false;
-        const isOnline = data.status !== 'offline' && data.isOnline !== false;
-        const isAvailable = isActive && isOnline && currentTaskId === null && data.isAvailable !== false;
+        const operationalStatus = resolveStaffOperationalStatus(
+          { id: doc.id, uid: doc.id, email, ...data },
+          activeTasks,
+        );
 
         return {
           id: doc.id,
@@ -80,8 +67,11 @@ export async function GET(request: Request): Promise<NextResponse> {
           building: stringOrNull(data.building),
           shift: stringOrNull(data.shift) ?? '1st',
           active: isActive,
-          isAvailable,
-          currentTaskId,
+          isAvailable: operationalStatus.isAvailable,
+          currentTaskId: operationalStatus.currentTaskId,
+          activeTask: operationalStatus.activeTask,
+          isOnline: operationalStatus.isOnline,
+          status: operationalStatus.status,
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt ?? null,
         };
       })
@@ -181,8 +171,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         active: true,
         isActive: true,
         isAvailable: true,
-        isOnline: false,
-        status: 'offline',
+        isOnline: true,
+        status: 'online',
         currentTaskId: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),

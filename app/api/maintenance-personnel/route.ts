@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -28,27 +29,23 @@ export async function GET(request: Request): Promise<NextResponse> {
       adminDb.collection('users').where('role', 'in', ['maintenance', 'technician']).get(),
       adminDb
         .collection('tasks')
-        .where('status', 'in', ['assigned', 'acknowledged', 'pending', 'reassignment_needed'])
+        .where('status', 'in', [
+          'unassigned',
+          'assigned',
+          'acknowledged',
+          'pending',
+          'rechecking',
+          'flagged',
+          'reassignment_needed',
+        ])
         .get()
         .catch(() => ({ docs: [] })),
     ]);
 
-    const activeTaskByPerson = new Map<string, string>();
-    for (const doc of activeTasksSnapshot.docs) {
-      const data = doc.data();
-      const assignedTo =
-        typeof data.assignedTo === 'string' ? data.assignedTo : null;
-      if (assignedTo && !activeTaskByPerson.has(assignedTo)) {
-        activeTaskByPerson.set(assignedTo, doc.id);
-      }
-      if (Array.isArray(data.assignedToIds)) {
-        for (const pid of data.assignedToIds) {
-          if (typeof pid === 'string' && !activeTaskByPerson.has(pid)) {
-            activeTaskByPerson.set(pid, doc.id);
-          }
-        }
-      }
-    }
+    const activeTasks = activeTasksSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     const personnel = usersSnapshot.docs
       .map((doc) => {
@@ -59,16 +56,20 @@ export async function GET(request: Request): Promise<NextResponse> {
           stringOrNull(data.name) ??
           email ??
           doc.id;
-        const currentTaskId = activeTaskByPerson.get(doc.id) ?? null;
-        const isNotOffline = data.status !== 'offline' && data.isOnline !== false;
-        const isAvailable = currentTaskId === null && isNotOffline;
+        const operationalStatus = resolveStaffOperationalStatus(
+          { id: doc.id, uid: doc.id, email, ...data },
+          activeTasks,
+        );
 
         return {
           id: doc.id,
           displayName,
           email,
-          isAvailable,
-          currentTaskId,
+          isAvailable: operationalStatus.isAvailable,
+          isOnline: operationalStatus.isOnline,
+          status: operationalStatus.status,
+          isActive: data.active !== false && data.isActive !== false,
+          currentTaskId: operationalStatus.currentTaskId,
           shift: stringOrNull(data.shift) ?? '1st',
           building: stringOrNull(data.building) ?? null,
           supervisorUid: stringOrNull(data.supervisorUid) ?? null,

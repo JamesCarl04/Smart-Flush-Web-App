@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api-client';
 import toast from 'react-hot-toast';
@@ -33,6 +34,15 @@ export interface StaffMember {
   active: boolean;
   isAvailable: boolean;
   currentTaskId: string | null;
+  activeTask?: {
+    id: string;
+    location: string | null;
+    message: string;
+    status: string;
+    triggerType: string;
+  } | null;
+  isOnline?: boolean;
+  status?: string;
   createdAt?: string | null;
 }
 
@@ -56,6 +66,11 @@ const INITIAL_FORM: NewStaffForm = {
 
 export default function StaffManagementPage() {
   const { user, role, roleLoading } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -379,10 +394,20 @@ export default function StaffManagementPage() {
     }
 
     if (person.currentTaskId) {
+      const locationText = person.activeTask?.location ? ` • ${person.activeTask.location}` : '';
+      const tooltip = person.activeTask?.message
+        ? `${person.activeTask.message} (${person.activeTask.status})`
+        : `Active work order #${person.currentTaskId}`;
+
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-          <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
-          On Task #{person.currentTaskId.slice(0, 7)}
+        <span
+          title={tooltip}
+          className="inline-flex max-w-[280px] items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+          <span className="truncate">
+            On Task #{person.currentTaskId.slice(0, 7)}{locationText}
+          </span>
         </span>
       );
     }
@@ -790,17 +815,19 @@ export default function StaffManagementPage() {
       </section>
 
       {/* 5. Provisioning Modal: + Add Staff Member */}
-      {isAddModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-hidden overscroll-contain"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-add-staff-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsAddModalOpen(false);
-          }}
-        >
-          <div className="relative w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
+      {isAddModalOpen &&
+        mounted &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-hidden overscroll-contain"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-add-staff-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsAddModalOpen(false);
+            }}
+          >
+            <div className="relative w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
             {/* Single dismiss affordance (no double handles) */}
             <button
               type="button"
@@ -970,21 +997,24 @@ export default function StaffManagementPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 6. Edit Assignment Modal */}
-      {editingStaff && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-hidden overscroll-contain"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-edit-assignment-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setEditingStaff(null);
-          }}
-        >
-          <div className="relative w-full max-w-md rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
+      {editingStaff &&
+        mounted &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-hidden overscroll-contain"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-edit-assignment-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditingStaff(null);
+            }}
+          >
+            <div className="relative w-full max-w-md rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
             <button
               type="button"
               onClick={() => setEditingStaff(null)}
@@ -1086,7 +1116,8 @@ export default function StaffManagementPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

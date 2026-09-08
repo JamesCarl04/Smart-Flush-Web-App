@@ -173,4 +173,106 @@ describe('task PATCH lifecycle transaction', () => {
     expect(response.status).toBe(200);
     expect(PUT).toBe(PATCH);
   });
+
+  it('updates a task to broadcast when isBroadcast: true is passed', async () => {
+    const existingTask = taskSnapshot({
+      status: 'pending',
+      assignedTo: 'tech-old',
+      assignedToIds: ['tech-old'],
+      isBroadcast: false,
+    });
+    const broadcastTask = taskSnapshot({
+      status: 'pending',
+      assignedTo: null,
+      assignedToIds: [],
+      isBroadcast: true,
+      assignmentType: 'broadcast',
+      requiresSupervisorAssignment: false,
+    });
+    const taskRef = {
+      get: jest.fn()
+        .mockResolvedValueOnce(existingTask)
+        .mockResolvedValueOnce(broadcastTask),
+    };
+    const transaction = { get: jest.fn().mockResolvedValue(existingTask), update: jest.fn(), set: jest.fn() };
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') {
+        return { doc: jest.fn(() => taskRef) };
+      }
+      return {
+        doc: jest.fn(() => ({ id: 'tech-old' })),
+        where: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ docs: [] }) })),
+      };
+    });
+
+    const response = await PATCH(new Request('http://localhost/api/tasks/task-1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ isBroadcast: true, assignmentType: 'broadcast', assignedToIds: [] }),
+    }), { params: Promise.resolve({ id: 'task-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(transaction.update).toHaveBeenCalledWith(
+      taskRef,
+      expect.objectContaining({
+        isBroadcast: true,
+        assignmentType: 'broadcast',
+        status: 'pending',
+        assignedTo: null,
+        assignedToIds: [],
+        requiresSupervisorAssignment: false,
+      }),
+    );
+  });
+
+  it('unassigns a task without turning it into a broadcast when isBroadcast: false and assignedToIds: [] is passed', async () => {
+    const existingTask = taskSnapshot({
+      status: 'pending',
+      assignedTo: 'tech-old',
+      assignedToIds: ['tech-old'],
+      isBroadcast: false,
+    });
+    const unassignedTask = taskSnapshot({
+      status: 'pending',
+      assignedTo: null,
+      assignedToIds: [],
+      isBroadcast: false,
+      requiresSupervisorAssignment: true,
+    });
+    const taskRef = {
+      get: jest.fn()
+        .mockResolvedValueOnce(existingTask)
+        .mockResolvedValueOnce(unassignedTask),
+    };
+    const transaction = { get: jest.fn().mockResolvedValue(existingTask), update: jest.fn(), set: jest.fn() };
+    mockRunTransaction.mockImplementation(async (callback) => callback(transaction));
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'tasks') {
+        return { doc: jest.fn(() => taskRef) };
+      }
+      return {
+        doc: jest.fn(() => ({ id: 'tech-old' })),
+        where: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ docs: [] }) })),
+      };
+    });
+
+    const response = await PATCH(new Request('http://localhost/api/tasks/task-1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ isBroadcast: false, assignedToIds: [] }),
+    }), { params: Promise.resolve({ id: 'task-1' }) });
+
+    expect(response.status).toBe(200);
+    expect(transaction.update).toHaveBeenCalledWith(
+      taskRef,
+      expect.objectContaining({
+        isBroadcast: false,
+        status: 'pending',
+        assignedTo: null,
+        assignedToIds: [],
+        requiresSupervisorAssignment: true,
+      }),
+    );
+  });
 });

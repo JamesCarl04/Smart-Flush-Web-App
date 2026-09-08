@@ -7,7 +7,10 @@ jest.mock('@/lib/firebase-admin', () => ({
   },
 }));
 
-import { findAvailableMaintenancePersonnel } from '@/lib/task-assignment';
+import {
+  findAvailableMaintenancePersonnel,
+  getAvailableTechnicians,
+} from '@/lib/task-assignment';
 
 describe('findAvailableMaintenancePersonnel', () => {
   beforeEach(() => {
@@ -35,5 +38,54 @@ describe('findAvailableMaintenancePersonnel', () => {
       expect.objectContaining({ id: 'available', displayName: 'Ava' }),
       expect.objectContaining({ id: 'stale-done', displayName: 'Stale' }),
     ]);
+  });
+
+  it('tolerates legacy isAvailable: false if technician is online and has no active tasks', async () => {
+    mockGet
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'legacy-tech',
+            data: () => ({
+              displayName: 'Legacy Tech',
+              email: 'legacy@example.com',
+              isOnline: true,
+              isAvailable: false, // Stale doc flag
+              status: 'online',
+              active: true,
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ docs: [] });
+
+    const available = await findAvailableMaintenancePersonnel();
+    expect(available).toEqual([
+      expect.objectContaining({ id: 'legacy-tech', displayName: 'Legacy Tech' }),
+    ]);
+  });
+
+  it('excludes technicians busy via email assignment, acknowledgedBy, or recheckedBy', async () => {
+    mockGet
+      .mockResolvedValueOnce({
+        docs: [
+          { id: 'tech-email', data: () => ({ email: 'busy@example.com', isOnline: true }) },
+          { id: 'tech-ack', data: () => ({ email: 'ack@example.com', isOnline: true }) },
+          { id: 'tech-free', data: () => ({ email: 'free@example.com', isOnline: true }) },
+        ],
+      })
+      .mockResolvedValueOnce({
+        docs: [
+          { data: () => ({ assignedTo: 'BUSY@example.com', completedAt: null }) },
+          { data: () => ({ acknowledgedBy: { 'tech-ack': 123 }, completedAt: null }) },
+        ],
+      });
+
+    const available = await findAvailableMaintenancePersonnel();
+    expect(available.map((t) => t.id)).toEqual(['tech-free']);
+  });
+
+  it('exports getAvailableTechnicians as an alias', () => {
+    expect(getAvailableTechnicians).toBe(findAvailableMaintenancePersonnel);
   });
 });

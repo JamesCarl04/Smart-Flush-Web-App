@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin';
+import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
 
 export interface TaskAssignmentShape {
   assignedTo: string | null;
@@ -121,32 +122,21 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
         .catch(() => ({ docs: [] })),
     ]);
 
-    const activeTaskByPerson = new Set<string>();
-    for (const doc of activeTasksSnapshot.docs) {
-      const data = doc.data();
-      if (data.completedAt != null) continue;
-      const assignedTo =
-        typeof data.assignedTo === 'string' ? data.assignedTo.trim() : null;
-      if (assignedTo) {
-        activeTaskByPerson.add(assignedTo);
-      }
-      if (Array.isArray(data.assignedToIds)) {
-        for (const pid of data.assignedToIds) {
-          if (typeof pid === 'string' && pid.trim()) {
-            activeTaskByPerson.add(pid.trim());
-          }
-        }
-      }
-    }
+    const activeTasks = activeTasksSnapshot.docs.map((doc) => ({
+      id: doc.id || '',
+      ...doc.data(),
+    }));
 
     const available: AvailableTechnician[] = [];
     for (const doc of usersSnapshot.docs) {
       const data = doc.data();
-      const isOnline = data.isOnline !== false && data.status !== 'offline' && data.status !== 'inactive';
-      const isAvailable = data.isActive !== false && data.isAvailable !== false && !activeTaskByPerson.has(doc.id) && isOnline;
+      const email = typeof data.email === 'string' ? data.email.trim() : null;
+      const operationalStatus = resolveStaffOperationalStatus(
+        { id: doc.id, uid: doc.id, email, ...data },
+        activeTasks,
+      );
 
-      if (isAvailable) {
-        const email = typeof data.email === 'string' ? data.email.trim() : null;
+      if (operationalStatus.isAvailable && operationalStatus.status === 'available') {
         const displayName =
           (typeof data.displayName === 'string' && data.displayName.trim()) ||
           (typeof data.name === 'string' && data.name.trim()) ||
@@ -175,4 +165,6 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
     return [];
   }
 }
+
+export const getAvailableTechnicians = findAvailableMaintenancePersonnel;
 

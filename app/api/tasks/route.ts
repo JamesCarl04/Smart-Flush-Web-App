@@ -28,6 +28,8 @@ interface CreateTaskBody {
   message?: unknown;
   assignedTo?: unknown;
   assignedToIds?: unknown;
+  isBroadcast?: unknown;
+  assignmentType?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -182,13 +184,27 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    const isBroadcast =
+      body.isBroadcast === true || body.assignmentType === 'broadcast';
+
+    const assignmentType: 'broadcast' | 'individual' | 'team' | undefined =
+      isBroadcast
+        ? 'broadcast'
+        : body.assignmentType === 'team' || assignment.assignedToIds.length > 1
+          ? 'team'
+          : body.assignmentType === 'individual' || assignment.assignedToIds.length === 1
+            ? 'individual'
+            : undefined;
+
     const task = await createTaskAndNotify({
       deviceId,
       triggerType: body.triggerType,
       message,
-      assignedTo: assignment.assignedTo,
-      assignedToIds: assignment.assignedToIds,
+      assignedTo: isBroadcast ? null : assignment.assignedTo,
+      assignedToIds: isBroadcast ? [] : assignment.assignedToIds,
       createdBy: user.uid,
+      isBroadcast,
+      assignmentType,
     });
 
     return NextResponse.json(
