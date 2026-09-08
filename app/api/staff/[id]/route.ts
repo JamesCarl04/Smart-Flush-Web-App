@@ -115,8 +115,10 @@ export async function PATCH(
           console.warn('[Staff API] Could not disable Firebase Auth user:', authErr);
         }
       } else {
-        // Reactivate: restore availability so technician/staff can receive tasks
+        // Reactivate: restore availability and online status so technician/staff can receive tasks
         updates.isAvailable = true;
+        updates.isOnline = true;
+        updates.status = 'online';
         try {
           await adminAuth.updateUser(id, { disabled: false });
         } catch (authErr) {

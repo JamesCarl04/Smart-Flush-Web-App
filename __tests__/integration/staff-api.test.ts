@@ -642,6 +642,8 @@ describe('Staff Management and Registration APIs', () => {
           active: true,
           isActive: true,
           isAvailable: true,
+          isOnline: true,
+          status: 'online',
         }),
         { merge: true },
       );
