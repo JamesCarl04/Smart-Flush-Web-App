@@ -12,9 +12,6 @@ import {
   ShieldCheck,
   Wrench,
   UserCheck,
-  UserPlus,
-  Building2,
-  Clock,
   KeyRound,
   MoreVertical,
   Edit2,
@@ -22,7 +19,6 @@ import {
   Search,
   X,
   ShieldAlert,
-  RotateCw,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -100,7 +96,6 @@ export default function StaffManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'supervisor' | 'technician' | 'admin'>('all');
-  const [facilityFilter, setFacilityFilter] = useState<'all' | 'SDCA Annex' | 'Main Campus' | 'Central Storage'>('all');
   const [activityTab, setActivityTab] = useState<'all' | 'on_task' | 'available' | 'leadership'>('all');
 
   // Modals state
@@ -127,9 +122,11 @@ export default function StaffManagementPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   // Fetch staff personnel
-  const loadStaff = useCallback(async () => {
+  const loadStaff = useCallback(async (isSilent: boolean = false) => {
     if (!user || role !== 'admin') return;
-    setLoading(true);
+    if (!isSilent) {
+      setLoading(true);
+    }
     try {
       const res = await apiFetch<{ success: boolean; data?: StaffMember[]; error?: string }>(
         '/api/staff',
@@ -137,20 +134,30 @@ export default function StaffManagementPage() {
       );
       if (res.success && Array.isArray(res.data)) {
         setStaffList(res.data);
-      } else {
+      } else if (!isSilent) {
         toast.error(res.error || 'Failed to load staff roster');
       }
     } catch (err: unknown) {
-      console.error('[Staff Page] Error loading staff:', err);
-      toast.error(err instanceof Error ? err.message : 'Error fetching staff members');
+      if (!isSilent) {
+        console.error('[Staff Page] Error loading staff:', err);
+        toast.error(err instanceof Error ? err.message : 'Error fetching staff members');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, [role, user]);
 
   useEffect(() => {
     if (!roleLoading && role === 'admin') {
       void loadStaff();
+      const intervalId = setInterval(() => {
+        void loadStaff(true);
+      }, 30_000);
+      return () => {
+        clearInterval(intervalId);
+      };
     }
   }, [loadStaff, role, roleLoading]);
 
@@ -238,9 +245,6 @@ export default function StaffManagementPage() {
             ? person.role === 'technician' || person.role === 'maintenance'
             : person.role === roleFilter;
 
-      const matchesFacility =
-        facilityFilter === 'all' ? true : person.building === facilityFilter;
-
       const matchesActivity =
         activityTab === 'all'
           ? true
@@ -250,9 +254,9 @@ export default function StaffManagementPage() {
               ? person.active && person.isAvailable && !person.currentTaskId
               : person.role === 'admin' || person.role === 'supervisor';
 
-      return matchesQuery && matchesRole && matchesFacility && matchesActivity;
+      return matchesQuery && matchesRole && matchesActivity;
     });
-  }, [activityTab, facilityFilter, roleFilter, searchQuery, staffList]);
+  }, [activityTab, roleFilter, searchQuery, staffList]);
 
   // Handle Add Staff Validation & Submission
   const validateForm = (): boolean => {
@@ -608,26 +612,15 @@ export default function StaffManagementPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => loadStaff()}
-            disabled={loading}
-            className="btn btn-outline h-12 min-h-[48px] px-4 rounded-xl border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B]"
-            aria-label="Refresh staff roster"
-          >
-            <RotateCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setFormValues(INITIAL_FORM);
               setFormErrors({});
               setCreationStep('form');
               setIsAddModalOpen(true);
             }}
-            className="btn btn-primary h-12 min-h-[48px] px-5 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm inline-flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+            className="btn btn-primary h-12 min-h-[48px] px-5 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
           >
-            <UserPlus className="h-4 w-4" aria-hidden="true" />
-            <span>+ Add Staff Member</span>
+            <span>Add Staff Member</span>
           </button>
         </div>
       </header>
@@ -715,7 +708,7 @@ export default function StaffManagementPage() {
         </div>
       </section>
 
-      {/* 3. Action Controls: Search input, Role filter, Facility filter */}
+      {/* 3. Action Controls: Search input, Role filter */}
       <section aria-label="Staff filters" className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           {/* Search Input */}
@@ -744,37 +737,19 @@ export default function StaffManagementPage() {
           </div>
 
           {/* Role Filter Dropdown */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="w-full sm:w-44">
-              <label htmlFor="filter-role" className="sr-only">Filter by Role</label>
-              <select
-                id="filter-role"
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
-                className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/70 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none"
-              >
-                <option value="all">All Roles</option>
-                <option value="supervisor">Supervisors</option>
-                <option value="technician">Technicians</option>
-                <option value="admin">Administrators</option>
-              </select>
-            </div>
-
-            {/* Facility Filter Dropdown */}
-            <div className="w-full sm:w-48">
-              <label htmlFor="filter-facility" className="sr-only">Filter by Facility</label>
-              <select
-                id="filter-facility"
-                value={facilityFilter}
-                onChange={(e) => setFacilityFilter(e.target.value as typeof facilityFilter)}
-                className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/70 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none"
-              >
-                <option value="all">All Facilities</option>
-                <option value="SDCA Annex">SDCA Annex</option>
-                <option value="Main Campus">Main Campus</option>
-                <option value="Central Storage">Central Storage</option>
-              </select>
-            </div>
+          <div className="w-full sm:w-48">
+            <label htmlFor="filter-role" className="sr-only">Filter by Role</label>
+            <select
+              id="filter-role"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
+              className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/70 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none"
+            >
+              <option value="all">All Roles</option>
+              <option value="supervisor">Supervisors</option>
+              <option value="technician">Technicians</option>
+              <option value="admin">Administrators</option>
+            </select>
           </div>
         </div>
       </section>
@@ -839,7 +814,7 @@ export default function StaffManagementPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[320px]">
           <table className="table w-full border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
@@ -866,12 +841,12 @@ export default function StaffManagementPage() {
                     <div className="max-w-xs mx-auto space-y-2">
                       <Users className="h-8 w-8 mx-auto text-slate-400" aria-hidden="true" />
                       <p className="font-semibold text-slate-800 dark:text-slate-200">No staff members match criteria</p>
-                      <p className="text-xs">Adjust your search query or role/facility filters.</p>
+                      <p className="text-xs">Adjust your search query or role filter.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredStaff.map((person) => {
+                filteredStaff.map((person, index) => {
                   const initials = person.displayName
                     .split(' ')
                     .filter(Boolean)
@@ -882,6 +857,7 @@ export default function StaffManagementPage() {
 
                   const isMenuOpen = activeMenuId === person.id;
                   const isSelf = Boolean(user && (user.uid === person.id || user.uid === person.uid));
+                  const isBottomRow = index >= 2 && index >= filteredStaff.length - 2;
                   const avatarBg =
                     person.role === 'admin'
                       ? 'bg-[#B5121B]'
@@ -953,7 +929,11 @@ export default function StaffManagementPage() {
                               e.stopPropagation();
                               setActiveMenuId(isMenuOpen ? null : person.id);
                             }}
-                            className="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B]"
+                            className={`h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] ${
+                              isMenuOpen
+                                ? 'relative z-30 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-600 ring-2 ring-[#B5121B]/30'
+                                : ''
+                            }`}
                             aria-label={`Action menu for ${person.displayName}`}
                             aria-haspopup="true"
                             aria-expanded={isMenuOpen}
@@ -962,67 +942,86 @@ export default function StaffManagementPage() {
                           </button>
 
                           {isMenuOpen && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 mt-1 w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-30 py-1.5 animate-in fade-in zoom-in-95 duration-100"
-                              role="menu"
-                              aria-orientation="vertical"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEdit(person)}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 focus-visible:bg-slate-100 dark:focus-visible:bg-slate-800 focus-visible:outline-none"
-                                role="menuitem"
-                              >
-                                <Edit2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                                <span>Edit Assignment</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => void handleSendPasswordReset(person)}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 focus-visible:bg-slate-100 dark:focus-visible:bg-slate-800 focus-visible:outline-none"
-                                role="menuitem"
-                              >
-                                <KeyRound className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                                <span>Send Password Reset</span>
-                              </button>
-
-                              <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
-
-                              <button
-                                type="button"
-                                disabled={person.active && isSelf}
-                                onClick={() => {
-                                  if (person.active) {
-                                    handleOpenDeactivateModal(person);
-                                  } else {
-                                    void handleReactivateStaff(person);
-                                  }
+                            <>
+                              <div
+                                className="fixed inset-0 z-20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(null);
                                 }}
-                                title={person.active && isSelf ? 'Cannot deactivate your own administrator account' : undefined}
-                                className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center gap-2.5 focus-visible:outline-none ${
-                                  person.active && isSelf
-                                    ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
-                                    : person.active
-                                      ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
-                                      : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
-                                }`}
-                                role="menuitem"
+                                aria-hidden="true"
+                              />
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className={`absolute right-0 ${
+                                  isBottomRow ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                                } w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-30 py-1.5 animate-in fade-in zoom-in-95 duration-100`}
+                                role="menu"
+                                aria-orientation="vertical"
                               >
-                                {person.active ? (
-                                  <>
-                                    <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span>Deactivate Account</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span>Reactivate Account</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    handleOpenEdit(person);
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 focus-visible:bg-slate-100 dark:focus-visible:bg-slate-800 focus-visible:outline-none"
+                                  role="menuitem"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                                  <span>Edit Assignment</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    void handleSendPasswordReset(person);
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 focus-visible:bg-slate-100 dark:focus-visible:bg-slate-800 focus-visible:outline-none"
+                                  role="menuitem"
+                                >
+                                  <KeyRound className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                                  <span>Send Password Reset</span>
+                                </button>
+
+                                <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+                                <button
+                                  type="button"
+                                  disabled={person.active && isSelf}
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    if (person.active) {
+                                      handleOpenDeactivateModal(person);
+                                    } else {
+                                      void handleReactivateStaff(person);
+                                    }
+                                  }}
+                                  title={person.active && isSelf ? 'Cannot deactivate your own administrator account' : undefined}
+                                  className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center gap-2.5 focus-visible:outline-none ${
+                                    person.active && isSelf
+                                      ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                                      : person.active
+                                        ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
+                                        : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
+                                  }`}
+                                  role="menuitem"
+                                >
+                                  {person.active ? (
+                                    <>
+                                      <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                                      <span>Deactivate Account</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                      <span>Reactivate Account</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
                       </td>
@@ -1035,7 +1034,7 @@ export default function StaffManagementPage() {
         </div>
       </section>
 
-      {/* 5. Provisioning Modal: + Add Staff Member (Two-Step Flow) */}
+      {/* 5. Provisioning Modal: Add Staff Member (Two-Step Flow) */}
       {isAddModalOpen &&
         mounted &&
         createPortal(

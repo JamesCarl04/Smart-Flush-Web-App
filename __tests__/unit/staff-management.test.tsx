@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 
 const mockUseAuth = jest.fn();
 const mockApiFetch = jest.fn();
@@ -224,33 +224,134 @@ describe('StaffManagementPage', () => {
       expect(screen.queryByText('Juan Dela Cruz')).toBeNull();
     });
 
-    it('filters staff by facility dropdown', async () => {
+    it('automatically refreshes staff roster via silent background polling every 30 seconds', async () => {
+      jest.useFakeTimers();
+      try {
+        render(<StaffManagementPage />);
+
+        // Initial load on mount
+        expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+        // Advance 30 seconds
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+
+        // Polling triggered second load silently without error toasts
+        expect(mockApiFetch).toHaveBeenCalledTimes(2);
+
+        // Advance another 30 seconds
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(mockApiFetch).toHaveBeenCalledTimes(3);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('clears background polling interval on component unmount', () => {
+      jest.useFakeTimers();
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      try {
+        const { unmount } = render(<StaffManagementPage />);
+        expect(clearIntervalSpy).not.toHaveBeenCalled();
+        unmount();
+        expect(clearIntervalSpy).toHaveBeenCalled();
+      } finally {
+        clearIntervalSpy.mockRestore();
+        jest.useRealTimers();
+      }
+    });
+
+    it('renders 3-dots action menu with smart auto-flipping, button toggling, and closes on outside click', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
         expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
       });
 
-      const facilitySelect = screen.getByLabelText(/filter by facility/i);
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
 
-      fireEvent.change(facilitySelect, { target: { value: 'SDCA Annex' } });
-      expect(screen.getByText('Maria Santos')).toBeTruthy();
-      expect(screen.getByText('Pedro Penduko')).toBeTruthy();
-      expect(screen.queryByText('Juan Dela Cruz')).toBeNull();
+      // Initially collapsed
+      expect(menuButtons[0].getAttribute('aria-expanded')).toBe('false');
 
-      fireEvent.change(facilitySelect, { target: { value: 'Central Storage' } });
-      expect(screen.queryByText('Maria Santos')).toBeNull();
-      expect(screen.queryByText('Juan Dela Cruz')).toBeNull();
+      // Top row (index 0 - Juan Dela Cruz) opens downward with top-full
+      fireEvent.click(menuButtons[0]);
+      expect(menuButtons[0].getAttribute('aria-expanded')).toBe('true');
+      expect(menuButtons[0].className).toContain('z-30');
+
+      const topMenu = screen.getByRole('menu');
+      expect(topMenu.className).toContain('top-full');
+      expect(topMenu.className).toContain('mt-1.5');
+
+      // Clicking same button again toggles menu closed
+      fireEvent.click(menuButtons[0]);
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(menuButtons[0].getAttribute('aria-expanded')).toBe('false');
+
+      // Re-open and click outside on backdrop closes menu
+      fireEvent.click(menuButtons[0]);
+      expect(screen.getByRole('menu')).toBeTruthy();
+      const backdrop = document.querySelector('.fixed.inset-0.z-20');
+      expect(backdrop).toBeTruthy();
+      fireEvent.click(backdrop!);
+      expect(screen.queryByRole('menu')).toBeNull();
+
+      // Bottom row (index 3 - Pedro Penduko) flips upward with bottom-full
+      fireEvent.click(menuButtons[3]);
+      const bottomMenu = screen.getByRole('menu');
+      expect(bottomMenu.className).toContain('bottom-full');
+      expect(bottomMenu.className).toContain('mb-1.5');
+
+      // Clicking action item closes menu
+      fireEvent.click(screen.getByText('Edit Assignment'));
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('positions action menu downward for short rosters (3 items) on middle row to avoid top clipping, while flipping upward only on the last row', async () => {
+      mockApiFetch.mockResolvedValueOnce({
+        success: true,
+        data: mockStaff.slice(0, 3), // Exactly 3 items: index 0, 1, 2
+      });
+
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      expect(menuButtons).toHaveLength(3);
+
+      // Index 0: opens downward
+      fireEvent.click(menuButtons[0]);
+      const menu0 = screen.getByRole('menu');
+      expect(menu0.className).toContain('top-full');
+      fireEvent.click(menuButtons[0]);
+
+      // Index 1 (middle row): opens downward (does not flip upward into the header)
+      fireEvent.click(menuButtons[1]);
+      const menu1 = screen.getByRole('menu');
+      expect(menu1.className).toContain('top-full');
+      expect(menu1.className).not.toContain('bottom-full');
+      fireEvent.click(menuButtons[1]);
+
+      // Index 2 (last row, has 2 rows above it): flips upward safely
+      fireEvent.click(menuButtons[2]);
+      const menu2 = screen.getByRole('menu');
+      expect(menu2.className).toContain('bottom-full');
+      expect(menu2.className).toContain('mb-1.5');
     });
 
     it('dismisses modal on Escape key press', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
       expect(screen.getByText('Provision New Staff Member')).toBeTruthy();
 
       fireEvent.keyDown(window, { key: 'Escape' });
@@ -258,7 +359,7 @@ describe('StaffManagementPage', () => {
     });
   });
 
-  describe('Provisioning Modal (+ Add Staff Member) - Two-Step Flow', () => {
+  describe('Provisioning Modal (Add Staff Member) - Two-Step Flow', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue({
         user: { uid: 'admin-1', email: 'admin@sdca.edu.ph' },
@@ -275,10 +376,10 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
 
       expect(screen.getByText('Provision New Staff Member')).toBeTruthy();
 
@@ -295,10 +396,10 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
 
       // Fill in Step 1 fields
       fireEvent.change(screen.getByPlaceholderText('Maria Santos'), {
@@ -650,13 +751,13 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
       expect(document.body.style.overflow).toBe('');
       expect(document.documentElement.style.overflow).toBe('');
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
       expect(document.body.style.overflow).toBe('hidden');
       expect(document.documentElement.style.overflow).toBe('hidden');
 
@@ -688,10 +789,10 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
       expect(document.body.style.overflow).toBe('hidden');
       expect(document.documentElement.style.overflow).toBe('hidden');
 
@@ -748,10 +849,10 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
       expect(main.style.overflow).toBe('hidden');
 
       fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
@@ -764,10 +865,10 @@ describe('StaffManagementPage', () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+        expect(screen.getByText('Add Staff Member')).toBeTruthy();
       });
 
-      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      fireEvent.click(screen.getByText('Add Staff Member'));
 
       const dialog = screen.getByRole('dialog', { name: /provision new staff member/i });
       expect(dialog).toBeTruthy();
