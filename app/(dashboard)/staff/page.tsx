@@ -55,6 +55,26 @@ interface NewStaffForm {
   sendPasswordReset: boolean;
 }
 
+export function formatFacilityLabel(building: string | null | undefined, role: string): string {
+  if (building && building.trim()) {
+    return building.trim();
+  }
+  if (role === 'admin' || role === 'supervisor') {
+    return 'Campus-Wide (All Facilities)';
+  }
+  return 'Unassigned Facility';
+}
+
+export function formatShiftLabel(shift: string | null | undefined): string {
+  const normalized = (shift || '').trim().toLowerCase();
+  if (normalized === '1st') return '1st Shift (Morning)';
+  if (normalized === '2nd') return '2nd Shift (Evening)';
+  if (normalized === '3rd') return '3rd Shift (Night)';
+  if (normalized === 'both' || normalized === 'all') return 'All Shifts (Rotational)';
+  if (shift && shift.trim()) return `${shift.trim()} Shift`;
+  return '1st Shift (Morning)';
+}
+
 const INITIAL_FORM: NewStaffForm = {
   displayName: '',
   email: '',
@@ -77,6 +97,7 @@ export default function StaffManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'supervisor' | 'technician' | 'admin'>('all');
   const [facilityFilter, setFacilityFilter] = useState<'all' | 'SDCA Annex' | 'Main Campus' | 'Central Storage'>('all');
+  const [activityTab, setActivityTab] = useState<'all' | 'on_task' | 'available' | 'leadership'>('all');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -167,7 +188,7 @@ export default function StaffManagementPage() {
     };
   }, []);
 
-  // Top 4 KPI calculations
+  // Top 4 KPI calculations & activity segment counts
   const kpis = useMemo(() => {
     const total = staffList.length;
     const supervisors = staffList.filter((s) => s.role === 'supervisor').length;
@@ -177,7 +198,13 @@ export default function StaffManagementPage() {
     const available = staffList.filter(
       (s) => s.active && s.isAvailable && !s.currentTaskId,
     ).length;
-    return { total, supervisors, technicians, available };
+    const onTask = staffList.filter(
+      (s) => (s.role === 'technician' || s.role === 'maintenance') && Boolean(s.currentTaskId),
+    ).length;
+    const leadership = staffList.filter(
+      (s) => s.role === 'admin' || s.role === 'supervisor',
+    ).length;
+    return { total, supervisors, technicians, available, onTask, leadership };
   }, [staffList]);
 
   // Filtered roster
@@ -198,9 +225,18 @@ export default function StaffManagementPage() {
       const matchesFacility =
         facilityFilter === 'all' ? true : person.building === facilityFilter;
 
-      return matchesQuery && matchesRole && matchesFacility;
+      const matchesActivity =
+        activityTab === 'all'
+          ? true
+          : activityTab === 'on_task'
+            ? Boolean(person.currentTaskId)
+            : activityTab === 'available'
+              ? person.active && person.isAvailable && !person.currentTaskId
+              : person.role === 'admin' || person.role === 'supervisor';
+
+      return matchesQuery && matchesRole && matchesFacility && matchesActivity;
     });
-  }, [facilityFilter, roleFilter, searchQuery, staffList]);
+  }, [activityTab, facilityFilter, roleFilter, searchQuery, staffList]);
 
   // Handle Add Staff Validation & Submission
   const validateForm = (): boolean => {
@@ -356,27 +392,24 @@ export default function StaffManagementPage() {
     }
   };
 
-  // Render role badge helper
+  // Render role badge helper (Typography-first, decluttered of repetitive icons)
   const renderRoleBadge = (personRole: string) => {
     if (personRole === 'admin') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-red-100 text-[#B5121B] dark:bg-red-950/70 dark:text-red-300 border border-red-200 dark:border-red-900/50">
-          <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-300 border border-red-200/80 dark:border-red-900/50">
           Administrator
         </span>
       );
     }
     if (personRole === 'supervisor') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-100 text-sky-800 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-900/50">
-          <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/80 dark:border-sky-900/50">
           Supervisor
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50">
-        <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
+      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-900/50">
         Technician
       </span>
     );
@@ -396,7 +429,7 @@ export default function StaffManagementPage() {
     if (person.currentTaskId) {
       const locationText = person.activeTask?.location ? ` • ${person.activeTask.location}` : '';
       const tooltip = person.activeTask?.message
-        ? `${person.activeTask.message} (${person.activeTask.status})`
+        ? `Task #${person.currentTaskId}: ${person.activeTask.message} (${person.activeTask.status})`
         : `Active work order #${person.currentTaskId}`;
 
       return (
@@ -424,7 +457,7 @@ export default function StaffManagementPage() {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
         <span className="h-2 w-2 rounded-full bg-slate-400" aria-hidden="true" />
-        Offline
+        Off Duty / Offline
       </span>
     );
   };
@@ -464,7 +497,7 @@ export default function StaffManagementPage() {
             Facility Staff Management
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Provision, assign, and audit institutional staff credentials and service assignments.
+            Manage facility staff accounts, shift assignments, and live task activity.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -510,7 +543,7 @@ export default function StaffManagementPage() {
               {kpis.total}
             </span>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Registered institutional accounts
+              Registered team members
             </p>
           </div>
         </div>
@@ -530,7 +563,7 @@ export default function StaffManagementPage() {
               {kpis.supervisors}
             </span>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Field shift managers &amp; verifiers
+              Field shift managers &amp; quality review
             </p>
           </div>
         </div>
@@ -550,7 +583,7 @@ export default function StaffManagementPage() {
               {kpis.technicians}
             </span>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Active maintenance technicians
+              Custodial &amp; repair technicians
             </p>
           </div>
         </div>
@@ -570,7 +603,7 @@ export default function StaffManagementPage() {
               {kpis.available}
             </span>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Online &amp; ready for assignment
+              Available for task dispatch
             </p>
           </div>
         </div>
@@ -642,15 +675,73 @@ export default function StaffManagementPage() {
 
       {/* 4. Staff Roster Table */}
       <section aria-label="Staff roster table" className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        {/* Quick Filter Tabs Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 px-6 py-3.5 bg-slate-50/50 dark:bg-slate-950/40">
+          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filter staff by activity">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'all'}
+              onClick={() => setActivityTab('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                activityTab === 'all'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              All Staff ({kpis.total})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'on_task'}
+              onClick={() => setActivityTab('on_task')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                activityTab === 'on_task'
+                  ? 'bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 shadow-xs border border-amber-200 dark:border-amber-800'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Working on Tasks ({kpis.onTask})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'available'}
+              onClick={() => setActivityTab('available')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                activityTab === 'available'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-xs border border-emerald-200 dark:border-emerald-800'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Available to Assign ({kpis.available})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'leadership'}
+              onClick={() => setActivityTab('leadership')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                activityTab === 'leadership'
+                  ? 'bg-white dark:bg-slate-800 text-sky-800 dark:text-sky-300 shadow-xs border border-sky-200 dark:border-sky-800'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Campus Leadership ({kpis.leadership})
+            </button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="table w-full border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                <th className="py-4 px-6 text-left">Staff Member</th>
-                <th className="py-4 px-4 text-left">Role</th>
-                <th className="py-4 px-4 text-left">Facility &amp; Shift</th>
-                <th className="py-4 px-4 text-left">Workload Status</th>
-                <th className="py-4 px-6 text-right">Actions</th>
+                <th className="py-4 px-6 text-left w-[30%]">Team Member</th>
+                <th className="py-4 px-4 text-left w-[15%]">Role</th>
+                <th className="py-4 px-4 text-left w-[22%]">Facility &amp; Shift</th>
+                <th className="py-4 px-4 text-left w-[25%]">Current Activity</th>
+                <th className="py-4 px-6 text-right w-[8%]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
@@ -684,19 +775,34 @@ export default function StaffManagementPage() {
                     .slice(0, 2) || 'ST';
 
                   const isMenuOpen = activeMenuId === person.id;
+                  const avatarBg =
+                    person.role === 'admin'
+                      ? 'bg-[#B5121B]'
+                      : person.role === 'supervisor'
+                        ? 'bg-[#0284C7]'
+                        : 'bg-[#475569]';
 
                   return (
                     <tr
                       key={person.id}
-                      className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors ${
+                      className={`border-l-4 border-l-transparent hover:border-l-[#B5121B] hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-all ${
                         !person.active ? 'opacity-75 bg-slate-50/40 dark:bg-slate-900/40' : ''
                       }`}
                     >
-                      {/* Avatar, Name, Email */}
+                      {/* Avatar with Role Color & Live Presence Dot, Name, Email */}
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#B5121B] text-xs font-bold text-white shadow-xs">
-                            {initials}
+                          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                            <div className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-xs ${avatarBg}`}>
+                              {initials}
+                            </div>
+                            <span
+                              className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900 ${
+                                person.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                              }`}
+                              aria-label={person.isOnline ? 'Online' : 'Offline'}
+                              title={person.isOnline ? 'Online' : 'Offline'}
+                            />
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -714,16 +820,14 @@ export default function StaffManagementPage() {
                         {renderRoleBadge(person.role)}
                       </td>
 
-                      {/* Facility & Shift */}
+                      {/* Facility & Shift (Clean typography-first, no repetitive icons) */}
                       <td className="py-4 px-4">
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                            <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                            <span>{person.building || 'Unassigned'}</span>
+                        <div className="space-y-0.5 text-xs">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100">
+                            {formatFacilityLabel(person.building, person.role)}
                           </div>
-                          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                            <span>Shift {person.shift || '1st'}</span>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {formatShiftLabel(person.shift)}
                           </div>
                         </div>
                       </td>
@@ -742,12 +846,12 @@ export default function StaffManagementPage() {
                               e.stopPropagation();
                               setActiveMenuId(isMenuOpen ? null : person.id);
                             }}
-                            className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                            className="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B]"
                             aria-label={`Action menu for ${person.displayName}`}
                             aria-haspopup="true"
                             aria-expanded={isMenuOpen}
                           >
-                            <MoreVertical className="h-5 w-5" aria-hidden="true" />
+                            <MoreVertical className="h-4 w-4" aria-hidden="true" />
                           </button>
 
                           {isMenuOpen && (
