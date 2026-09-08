@@ -3,6 +3,7 @@
 > **Autonomous Restroom Intelligence, Real-Time Sensor Telemetry & Closed-Loop Workforce Dispatch**  
 > *St. Dominic College of Asia (SDCA) Annex Campus Edition • 22 Facilities • 96 Stalls • 4 Floors*
 
+[![Version](https://img.shields.io/badge/Version-v1.61.0%20(Build%20158)-crimson.svg)](#-local-installation--development-setup)
 [![Next.js](https://img.shields.io/badge/Next.js-16.1%20(Turbopack)-black.svg?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18.3-blue.svg?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg?logo=typescript)](https://www.typescriptlang.org/)
@@ -10,7 +11,7 @@
 [![DaisyUI](https://img.shields.io/badge/DaisyUI-4.12-5A0EF8.svg?logo=daisyui)](https://daisyui.com/)
 [![Firebase](https://img.shields.io/badge/Firebase%20Admin-v13.7-orange.svg?logo=firebase)](https://firebase.google.com/)
 [![MQTT](https://img.shields.io/badge/MQTT-HiveMQ%20Cloud%20TLS-red.svg?logo=mqtt)](https://www.hivemq.com/)
-[![Jest Tests](https://img.shields.io/badge/Jest%20Tests-315%2F315%20Passing%20(39%20Suites)-brightgreen.svg?logo=jest)](https://jestjs.io/)
+[![Jest Tests](https://img.shields.io/badge/Jest%20Tests-377%2F377%20Passing%20(44%20Suites)-brightgreen.svg?logo=jest)](https://jestjs.io/)
 [![WCAG](https://img.shields.io/badge/WCAG-2.2%20Level%20AA-green.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 
 ---
@@ -48,6 +49,7 @@ Whether you are a **campus administrator**, a **facility supervisor**, a **custo
    - [9. Community Issue Moderation (`/issue-reports`)](#9-community-issue-moderation-issue-reports)
    - [10. Multi-Format Compliance & Export Engine (`/reports`)](#10-multi-format-compliance--export-engine-reports)
    - [11. User Profile & Preferences (`/profile`)](#11-user-profile--preferences-profile)
+   - [12. Institutional Staff Management & Provisioning (`/staff`)](#12-institutional-staff-management--provisioning-staff)
 7. [Core Platform Features Deep Dive](#-core-platform-features-deep-dive)
    - [Autonomous Touchless Operation](#1-autonomous-touchless-sanitation)
    - [Continuous Ingestion & Watchdog Monitor](#2-continuous-telemetry-ingestion--watchdog-monitor)
@@ -55,8 +57,9 @@ Whether you are a **campus administrator**, a **facility supervisor**, a **custo
    - [Automated Dispatch & Leak Anomaly Engine](#4-automated-dispatch--leak-anomaly-engine)
    - [Campus Batch QR Generator & Printable Sheets](#5-campus-batch-qr-generator--printable-sheets)
    - [Double-Action Safety Locks (Poka-Yoke)](#6-double-action-actuator-safety-locks-poka-yoke)
+   - [Institutional Staff Provisioning & Lifecycle Security](#7-institutional-staff-provisioning--lifecycle-security)
 8. [Role-Based Access Control (RBAC) & Security Architecture](#-role-based-access-control-rbac--security-architecture)
-9. [Comprehensive REST API Reference (48 Endpoints)](#-comprehensive-rest-api-reference-48-endpoints)
+9. [Comprehensive REST API Reference (52 Endpoints)](#-comprehensive-rest-api-reference-52-endpoints)
 10. [Design System & Accessibility (WCAG 2.2 AA)](#-design-system--accessibility-wcag-22-aa)
 11. [Local Installation & Development Setup](#-local-installation--development-setup)
 12. [Production Deployment Architecture (Vercel + Railway)](#-production-deployment-architecture-vercel--railway)
@@ -286,6 +289,7 @@ flowchart TD
     Dashboard --> Analytics["/analytics\n(Facility Intelligence)"]
     Dashboard --> Alerts["/alerts\n(Incident Alarms)"]
     Dashboard --> Tasks["/tasks\n(Work Order Hub)"]
+    Dashboard --> Staff["/staff\n(Staff Management & Provisioning)"]
     Dashboard --> Config["/configuration\n(Automation & Batch QR)"]
     Dashboard --> IssueReports["/issue-reports\n(Admin Moderation)"]
     Dashboard --> Reports["/reports\n(Compliance Exports)"]
@@ -326,8 +330,8 @@ flowchart TD
 
 ### 3. Staff & Administrative Portal (`/portal-admin/*`)
 * **URL Routes**:
-  * `/portal-admin/login`: Secure staff login with password strength enforcement and brute-force rate limiting.
-  * `/portal-admin/register`: Staff account registration with RFC email validation and default `pending` role.
+  * `/portal-admin/login`: Secure staff login with password strength enforcement, brute-force rate limiting, and `@sdca.edu.ph` institutional identity authentication.
+  * `/portal-admin/register`: **Decommissioned Public Self-Registration** — In strict adherence to institutional security governance, public self-registration is disabled. This route renders an accessible Institutional Security Notice informing visitors that employee accounts are provisioned exclusively by Campus Administration, with a direct CTA returning to the login gate.
   * `/portal-admin/forgot-password`: Self-service password reset email request.
   * `/portal-admin/reset-password`: Secure password confirmation with token validation.
 * **Target Audience**: Custodial technicians, facility supervisors, campus administrators.
@@ -335,6 +339,7 @@ flowchart TD
   * Passwords checked against **Have I Been Pwned (HIBP)** database ($>600\text{M}$ breached passwords blocked).
   * Rate-limited endpoints (10 attempts per 15 minutes).
   * Persistent sessions via Firebase Auth with role resolution.
+  * Endpoint `/api/auth/register` locked down with `verifyAuthToken` and `requireAdmin` checks with atomic compensation rollback.
 
 ---
 
@@ -442,7 +447,45 @@ flowchart TD
 ### 11. User Profile & Preferences (`/profile`)
 * **URL Route**: `/profile`
 * **Target Audience**: All authenticated users.
-* **Purpose**: View account credentials, role claims (`admin`, `supervisor`, `maintenance`), update security passwords, and customize theme settings (Light / Dark mode).
+* **Purpose**: View account credentials, role claims (`admin`, `supervisor`, `technician`/`maintenance`), active build version badge (`Klir Admin Web • v1.61.0`), update security passwords, and customize theme settings (Light / Dark mode).
+
+---
+
+### 12. Institutional Staff Management & Provisioning (`/staff`)
+* **URL Route**: `/staff`
+* **Target Audience**: Campus Administrators (`role: admin` only).
+* **Purpose**: Mission-critical administrative control center for provisioning, managing, and auditing institutional custodial personnel and field supervisors without relying on public registration endpoints.
+* **Key Visual Elements & Capabilities**:
+  * **Header & Quick Refresh**: Single-row layout with title, descriptive subtitle, manual roster refresh button (with accessible spin state), and primary CTA `+ Add Staff Member`.
+  * **Top 4 Metric KPI Cards**:
+    * **Total Staff** (`Users` icon): Live count of all registered institutional employees.
+    * **Supervisors** (`ShieldCheck` icon): Total active and assigned field supervisors.
+    * **Technicians** (`Wrench` icon): Total active custodial maintenance personnel.
+    * **Available Now** (`UserCheck` icon): Personnel not currently committed to an active task (`status: 'acknowledged'` or `'rechecking'`).
+  * **Dynamic Multi-Criteria Filtering**:
+    * **Search Input**: Live instant filtering by employee name or `@sdca.edu.ph` email.
+    * **Role Dropdown Filter**: Quick filter across `All Roles`, `Supervisor`, `Technician`, and `Admin`.
+    * **Facility Dropdown Filter**: Quick filter across `All Facilities`, `SDCA Annex`, and `Main Campus`.
+  * **Staff Roster Directory Table**:
+    * **Avatar**: High-contrast initials badge with solid SDCA brand crimson background (`#B5121B`).
+    * **Staff Identity**: Formatted full name and RFC-compliant institutional email.
+    * **Role Indicator**: Static high-contrast pill with custom Lucide icon (`ShieldCheck` for Supervisor, `Wrench` for Technician, `ShieldAlert` for Admin).
+    * **Assigned Facility & Shift**: Clearly indicates primary building assignment and working shift (`1st`, `2nd`, or `3rd`).
+    * **Workload Status**: Real-time status badge (`Available` with green dot, `On Task #TK-...` linking to active work order, or `Deactivated`).
+    * **Contextual Actions Menu**:
+      * **`Edit Assignment`**: Opens an accessible modal to reassign campus building, shift, or role claims.
+      * **`Send Password Reset`**: Generates and dispatches a verified password setup link directly to the employee's institutional email address.
+      * **`Deactivate / Reactivate Account`**: Toggles employee active state. Deactivating soft-disables the profile in Firestore, sets `disabled: true` in Firebase Auth, and **instantly revokes all active JWT refresh tokens** (`adminAuth.revokeRefreshTokens`), immediately booting deactivated users without erasing historical cleaning records or audit history.
+      * **Self-Protection Safeguards**: Prohibits self-deactivation or self-demotion to ensure campus administrators cannot accidentally lock themselves out of the management system.
+  * **Provisioning Modal (`+ Add Staff Member`)**:
+    * Clean single-dismiss `✕` modal dialog conforming to Design 3's guidelines (no duplicate header handles).
+    * Inputs with strict validation: Full Name, Institutional Email (`@sdca.edu.ph`), Role Selector, Facility Assignment, and Shift Assignment.
+    * **Welcome & Password Setup Checkbox**: When checked, automatically generates and emails an onboarding password setup link to the employee.
+    * **Atomic Compensation Rollback**: If Cloud Firestore profile creation encounters an error, the newly provisioned Firebase Auth user is deleted immediately, guaranteeing zero orphaned credentials.
+* **Design System & Accessibility Standards**:
+  * **Zero Emojis**: Uses official custom SVG Lucide icons exclusively (`Users`, `ShieldCheck`, `Wrench`, `UserCheck`, `Building2`, `Clock`, `KeyRound`, `UserX`, etc.).
+  * **Zero Pulsing Dots**: No `animate-pulse` or `animate-ping`; uses static semantic color badges with high-contrast text labels.
+  * **WCAG 2.2 Level AA**: Meets 4.5:1 text contrast ratios, 3:1 graphical border contrast, minimum touch targets $\ge 48\text{px}$, and keyboard navigation traps (`Escape` key modal dismissal).
 
 ---
 
@@ -481,17 +524,25 @@ To prevent accidental activation of high-voltage UV-C lamps or plumbing valves:
 * **Ultrasonic Interlock**: If the ultrasonic sensor detects a person in the stall, manual UV-C triggering is automatically hardware-disabled to eliminate UV radiation risks.
 * Sensitive configuration changes require administrative password re-verification.
 
+### 7. Institutional Staff Provisioning & Lifecycle Security
+To eliminate security vulnerabilities inherent in public self-registration endpoints in enterprise and institutional environments:
+* **Tiered Governance Boundary**: The institutional Superadmin manages administrator access directly via Firebase Console. The Campus Administrator manages field supervisors and custodial technicians exclusively through the authenticated `/staff` portal.
+* **Atomic Compensation Rollback**: Account provisioning executes a two-phase transaction. If Firestore staff profile creation fails after Firebase Auth creation, an automated compensation step deletes the newly created Auth user, guaranteeing zero dangling authentication records.
+* **Instantaneous Session Token Revocation**: When an administrator toggles a staff member to "Deactivated", the backend marks their Firestore document `active: false`, disables the Firebase Auth account (`disabled: true`), and executes `adminAuth.revokeRefreshTokens(uid)`. This immediately invalidates active refresh tokens across both mobile and web clients, preventing unauthorized access while preserving historical work order audit logs.
+
 ---
 
 ## 🔐 Role-Based Access Control (RBAC) & Security Architecture
 
 Klir enforces strict server-side RBAC using Firebase Custom Claims and JWT Bearer verification on every protected route:
 
-| Platform Resource / Capability | `admin` | `supervisor` | `maintenance` | `viewer` | `public` |
+| Platform Resource / Capability | `admin` | `supervisor` | `maintenance` / `technician` | `viewer` | `public` |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Public Stall QR Issue Reporting** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Web Dashboard Access** | ✅ Full | ✅ Full | ⚠️ Feed Only | 👁️ Read-Only | ❌ No |
 | **Custodial Mobile App Access** | ❌ Blocked | ✅ Audit Hub | ✅ Workspace | ❌ Blocked | ❌ No |
+| **Institutional Staff Management (`/staff`)** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ No |
+| **Provision & Deactivate Staff Accounts** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ No |
 | **Create & Dispatch Tasks** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
 | **Acknowledge & Complete Tasks** | ❌ No | ❌ Audit Only | ✅ Checklist+Photo | ❌ No | ❌ No |
 | **Approve / Flag QA Inspections** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
@@ -500,15 +551,17 @@ Klir enforces strict server-side RBAC using Firebase Custom Claims and JWT Beare
 | **Manage Automation Rules** | ✅ Edit / Create | 👁️ View Only | ❌ No | ❌ No | ❌ No |
 | **Export Compliance Reports (PDF/CSV)** | ✅ Yes | ✅ Yes | ❌ No | 👁️ View Only | ❌ No |
 
-### Enterprise Security Safeguards (OWASP 2026):
+### Enterprise Security Safeguards (OWASP & Institutional Governance 2026):
+* **Decommissioned Public Self-Registration**: In accordance with institutional data policies, self-service registration endpoints (`/portal-admin/register`) are disabled. All operational credentials require deliberate administrative provisioning.
 * **No Token Storage in Cookies**: Prevents Cross-Site Scripting (XSS) session hijacking by storing auth tokens in Firebase's internal IndexedDB storage.
 * **Per-IP & Per-User Rate Limiting**: All critical API endpoints are protected by `lib/rate-limit.ts` to thwart brute-force and DDoS attacks.
 * **Strict Zod Input Validation**: Every request payload is strictly sanitized against Zod schemas in `lib/schemas.ts`.
 * **CORS Origin Whitelisting**: Strict origin headers reject unauthorized cross-domain API calls.
+* **Logic Audit & GCS Security Assessment**: Full end-to-end audit confirms strict role claim checks on user creation (`/api/staff`, `/api/auth/register`), atomic rollback on failure, immediate token revocation upon deactivation, and SAIF-compliant cloud storage bucket isolation.
 
 ---
 
-## 📋 Comprehensive REST API Reference (48 Endpoints)
+## 📋 Comprehensive REST API Reference (52 Endpoints)
 
 All API endpoints are located under `/api/` and require an `Authorization: Bearer <ID_TOKEN>` header (except public endpoints).
 
@@ -540,7 +593,7 @@ All API endpoints are located under `/api/` and require an `Authorization: Beare
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
 | `POST` | `/api/auth/login` | Public | Authenticate user and issue session token |
-| `POST` | `/api/auth/register` | Public | Register new staff account (password checked against HIBP) |
+| `POST` | `/api/auth/register` | `admin` | Provision staff account with RFC check and HIBP check |
 | `POST` | `/api/auth/logout` | Authenticated | Invalidate current user session |
 | `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user profile and RBAC role |
 | `POST` | `/api/auth/password-reset/request` | Public | Request password reset verification link |
@@ -611,6 +664,14 @@ All API endpoints are located under `/api/` and require an `Authorization: Beare
 | `POST` | `/api/supervisor/approve-task` | `admin`, `supervisor` | Formally approve a completed maintenance task |
 | `POST` | `/api/supervisor/flag-task` | `admin`, `supervisor` | Flag task with mandatory reason requiring re-inspection |
 | `POST` | `/api/supervisor/reassign-task` | `admin`, `supervisor` | Reallocate work order to another technician |
+
+### 12. Staff Management & Account Lifecycle (4 Endpoints)
+| Method | Endpoint | Allowed Roles | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/staff` | `admin` | Query comprehensive roster with active task workload, shift, and status |
+| `POST` | `/api/staff` | `admin` | Provision new employee account (Firebase Auth + Firestore) with atomic rollback |
+| `PATCH` | `/api/staff/[id]` | `admin` | Update facility, shift, role, or toggle active state with instant token revocation |
+| `POST` | `/api/staff/[id]` | `admin` | Generate and dispatch verified password setup link to employee email |
 
 ---
 
@@ -716,6 +777,17 @@ npm run dev:listener
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+### 5. Automated Git SemVer Release Engine
+Klir Web features an automated, zero-dependency release engine (`scripts/release.js`) that analyzes Conventional Commits across the repository to determine semantic version increments (`v1.61.0` $\rightarrow$ Build 158):
+
+```powershell
+# Preview release version bump without touching files (dry run)
+npm run version:check
+
+# Execute release: updates package.json, prepends CHANGELOG.md, and creates git release tag
+npm run release
+```
+
 ---
 
 ## 🚢 Production Deployment Architecture (Vercel + Railway)
@@ -738,7 +810,8 @@ Because serverless environments terminate long-lived TCP connections, the produc
 ## 🧪 Testing, Diagnostics & Code Quality
 
 ```powershell
-# Run Jest unit and integration test suites (315 tests passing across 39 suites)
+# Run Jest unit and integration test suites (377 tests passing across 44 suites)
+npm test -- --watchAll=false
 npm run test:ci
 
 # Run Jest in watch mode during development
@@ -800,9 +873,10 @@ Smart-Flush-Web-App/
 │   │   ├── issue-reports/page.tsx       # Admin-only public report triage & photo review
 │   │   ├── profile/page.tsx             # User account & notification preferences
 │   │   ├── reports/page.tsx             # PDF/CSV compliance audit report generator
+│   │   ├── staff/page.tsx               # Institutional staff roster & provisioning hub
 │   │   ├── tasks/page.tsx               # Dedicated full-width work orders hub
 │   │   └── layout.tsx                   # Dashboard navigation, header & live badges
-│   ├── api/                             # 48 Next.js App Router API endpoints
+│   ├── api/                             # 52 Next.js App Router API endpoints
 │   │   ├── actuators/                   # Pump, UV, Lid open/close, reset routes
 │   │   ├── alerts/                      # Alarm querying & acknowledgment
 │   │   ├── analytics/                   # Aggregated metrics for telemetry charts
@@ -816,6 +890,8 @@ Smart-Flush-Web-App/
 │   │   ├── public/                      # Zero-login QR stall issue submission
 │   │   ├── reports/                     # PDF generation and download
 │   │   ├── sensors/                     # Sensor readings and calibration config
+│   │   ├── staff/                       # Staff provisioning & roster queries
+│   │   ├── staff/[id]/                  # Staff update, deactivation, and password reset
 │   │   ├── supervisor/                  # Supervisor approve, flag & reassign routes
 │   │   └── tasks/                       # Task CRUD, acknowledge, complete, cleanup
 │   ├── portal-admin/                    # Staff login, registration, password reset
@@ -867,6 +943,9 @@ Smart-Flush-Web-App/
 │   │   └── mqtt-client.ts               # MQTT connection singleton & router
 │   ├── package.json
 │   └── tsconfig.json
+├── scripts/                             # Automation & release engineering scripts
+│   ├── dev-all.js                       # Concurrently boot Next.js web and MQTT listener
+│   └── release.js                       # Automated SemVer release and changelog engine
 ├── types/                               # TypeScript domain type definitions
 ├── tailwind.config.ts                   # SDCA palette & DaisyUI theme configuration
 ├── tsconfig.json                        # TypeScript compiler options

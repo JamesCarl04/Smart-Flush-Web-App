@@ -359,6 +359,12 @@ describe('StaffManagementPage', () => {
           }),
         );
       });
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith(
+          expect.stringContaining('Juan Dela Cruz deactivated'),
+        );
+      });
     });
 
     it('requests password reset link via POST /api/staff/:id', async () => {
