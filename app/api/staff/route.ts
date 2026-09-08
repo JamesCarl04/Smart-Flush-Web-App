@@ -4,6 +4,7 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
+import { dispatchPasswordResetEmail } from '@/lib/password-reset-email';
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -185,14 +186,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw firestoreError;
     }
 
-    // 3. Optionally generate password setup link
+    // 3. Optionally generate and dispatch password setup link
     let resetLink: string | null = null;
+    let emailDispatched = false;
     if (sendPasswordReset) {
       try {
         resetLink = await adminAuth.generatePasswordResetLink(email);
       } catch (linkError) {
         console.warn('[Staff API] Failed to generate password reset link:', linkError);
       }
+      const emailResult = await dispatchPasswordResetEmail(email);
+      emailDispatched = emailResult.success;
     }
 
     return NextResponse.json(
@@ -200,6 +204,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         success: true,
         uid: userRecord.uid,
         resetLink,
+        emailDispatched,
         message: 'Staff member provisioned successfully',
       },
       { status: 201 },

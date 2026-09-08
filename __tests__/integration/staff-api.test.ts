@@ -659,12 +659,33 @@ describe('Staff Management and Registration APIs', () => {
         method: 'POST',
       });
 
-      const res = await resetStaffPassword(req, { params: Promise.resolve({ id: 'staff-1' }) });
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.resetLink).toBe('https://auth.klir.local/reset-link');
-      expect(mockAdminAuth.generatePasswordResetLink).toHaveBeenCalledWith('technician@sdca.edu.ph');
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ email: 'technician@sdca.edu.ph' }),
+      } as Response);
+
+      try {
+        const res = await resetStaffPassword(req, { params: Promise.resolve({ id: 'staff-1' }) });
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.success).toBe(true);
+        expect(json.resetLink).toBe('https://auth.klir.local/reset-link');
+        expect(json.emailDispatched).toBe(true);
+        expect(mockAdminAuth.generatePasswordResetLink).toHaveBeenCalledWith('technician@sdca.edu.ph');
+        expect(global.fetch).toHaveBeenCalledWith(
+          expect.stringContaining('sendOobCode'),
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              requestType: 'PASSWORD_RESET',
+              email: 'technician@sdca.edu.ph',
+            }),
+          }),
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 });

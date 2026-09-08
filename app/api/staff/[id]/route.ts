@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { dispatchPasswordResetEmail } from '@/lib/password-reset-email';
 
 const ALLOWED_STAFF_ROLES = ['admin', 'supervisor', 'technician', 'maintenance'] as const;
 
@@ -189,11 +190,15 @@ export async function POST(
     }
 
     const resetLink = await adminAuth.generatePasswordResetLink(email);
+    const emailResult = await dispatchPasswordResetEmail(email);
 
     return NextResponse.json({
       success: true,
       resetLink,
-      message: `Password setup link generated for ${email}`,
+      emailDispatched: emailResult.success,
+      message: emailResult.success
+        ? `Password reset email dispatched to ${email}`
+        : `Password setup link generated for ${email}`,
     });
   } catch (error) {
     if (error instanceof Response) {

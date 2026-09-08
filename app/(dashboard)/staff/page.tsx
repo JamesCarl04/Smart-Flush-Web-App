@@ -483,7 +483,7 @@ export default function StaffManagementPage() {
       );
 
       if (res.success) {
-        toast.success(`Password setup link generated for ${staff.email}`);
+        toast.success(res.message || `Password setup link generated for ${staff.email}`);
       } else {
         toast.error(res.error || 'Failed to generate reset link');
       }
