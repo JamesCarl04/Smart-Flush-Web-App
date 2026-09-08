@@ -49,4 +49,26 @@ describe('maintenance task API visibility', () => {
       'legacy-broadcast',
     ]);
   });
+
+  it('includes flagged or rechecking tasks where user is recheckedBy even if assigned to someone else', async () => {
+    const get = jest.fn().mockResolvedValue({
+      docs: [
+        taskDoc('recheck-self', {
+          status: 'rechecking',
+          assignedTo: 'tech-2',
+          assignedToIds: ['tech-2'],
+          recheckedBy: 'tech-1',
+        }),
+      ],
+    });
+    (adminDb.collection as jest.Mock).mockReturnValue({
+      orderBy: jest.fn(() => ({ get })),
+    });
+
+    const response = await GET(new Request('http://localhost/api/tasks'));
+    const body = (await response.json()) as { data: Array<{ id: string }> };
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((task) => task.id)).toEqual(['recheck-self']);
+  });
 });

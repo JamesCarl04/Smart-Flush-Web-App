@@ -65,6 +65,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       supervisorUid,
       flaggedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      completedAt: FieldValue.delete(),
+      completedBy: null,
     });
 
     return NextResponse.json({

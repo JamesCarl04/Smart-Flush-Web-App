@@ -18,6 +18,7 @@ jest.mock('@/lib/firebase-admin', () => ({
 jest.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     serverTimestamp: jest.fn(() => 'server-timestamp'),
+    delete: jest.fn(() => 'field-delete'),
   },
   Timestamp: {
     now: jest.fn(() => ({ toMillis: () => 1000 })),

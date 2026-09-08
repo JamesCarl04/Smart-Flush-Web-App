@@ -13,10 +13,12 @@ jest.mock('@/lib/auth-helpers', () => ({
 jest.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     serverTimestamp: jest.fn(() => 'server-timestamp'),
+    delete: jest.fn(() => 'field-delete'),
   },
 }));
 
 import { POST } from '@/app/api/supervisor/approve-task/route';
+import { POST as flagTask } from '@/app/api/supervisor/flag-task/route';
 import { adminDb } from '@/lib/firebase-admin';
 
 const mockCollection = adminDb.collection as jest.Mock;
@@ -140,4 +142,50 @@ describe('supervisor task approval', () => {
     expect(response.status).toBe(200);
     expect(transaction.update).toHaveBeenCalledWith(taskRef, expect.objectContaining({ status: 'completed' }));
   });
+
+  describe('supervisor task flagging', () => {
+    it('resets completedAt with FieldValue.delete() and completedBy with null when task is flagged', async () => {
+      const mockUpdate = jest.fn().mockResolvedValue(undefined);
+      const mockDoc = {
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => ({
+            status: 'completed',
+            completedAt: new Date(),
+            completedBy: 'tech-1',
+          }),
+        }),
+        update: mockUpdate,
+      };
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'tasks') return { doc: jest.fn(() => mockDoc) };
+        throw new Error(`Unexpected collection ${name}`);
+      });
+
+      const flagRequest = new Request('http://localhost/api/supervisor/flag-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: 'task-1',
+          reason: 'Missing proof photo for fixture',
+          flagPhotoUrls: ['https://example.com/flag.jpg'],
+        }),
+      });
+
+      const response = await flagTask(flagRequest);
+      expect(response.status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'flagged',
+          inspectionStatus: 'flagged',
+          flagReason: 'Missing proof photo for fixture',
+          flagPhotoUrls: ['https://example.com/flag.jpg'],
+          inspectedBy: 'supervisor-1',
+          completedAt: 'field-delete',
+          completedBy: null,
+        }),
+      );
+    });
+  });
 });
+

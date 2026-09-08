@@ -92,6 +92,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           isAssignedToUser(rawTask, user.uid) ||
           (user.email && rawTask.assignedTo === user.email) ||
           rawTask.createdBy === user.uid ||
+          rawTask.recheckedBy === user.uid ||
           Boolean(rawTask.completedBy && rawTask.completedBy[user.uid]) ||
           Boolean(
             rawTask.submissions &&
