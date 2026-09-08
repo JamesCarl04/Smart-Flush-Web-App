@@ -42,9 +42,19 @@ const mockAdminDb = adminDb as jest.Mocked<typeof adminDb>;
 const mockVerifyAuthToken = verifyAuthToken as jest.Mock;
 const mockRequireAdmin = requireAdmin as jest.Mock;
 
+const originalFetch = global.fetch;
+
 describe('Staff Management and Registration APIs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    } as Response);
+  });
+
+  afterAll(() => {
+    global.fetch = originalFetch;
   });
 
   describe('POST /api/auth/register (Locked Down)', () => {

@@ -476,7 +476,12 @@ export default function StaffManagementPage() {
     if (!user) return;
     setActiveMenuId(null);
     try {
-      const res = await apiFetch<{ success: boolean; resetLink?: string; error?: string }>(
+      const res = await apiFetch<{
+        success: boolean;
+        resetLink?: string;
+        message?: string;
+        error?: string;
+      }>(
         `/api/staff/${staff.id}`,
         user,
         { method: 'POST' },
