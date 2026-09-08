@@ -23,6 +23,7 @@ import { db } from '@/lib/firebase';
 import { useProfile } from '@/hooks/useProfile';
 import { validatePassword } from '@/lib/password-validator';
 import type { NotificationPrefs } from '@/types';
+import packageInfo from '@/package.json';
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 const accountSchema = z.object({
@@ -317,6 +318,11 @@ export default function ProfilePage() {
                 >
                   {roleBadgeConfig.icon}
                   <span>Role: {userRole}</span>
+                </div>
+
+                <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span>Klir Admin Web • v{packageInfo.version}</span>
                 </div>
 
                 {user?.uid && (

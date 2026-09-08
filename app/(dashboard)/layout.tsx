@@ -28,6 +28,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Toaster } from 'react-hot-toast';
 import { apiFetch } from '@/lib/api-client';
 import { buildOperationsNavigation } from '@/lib/admin-navigation';
+import packageInfo from '@/package.json';
 
 interface NavItem {
   name: string;
@@ -59,11 +60,11 @@ export default function DashboardLayout({
 
   const notificationsRef = useRef<HTMLDivElement>(null);
 
-  const { alerts, unreadCount } = useAlerts();
-  const recentAlerts = alerts.slice(0, 5);
+  const { alerts = [], unreadCount = 0 } = useAlerts();
+  const recentAlerts = (alerts || []).slice(0, 5);
 
-  const { tasks } = useTasks();
-  const pendingTasksCount = tasks.filter((t) => t.status === 'pending').length;
+  const { tasks = [] } = useTasks();
+  const pendingTasksCount = (tasks || []).filter((t) => t.status === 'pending').length;
 
   useEffect(() => {
     if (!user || role !== 'admin' || roleLoading) {
@@ -278,8 +279,11 @@ export default function DashboardLayout({
                   <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
                     {userDisplayName}
                   </p>
-                  <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/80 dark:text-red-300 border border-red-200/60 dark:border-red-800/40">
+                  <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/80 dark:text-red-300 border border-red-200/60 dark:border-red-800/40">
                     {isAdmin ? 'Admin' : 'Operator'}
+                  </span>
+                  <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium font-mono bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                    v{packageInfo.version}
                   </span>
                 </div>
                 <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
@@ -394,9 +398,17 @@ export default function DashboardLayout({
                     {userInitials}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
-                      {userDisplayName}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
+                        {userDisplayName}
+                      </p>
+                      <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/80 dark:text-red-300 border border-red-200/60 dark:border-red-800/40">
+                        {isAdmin ? 'Admin' : 'Operator'}
+                      </span>
+                      <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium font-mono bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                        v{packageInfo.version}
+                      </span>
+                    </div>
                     <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                       {user?.email || 'operator@klir.local'}
                     </p>

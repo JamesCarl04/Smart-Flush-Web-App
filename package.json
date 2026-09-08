@@ -1,6 +1,6 @@
 {
   "name": "smart-flush",
-  "version": "0.1.0",
+  "version": "1.61.0",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev-all.js",
@@ -18,7 +18,9 @@
     "railway:listener:build": "npm --prefix mqtt-listener install && npm --prefix mqtt-listener run build",
     "railway:listener:start": "npm --prefix mqtt-listener run start:prod",
     "automation:reconcile": "npm --prefix mqtt-listener run reconcile",
-    "automation:reconcile:apply": "npm --prefix mqtt-listener run reconcile:apply"
+    "automation:reconcile:apply": "npm --prefix mqtt-listener run reconcile:apply",
+    "version:check": "node scripts/release.js --dry-run",
+    "release": "node scripts/release.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
