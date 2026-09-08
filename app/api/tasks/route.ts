@@ -41,7 +41,7 @@ function taskCreatedAtMillis(task: { createdAt: number | null }): number {
 async function listMaintenanceUserIds(): Promise<string[]> {
   const snapshot = await adminDb
     .collection('users')
-    .where('role', '==', 'maintenance')
+    .where('role', 'in', ['maintenance', 'technician'])
     .get();
 
   return snapshot.docs.map((doc) => doc.id);
@@ -53,7 +53,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
+    if (
+      role !== 'admin' &&
+      role !== 'supervisor' &&
+      role !== 'maintenance' &&
+      role !== 'technician'
+    ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -72,7 +77,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
-    if (role === 'maintenance') {
+    if (role === 'maintenance' || role === 'technician') {
       const taskMap = new Map<string, TaskApiData>();
       const allTasksSnapshot = await adminDb
         .collection('tasks')

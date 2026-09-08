@@ -15,6 +15,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       role !== 'admin' &&
       role !== 'supervisor' &&
       role !== 'maintenance' &&
+      role !== 'technician' &&
       role !== 'viewer'
     ) {
       return NextResponse.json(
@@ -24,7 +25,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const [usersSnapshot, activeTasksSnapshot] = await Promise.all([
-      adminDb.collection('users').where('role', '==', 'maintenance').get(),
+      adminDb.collection('users').where('role', 'in', ['maintenance', 'technician']).get(),
       adminDb
         .collection('tasks')
         .where('status', 'in', ['assigned', 'acknowledged', 'pending', 'reassignment_needed'])

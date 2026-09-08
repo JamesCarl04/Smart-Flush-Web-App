@@ -73,7 +73,7 @@ export async function listRequiredTaskUserIds(
 
   const snapshot = await adminDb
     .collection('users')
-    .where('role', '==', 'maintenance')
+    .where('role', 'in', ['maintenance', 'technician'])
     .get();
 
   return snapshot.docs.map((doc) => doc.id);
@@ -105,7 +105,7 @@ export function selectLeastRecentlyAssignedTechnician(
 export async function findAvailableMaintenancePersonnel(): Promise<AvailableTechnician[]> {
   try {
     const [usersSnapshot, activeTasksSnapshot] = await Promise.all([
-      adminDb.collection('users').where('role', '==', 'maintenance').get(),
+      adminDb.collection('users').where('role', 'in', ['maintenance', 'technician']).get(),
       adminDb
         .collection('tasks')
         .where('status', 'in', [

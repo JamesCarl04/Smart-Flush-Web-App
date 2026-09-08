@@ -58,7 +58,7 @@ export default function LoginPage() {
         errorCode === 'auth/user-not-found' ||
         errorCode === 'auth/invalid-credential'
       ) {
-        setError('Invalid email or password. Please check your credentials or register a new account.');
+        setError('Invalid email or password. Please check your credentials or contact your administrator.');
       } else if (errorCode === 'auth/wrong-password') {
         setError('Wrong password. Please verify your credentials.');
       } else if (errorCode === 'auth/too-many-requests') {
@@ -213,20 +213,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-
-        <div className="divider my-6 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 font-medium">
-          Or
-        </div>
-
-        <div className="text-center text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-          Don&apos;t have an account?{' '}
-          <Link
-            href="/portal-admin/register"
-            className="font-semibold text-[#B5121B] hover:text-[#8F0D16] dark:text-red-400 hover:underline ml-1"
-          >
-            Register here
-          </Link>
-        </div>
       </main>
     </div>
   );

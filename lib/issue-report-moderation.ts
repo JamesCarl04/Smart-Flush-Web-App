@@ -181,7 +181,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
     if (report.status !== 'pending_review') throw new IssueReportModerationError('Issue report is no longer pending', 409);
 
     const submissionsSnapshot = await transaction.get(reportRef.collection('submissions'));
-    const usersSnapshot = await transaction.get(adminDb.collection('users').where('role', '==', 'maintenance'));
+    const usersSnapshot = await transaction.get(adminDb.collection('users').where('role', 'in', ['maintenance', 'technician']));
     const tasksSnapshot = await transaction.get(adminDb.collection('tasks').where('status', 'in', UNFINISHED_STATUSES));
     const busy = new Set<string>();
     for (const taskDoc of tasksSnapshot.docs) {

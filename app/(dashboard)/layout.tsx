@@ -23,6 +23,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Users,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Toaster } from 'react-hot-toast';
@@ -154,9 +155,11 @@ export default function DashboardLayout({
             ? ClipboardList
             : item.name === 'Configuration'
               ? SlidersHorizontal
-              : item.name === 'Issue Reports'
-                ? AlertTriangle
-                : FileDown,
+              : item.name === 'Staff'
+                ? Users
+                : item.name === 'Issue Reports'
+                  ? AlertTriangle
+                  : FileDown,
         ...(item.name === 'Tasks' ? { badge: pendingTasksCount > 0 ? pendingTasksCount : null } : {}),
       })),
     },
