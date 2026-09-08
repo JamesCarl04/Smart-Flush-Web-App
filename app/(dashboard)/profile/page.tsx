@@ -286,7 +286,7 @@ export default function ProfilePage() {
                 <span className="text-2xl font-bold tracking-wider">{initials}</span>
               </div>
               <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-base-100">
-                <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+                <span className="h-2 w-2 rounded-full bg-white"></span>
               </span>
             </div>
 

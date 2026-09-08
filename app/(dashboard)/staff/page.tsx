@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api-client';
 import toast from 'react-hot-toast';
+import { reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import {
   Users,
   ShieldCheck,
@@ -21,6 +23,8 @@ import {
   X,
   ShieldAlert,
   RotateCw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export interface StaffMember {
@@ -101,6 +105,7 @@ export default function StaffManagementPage() {
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [creationStep, setCreationStep] = useState<'form' | 'review'>('form');
   const [formValues, setFormValues] = useState<NewStaffForm>(INITIAL_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof NewStaffForm, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,8 +114,14 @@ export default function StaffManagementPage() {
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [editBuilding, setEditBuilding] = useState('');
   const [editShift, setEditShift] = useState('');
-  const [editRole, setEditRole] = useState<'technician' | 'supervisor' | 'admin'>('technician');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+
+  // Deactivation Step-Up Modal state
+  const [deactivatingStaff, setDeactivatingStaff] = useState<StaffMember | null>(null);
+  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState('');
+  const [deactivatePasswordError, setDeactivatePasswordError] = useState<string | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const [showDeactivatePassword, setShowDeactivatePassword] = useState(false);
 
   // Active action menu row id
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -145,7 +156,7 @@ export default function StaffManagementPage() {
 
   // Prevent background page and main container scrolling while modal is open
   useEffect(() => {
-    const isModalActive = isAddModalOpen || Boolean(editingStaff);
+    const isModalActive = isAddModalOpen || Boolean(editingStaff) || Boolean(deactivatingStaff);
     if (!isModalActive) return;
 
     const originalBodyOverflow = document.body.style.overflow;
@@ -166,7 +177,7 @@ export default function StaffManagementPage() {
         mainEl.style.overflow = originalMainOverflow;
       }
     };
-  }, [isAddModalOpen, editingStaff]);
+  }, [isAddModalOpen, editingStaff, deactivatingStaff]);
 
   // Close menus on outside click or Escape key
   useEffect(() => {
@@ -177,7 +188,12 @@ export default function StaffManagementPage() {
       if (e.key === 'Escape') {
         setActiveMenuId(null);
         setIsAddModalOpen(false);
+        setCreationStep('form');
         setEditingStaff(null);
+        setDeactivatingStaff(null);
+        setAdminPasswordConfirm('');
+        setDeactivatePasswordError(null);
+        setShowDeactivatePassword(false);
       }
     }
     window.addEventListener('click', handleWindowClick);
@@ -258,8 +274,13 @@ export default function StaffManagementPage() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleCreateStaff = async (e: React.FormEvent) => {
+  const handleProceedToReview = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
+    setCreationStep('review');
+  };
+
+  const handleExecuteCreateStaff = async () => {
     if (!validateForm() || !user) return;
 
     setIsSubmitting(true);
@@ -283,6 +304,7 @@ export default function StaffManagementPage() {
       if (res.success) {
         toast.success(`Staff member ${formValues.displayName} provisioned`);
         setIsAddModalOpen(false);
+        setCreationStep('form');
         setFormValues(INITIAL_FORM);
         setFormErrors({});
         await loadStaff();
@@ -301,11 +323,10 @@ export default function StaffManagementPage() {
     setEditingStaff(staff);
     setEditBuilding(staff.building || 'Main Campus');
     setEditShift(staff.shift || '1st');
-    setEditRole(staff.role === 'admin' ? 'admin' : staff.role === 'supervisor' ? 'supervisor' : 'technician');
     setActiveMenuId(null);
   };
 
-  // Submit Edit Assignment
+  // Submit Edit Assignment (Role is locked and omitted from payload)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStaff || !user) return;
@@ -320,7 +341,6 @@ export default function StaffManagementPage() {
           body: JSON.stringify({
             building: editBuilding,
             shift: editShift,
-            role: editRole,
           }),
         },
       );
@@ -339,35 +359,115 @@ export default function StaffManagementPage() {
     }
   };
 
-  // Toggle Deactivate / Reactivate
-  const handleToggleActive = async (staff: StaffMember) => {
+  // Deactivation Step-Up Handlers
+  const handleCloseDeactivateModal = () => {
+    setDeactivatingStaff(null);
+    setAdminPasswordConfirm('');
+    setDeactivatePasswordError(null);
+    setShowDeactivatePassword(false);
+  };
+
+  const handleOpenDeactivateModal = (staff: StaffMember) => {
+    if (user && (user.uid === staff.id || user.uid === staff.uid)) {
+      toast.error('Cannot deactivate your own administrator account.');
+      setActiveMenuId(null);
+      return;
+    }
+    setActiveMenuId(null);
+    setDeactivatingStaff(staff);
+    setAdminPasswordConfirm('');
+    setDeactivatePasswordError(null);
+    setShowDeactivatePassword(false);
+  };
+
+  const handleConfirmDeactivate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deactivatingStaff || !user) return;
+
+    if (!adminPasswordConfirm.trim()) {
+      setDeactivatePasswordError('Administrator password is required to authorize deactivation.');
+      return;
+    }
+
+    if (user.uid === deactivatingStaff.id || user.uid === deactivatingStaff.uid) {
+      setDeactivatePasswordError('Cannot deactivate your own administrator account.');
+      return;
+    }
+
+    setIsDeactivating(true);
+    setDeactivatePasswordError(null);
+
+    try {
+      const currentUser = auth.currentUser || user;
+      if (!currentUser || !currentUser.email) {
+        throw new Error('Current administrator session is invalid.');
+      }
+
+      const credential = EmailAuthProvider.credential(
+        currentUser.email,
+        adminPasswordConfirm,
+      );
+      await reauthenticateWithCredential(currentUser, credential);
+
+      const res = await apiFetch<{ success: boolean; error?: string }>(
+        `/api/staff/${deactivatingStaff.id}`,
+        user,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ active: false }),
+        },
+      );
+
+      if (res.success) {
+        toast.success(
+          `${deactivatingStaff.displayName} deactivated without altering task history`,
+        );
+        handleCloseDeactivateModal();
+        await loadStaff();
+      } else {
+        setDeactivatePasswordError(res.error || 'Failed to deactivate staff member');
+      }
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (
+        code === 'auth/wrong-password' ||
+        code === 'auth/invalid-credential'
+      ) {
+        setDeactivatePasswordError('Incorrect administrator password. Please verify your credentials.');
+      } else if (code === 'auth/too-many-requests') {
+        setDeactivatePasswordError('Too many failed attempts. Access temporarily restricted. Please try again later.');
+      } else {
+        setDeactivatePasswordError(
+          err instanceof Error ? err.message : 'Authentication verification failed. Please try again.',
+        );
+      }
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
+  // Safe Direct Reactivation
+  const handleReactivateStaff = async (staff: StaffMember) => {
     if (!user) return;
     setActiveMenuId(null);
-    const newActiveState = !staff.active;
-    const actionLabel = newActiveState ? 'reactivate' : 'deactivate';
-
     try {
       const res = await apiFetch<{ success: boolean; error?: string }>(
         `/api/staff/${staff.id}`,
         user,
         {
           method: 'PATCH',
-          body: JSON.stringify({ active: newActiveState }),
+          body: JSON.stringify({ active: true }),
         },
       );
 
       if (res.success) {
-        toast.success(
-          newActiveState
-            ? `${staff.displayName} reactivated`
-            : `${staff.displayName} deactivated without altering task history`,
-        );
+        toast.success(`${staff.displayName} reactivated`);
         await loadStaff();
       } else {
-        toast.error(res.error || `Failed to ${actionLabel} staff member`);
+        toast.error(res.error || 'Failed to reactivate staff member');
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : `Failed to ${actionLabel} staff member`);
+      toast.error(err instanceof Error ? err.message : 'Failed to reactivate staff member');
     }
   };
 
@@ -516,6 +616,7 @@ export default function StaffManagementPage() {
             onClick={() => {
               setFormValues(INITIAL_FORM);
               setFormErrors({});
+              setCreationStep('form');
               setIsAddModalOpen(true);
             }}
             className="btn btn-primary h-12 min-h-[48px] px-5 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm inline-flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
@@ -775,6 +876,7 @@ export default function StaffManagementPage() {
                     .slice(0, 2) || 'ST';
 
                   const isMenuOpen = activeMenuId === person.id;
+                  const isSelf = Boolean(user && (user.uid === person.id || user.uid === person.uid));
                   const avatarBg =
                     person.role === 'admin'
                       ? 'bg-[#B5121B]'
@@ -885,11 +987,21 @@ export default function StaffManagementPage() {
 
                               <button
                                 type="button"
-                                onClick={() => void handleToggleActive(person)}
+                                disabled={person.active && isSelf}
+                                onClick={() => {
+                                  if (person.active) {
+                                    handleOpenDeactivateModal(person);
+                                  } else {
+                                    void handleReactivateStaff(person);
+                                  }
+                                }}
+                                title={person.active && isSelf ? 'Cannot deactivate your own administrator account' : undefined}
                                 className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center gap-2.5 focus-visible:outline-none ${
-                                  person.active
-                                    ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
-                                    : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
+                                  person.active && isSelf
+                                    ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                                    : person.active
+                                      ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
+                                      : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
                                 }`}
                                 role="menuitem"
                               >
@@ -918,7 +1030,7 @@ export default function StaffManagementPage() {
         </div>
       </section>
 
-      {/* 5. Provisioning Modal: + Add Staff Member */}
+      {/* 5. Provisioning Modal: + Add Staff Member (Two-Step Flow) */}
       {isAddModalOpen &&
         mounted &&
         createPortal(
@@ -928,184 +1040,283 @@ export default function StaffManagementPage() {
             aria-modal="true"
             aria-labelledby="modal-add-staff-title"
             onClick={(e) => {
-              if (e.target === e.currentTarget) setIsAddModalOpen(false);
+              if (e.target === e.currentTarget) {
+                setIsAddModalOpen(false);
+                setCreationStep('form');
+              }
             }}
           >
             <div className="relative w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
-            {/* Single dismiss affordance (no double handles) */}
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
-              aria-label="Close add staff modal"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
+              {/* Single dismiss affordance (no double handles) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setCreationStep('form');
+                }}
+                className="absolute top-4 right-4 sm:top-5 sm:right-5 h-11 w-11 sm:h-12 sm:w-12 min-h-[44px] min-w-[44px] sm:min-h-[48px] sm:min-w-[48px] flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
+                aria-label="Close add staff modal"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
 
-            <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
-              <h2 id="modal-add-staff-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
-                Provision New Staff Member
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Create institutional credentials and assign facility duties.
-              </p>
-            </div>
-
-            <form onSubmit={handleCreateStaff} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
-                {/* Full Name */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="staff-fullname">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Full Name <span className="text-rose-500">*</span>
-                    </span>
-                  </label>
-                  <input
-                    id="staff-fullname"
-                    type="text"
-                    placeholder="Maria Santos"
-                    value={formValues.displayName}
-                    onChange={(e) => setFormValues({ ...formValues, displayName: e.target.value })}
-                    aria-describedby={formErrors.displayName ? 'staff-fullname-error' : undefined}
-                    className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
-                      formErrors.displayName ? 'border-rose-500' : ''
-                    }`}
-                  />
-                  {formErrors.displayName && (
-                    <p id="staff-fullname-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
-                      {formErrors.displayName}
+              {creationStep === 'form' ? (
+                <>
+                  <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
+                    <h2 id="modal-add-staff-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+                      Provision New Staff Member
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Create institutional credentials and assign facility duties.
                     </p>
-                  )}
-                </div>
+                  </div>
 
-                {/* Institutional Email */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="staff-email">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Institutional Email (@sdca.edu.ph) <span className="text-rose-500">*</span>
-                    </span>
-                  </label>
-                  <input
-                    id="staff-email"
-                    type="email"
-                    placeholder="msantos@sdca.edu.ph"
-                    value={formValues.email}
-                    onChange={(e) => setFormValues({ ...formValues, email: e.target.value })}
-                    aria-describedby={formErrors.email ? 'staff-email-error' : undefined}
-                    className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
-                      formErrors.email ? 'border-rose-500' : ''
-                    }`}
-                  />
-                  {formErrors.email && (
-                    <p id="staff-email-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
-                      {formErrors.email}
+                  <form onSubmit={handleProceedToReview} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                      {/* Full Name */}
+                      <div className="form-control">
+                        <label className="label py-1" htmlFor="staff-fullname">
+                          <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Full Name <span className="text-rose-500">*</span>
+                          </span>
+                        </label>
+                        <input
+                          id="staff-fullname"
+                          type="text"
+                          placeholder="Maria Santos"
+                          value={formValues.displayName}
+                          onChange={(e) => setFormValues({ ...formValues, displayName: e.target.value })}
+                          aria-describedby={formErrors.displayName ? 'staff-fullname-error' : undefined}
+                          className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
+                            formErrors.displayName ? 'border-rose-500' : ''
+                          }`}
+                        />
+                        {formErrors.displayName && (
+                          <p id="staff-fullname-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
+                            {formErrors.displayName}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Institutional Email */}
+                      <div className="form-control">
+                        <label className="label py-1" htmlFor="staff-email">
+                          <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Institutional Email (@sdca.edu.ph) <span className="text-rose-500">*</span>
+                          </span>
+                        </label>
+                        <input
+                          id="staff-email"
+                          type="email"
+                          placeholder="msantos@sdca.edu.ph"
+                          value={formValues.email}
+                          onChange={(e) => setFormValues({ ...formValues, email: e.target.value })}
+                          aria-describedby={formErrors.email ? 'staff-email-error' : undefined}
+                          className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
+                            formErrors.email ? 'border-rose-500' : ''
+                          }`}
+                        />
+                        {formErrors.email && (
+                          <p id="staff-email-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
+                            {formErrors.email}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Role Selector */}
+                      <div className="form-control">
+                        <label className="label py-1" htmlFor="staff-role">
+                          <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Institutional Role <span className="text-rose-500">*</span>
+                          </span>
+                        </label>
+                        <select
+                          id="staff-role"
+                          value={formValues.role}
+                          onChange={(e) => setFormValues({ ...formValues, role: e.target.value as NewStaffForm['role'] })}
+                          className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                        >
+                          <option value="technician">Technician</option>
+                          <option value="supervisor">Supervisor</option>
+                          <option value="admin">Administrator</option>
+                        </select>
+                      </div>
+
+                      {/* Facility & Shift (Two Columns on sm) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                        <div className="form-control">
+                          <label className="label py-1" htmlFor="staff-facility">
+                            <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              Assigned Facility
+                            </span>
+                          </label>
+                          <select
+                            id="staff-facility"
+                            value={formValues.building}
+                            onChange={(e) => setFormValues({ ...formValues, building: e.target.value })}
+                            className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                          >
+                            <option value="Main Campus">Main Campus</option>
+                            <option value="SDCA Annex">SDCA Annex</option>
+                            <option value="Central Storage">Central Storage</option>
+                          </select>
+                        </div>
+
+                        <div className="form-control">
+                          <label className="label py-1" htmlFor="staff-shift">
+                            <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              Assigned Shift
+                            </span>
+                          </label>
+                          <select
+                            id="staff-shift"
+                            value={formValues.shift}
+                            onChange={(e) => setFormValues({ ...formValues, shift: e.target.value })}
+                            className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                          >
+                            <option value="1st">1st Shift (06:00 - 14:00)</option>
+                            <option value="2nd">2nd Shift (14:00 - 22:00)</option>
+                            <option value="3rd">3rd Shift (22:00 - 06:00)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Password setup link checkbox */}
+                      <div className="pt-1 sm:pt-2">
+                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={formValues.sendPasswordReset}
+                            onChange={(e) => setFormValues({ ...formValues, sendPasswordReset: e.target.checked })}
+                            className="checkbox checkbox-primary border-slate-300 dark:border-slate-700 text-[#B5121B] mt-0.5 rounded-md focus:ring-2 focus:ring-[#B5121B]"
+                          />
+                          <span className="text-xs text-slate-600 dark:text-slate-300">
+                            Send Welcome &amp; Password Setup Link to employee email upon provisioning.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Submit & Cancel Buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddModalOpen(false);
+                          setCreationStep('form');
+                        }}
+                        className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+                      >
+                        <span>Review &amp; Continue</span>
+                      </button>
+                    </div>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
+                    <h2 id="modal-add-staff-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+                      Confirm New Team Member
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Please review the details below before provisioning institutional credentials.
                     </p>
-                  )}
-                </div>
+                  </div>
 
-                {/* Role Selector */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="staff-role">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Institutional Role <span className="text-rose-500">*</span>
-                    </span>
-                  </label>
-                  <select
-                    id="staff-role"
-                    value={formValues.role}
-                    onChange={(e) => setFormValues({ ...formValues, role: e.target.value as NewStaffForm['role'] })}
-                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleExecuteCreateStaff();
+                    }}
+                    className="flex flex-col flex-1 min-h-0 overflow-hidden"
                   >
-                    <option value="technician">Technician (Maintenance &amp; Task Execution)</option>
-                    <option value="supervisor">Supervisor (Field Shift Dispatch &amp; Verification)</option>
-                    <option value="admin">Administrator (Full Operations &amp; Provisioning)</option>
-                  </select>
-                </div>
+                    <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                      {/* High-contrast Review Summary Card */}
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/60 p-4 sm:p-5 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                          <div className="min-w-0 pr-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              Full Name
+                            </span>
+                            <p className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {formValues.displayName}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                              {formValues.email}
+                            </p>
+                          </div>
+                          <div className="shrink-0">
+                            {renderRoleBadge(formValues.role)}
+                          </div>
+                        </div>
 
-                {/* Facility & Shift Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-control">
-                    <label className="label py-1" htmlFor="staff-building">
-                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Assigned Facility
-                      </span>
-                    </label>
-                    <select
-                      id="staff-building"
-                      value={formValues.building}
-                      onChange={(e) => setFormValues({ ...formValues, building: e.target.value })}
-                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                    >
-                      <option value="Main Campus">Main Campus</option>
-                      <option value="SDCA Annex">SDCA Annex</option>
-                      <option value="Central Storage">Central Storage</option>
-                    </select>
-                  </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-3">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                              Assigned Facility
+                            </span>
+                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm mt-1 block">
+                              {formatFacilityLabel(formValues.building, formValues.role)}
+                            </span>
+                          </div>
+                          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-3">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                              Assigned Shift Schedule
+                            </span>
+                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm mt-1 block">
+                              {formatShiftLabel(formValues.shift)}
+                            </span>
+                          </div>
+                        </div>
 
-                  <div className="form-control">
-                    <label className="label py-1" htmlFor="staff-shift">
-                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Assigned Shift
-                      </span>
-                    </label>
-                    <select
-                      id="staff-shift"
-                      value={formValues.shift}
-                      onChange={(e) => setFormValues({ ...formValues, shift: e.target.value })}
-                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                    >
-                      <option value="1st">1st Shift (06:00 - 14:00)</option>
-                      <option value="2nd">2nd Shift (14:00 - 22:00)</option>
-                      <option value="3rd">3rd Shift (22:00 - 06:00)</option>
-                    </select>
-                  </div>
-                </div>
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+                          <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
+                          <span>
+                            {formValues.sendPasswordReset
+                              ? 'Password setup link will be emailed upon creation.'
+                              : 'Password setup email will not be sent (manual credential setup).'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Password setup link checkbox */}
-                <div className="pt-1 sm:pt-2">
-                  <label className="flex items-start gap-3 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={formValues.sendPasswordReset}
-                      onChange={(e) => setFormValues({ ...formValues, sendPasswordReset: e.target.checked })}
-                      className="checkbox checkbox-primary border-slate-300 dark:border-slate-700 text-[#B5121B] mt-0.5 rounded-md focus:ring-2 focus:ring-[#B5121B]"
-                    />
-                    <span className="text-xs text-slate-600 dark:text-slate-300">
-                      Send Welcome &amp; Password Setup Link to employee email upon provisioning.
-                    </span>
-                  </label>
-                </div>
-              </div>
+                    {/* Step 2 Buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCreationStep('form')}
+                        disabled={isSubmitting}
+                        className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                      >
+                        Back to Edit
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+                      >
+                        {isSubmitting ? (
+                          <span className="loading loading-spinner loading-sm" />
+                        ) : (
+                          <span>Confirm &amp; Create Account</span>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
 
-              {/* Submit & Cancel Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
-                >
-                  {isSubmitting ? (
-                    <span className="loading loading-spinner loading-sm" />
-                  ) : (
-                    <span>Provision Staff Member</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* 6. Edit Assignment Modal */}
+      {/* 6. Edit Assignment Modal (Role Immutability) */}
       {editingStaff &&
         mounted &&
         createPortal(
@@ -1119,110 +1330,238 @@ export default function StaffManagementPage() {
             }}
           >
             <div className="relative w-full max-w-md rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
-            <button
-              type="button"
-              onClick={() => setEditingStaff(null)}
-              className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
-              aria-label="Close edit assignment modal"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="absolute top-4 right-4 sm:top-5 sm:right-5 h-11 w-11 sm:h-12 sm:w-12 min-h-[44px] min-w-[44px] sm:min-h-[48px] sm:min-w-[48px] flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
+                aria-label="Close edit assignment modal"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
 
-            <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
-              <h2 id="modal-edit-assignment-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
-                Edit Assignment
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Updating facility, shift, and role for <span className="font-semibold">{editingStaff.displayName}</span>.
-              </p>
+              <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
+                <h2 id="modal-edit-assignment-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+                  Edit Assignment
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Update facility and shift assignment for <span className="font-semibold">{editingStaff.displayName}</span>.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                  {/* Current Role (Locked) */}
+                  <div className="form-control">
+                    <label className="label py-1">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Current Role (Locked)
+                      </span>
+                    </label>
+                    <div className="pt-0.5">
+                      {renderRoleBadge(editingStaff.role)}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                      Role permissions are set during account provisioning and cannot be altered via assignment editing.
+                    </p>
+                  </div>
+
+                  {/* Facility */}
+                  <div className="form-control">
+                    <label className="label py-1" htmlFor="edit-facility">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Assigned Facility
+                      </span>
+                    </label>
+                    <select
+                      id="edit-facility"
+                      value={editBuilding}
+                      onChange={(e) => setEditBuilding(e.target.value)}
+                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                    >
+                      <option value="Main Campus">Main Campus</option>
+                      <option value="SDCA Annex">SDCA Annex</option>
+                      <option value="Central Storage">Central Storage</option>
+                    </select>
+                  </div>
+
+                  {/* Shift */}
+                  <div className="form-control">
+                    <label className="label py-1" htmlFor="edit-shift">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Assigned Shift
+                      </span>
+                    </label>
+                    <select
+                      id="edit-shift"
+                      value={editShift}
+                      onChange={(e) => setEditShift(e.target.value)}
+                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                    >
+                      <option value="1st">1st Shift (06:00 - 14:00)</option>
+                      <option value="2nd">2nd Shift (14:00 - 22:00)</option>
+                      <option value="3rd">3rd Shift (22:00 - 06:00)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStaff(null)}
+                    disabled={isEditSubmitting}
+                    className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isEditSubmitting}
+                    className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+                  >
+                    {isEditSubmitting ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      <span>Save Changes</span>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
+          </div>,
+          document.body
+        )}
 
-            <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
-                {/* Role */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="edit-role">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Role
-                    </span>
-                  </label>
-                  <select
-                    id="edit-role"
-                    value={editRole}
-                    onChange={(e) => setEditRole(e.target.value as typeof editRole)}
-                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                  >
-                    <option value="technician">Technician</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="admin">Administrator</option>
-                  </select>
+      {/* 7. Deactivation Step-Up Authentication Modal */}
+      {deactivatingStaff &&
+        mounted &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-hidden overscroll-contain"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-deactivate-staff-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) handleCloseDeactivateModal();
+            }}
+          >
+            <div className="relative w-full max-w-md rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
+              <button
+                type="button"
+                onClick={handleCloseDeactivateModal}
+                className="absolute top-4 right-4 sm:top-5 sm:right-5 h-11 w-11 sm:h-12 sm:w-12 min-h-[44px] min-w-[44px] sm:min-h-[48px] sm:min-w-[48px] flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
+                aria-label="Close deactivate modal"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+
+              <div className="mb-4 shrink-0 pr-8 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50">
+                  <ShieldAlert className="h-5 w-5" aria-hidden="true" />
                 </div>
-
-                {/* Facility */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="edit-facility">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Assigned Facility
-                    </span>
-                  </label>
-                  <select
-                    id="edit-facility"
-                    value={editBuilding}
-                    onChange={(e) => setEditBuilding(e.target.value)}
-                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                  >
-                    <option value="Main Campus">Main Campus</option>
-                    <option value="SDCA Annex">SDCA Annex</option>
-                    <option value="Central Storage">Central Storage</option>
-                  </select>
-                </div>
-
-                {/* Shift */}
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="edit-shift">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Assigned Shift
-                    </span>
-                  </label>
-                  <select
-                    id="edit-shift"
-                    value={editShift}
-                    onChange={(e) => setEditShift(e.target.value)}
-                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                  >
-                    <option value="1st">1st Shift (06:00 - 14:00)</option>
-                    <option value="2nd">2nd Shift (14:00 - 22:00)</option>
-                    <option value="3rd">3rd Shift (22:00 - 06:00)</option>
-                  </select>
+                <div>
+                  <h2 id="modal-deactivate-staff-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                    Deactivate Staff Member
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Step-up authentication required for access revocation.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setEditingStaff(null)}
-                  disabled={isEditSubmitting}
-                  className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isEditSubmitting}
-                  className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
-                >
-                  {isEditSubmitting ? (
-                    <span className="loading loading-spinner loading-sm" />
-                  ) : (
-                    <span>Save Changes</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+              <form onSubmit={handleConfirmDeactivate} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                  {/* Staff Target Card */}
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-3.5 flex items-center justify-between">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                        {deactivatingStaff.displayName}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {deactivatingStaff.email}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      {renderRoleBadge(deactivatingStaff.role)}
+                    </div>
+                  </div>
+
+                  {/* Security Warning Notice */}
+                  <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 dark:border-amber-900/50 dark:bg-amber-950/30 p-3 text-xs text-amber-900 dark:text-amber-200">
+                    <p className="leading-relaxed">
+                      Deactivating this account will immediately revoke all active mobile and web sessions, prevent login, and exclude this staff member from task dispatch. All historical work orders and audit logs will remain 100% preserved.
+                    </p>
+                  </div>
+
+                  {/* Password Challenge */}
+                  <div className="form-control">
+                    <label className="label py-1" htmlFor="admin-deactivate-password">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Administrator Password <span className="text-rose-500">*</span>
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="admin-deactivate-password"
+                        type={showDeactivatePassword ? 'text' : 'password'}
+                        placeholder="Enter your current admin password"
+                        value={adminPasswordConfirm}
+                        onChange={(e) => {
+                          setAdminPasswordConfirm(e.target.value);
+                          if (deactivatePasswordError) setDeactivatePasswordError(null);
+                        }}
+                        aria-describedby={deactivatePasswordError ? 'deactivate-password-error' : undefined}
+                        className={`input input-bordered w-full pr-10 h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
+                          deactivatePasswordError ? 'border-rose-500' : ''
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowDeactivatePassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        aria-label={showDeactivatePassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showDeactivatePassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                    {deactivatePasswordError && (
+                      <p id="deactivate-password-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1.5 font-medium">
+                        {deactivatePasswordError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCloseDeactivateModal}
+                    disabled={isDeactivating}
+                    className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isDeactivating}
+                    className="btn h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-rose-600 hover:bg-rose-700 text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 transition-all"
+                  >
+                    {isDeactivating ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      <span>Authorize &amp; Deactivate</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

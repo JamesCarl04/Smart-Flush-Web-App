@@ -29,7 +29,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { Toaster } from 'react-hot-toast';
 import { apiFetch } from '@/lib/api-client';
 import { buildOperationsNavigation } from '@/lib/admin-navigation';
-import packageInfo from '@/package.json';
 
 interface NavItem {
   name: string;
@@ -182,8 +181,6 @@ export default function DashboardLayout({
     user?.displayName ||
     (user?.email ? user.email.split('@')[0] : 'Operator');
 
-  const isAdmin = role === 'admin';
-
   if (loading || (user && roleLoading) || isLoggingOut || (!user && !presentationMode)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 transition-colors">
@@ -278,17 +275,9 @@ export default function DashboardLayout({
                 {userInitials}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
-                    {userDisplayName}
-                  </p>
-                  <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/80 dark:text-red-300 border border-red-200/60 dark:border-red-800/40">
-                    {isAdmin ? 'Admin' : 'Operator'}
-                  </span>
-                  <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium font-mono bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                    v{packageInfo.version}
-                  </span>
-                </div>
+                <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
+                  {userDisplayName}
+                </p>
                 <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                   {user?.email || 'operator@klir.local'}
                 </p>
@@ -401,17 +390,9 @@ export default function DashboardLayout({
                     {userInitials}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
-                        {userDisplayName}
-                      </p>
-                      <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-[#B5121B] dark:bg-red-950/80 dark:text-red-300 border border-red-200/60 dark:border-red-800/40">
-                        {isAdmin ? 'Admin' : 'Operator'}
-                      </span>
-                      <span className="inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium font-mono bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                        v{packageInfo.version}
-                      </span>
-                    </div>
+                    <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
+                      {userDisplayName}
+                    </p>
                     <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                       {user?.email || 'operator@klir.local'}
                     </p>
@@ -453,10 +434,7 @@ export default function DashboardLayout({
                 href="/alerts"
                 className="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-500/15 transition-colors dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400 shadow-xs"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
-                </span>
+                <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
                 <span>
                   {unreadCount} Active Alert{unreadCount > 1 ? 's' : ''}
                 </span>
@@ -498,10 +476,7 @@ export default function DashboardLayout({
               >
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
-                  </span>
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500" aria-hidden="true" />
                 )}
               </button>
 

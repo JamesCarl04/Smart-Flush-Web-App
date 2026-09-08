@@ -1,11 +1,30 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const mockUseAuth = jest.fn();
 const mockApiFetch = jest.fn();
 const mockToastSuccess = jest.fn();
 const mockToastError = jest.fn();
+const mockReauthenticateWithCredential = jest.fn();
+const mockEmailAuthProviderCredential = jest.fn();
+
+jest.mock('firebase/auth', () => ({
+  reauthenticateWithCredential: (...args: unknown[]) => mockReauthenticateWithCredential(...args),
+  EmailAuthProvider: {
+    credential: (...args: unknown[]) => mockEmailAuthProviderCredential(...args),
+  },
+}));
+
+jest.mock('@/lib/firebase', () => ({
+  auth: {
+    currentUser: {
+      uid: 'admin-1',
+      email: 'admin@sdca.edu.ph',
+    },
+  },
+  db: {},
+}));
 
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockUseAuth(),
@@ -239,10 +258,10 @@ describe('StaffManagementPage', () => {
     });
   });
 
-  describe('Provisioning Modal (+ Add Staff Member)', () => {
+  describe('Provisioning Modal (+ Add Staff Member) - Two-Step Flow', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue({
-        user: { uid: 'admin-1' },
+        user: { uid: 'admin-1', email: 'admin@sdca.edu.ph' },
         role: 'admin',
         roleLoading: false,
       });
@@ -252,7 +271,7 @@ describe('StaffManagementPage', () => {
       });
     });
 
-    it('opens modal on primary CTA click and validates required fields', async () => {
+    it('opens modal on primary CTA click and validates required fields on Step 1', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
@@ -263,14 +282,16 @@ describe('StaffManagementPage', () => {
 
       expect(screen.getByText('Provision New Staff Member')).toBeTruthy();
 
-      // Submit without filling
-      fireEvent.click(screen.getByText('Provision Staff Member'));
+      // Submit Step 1 without filling
+      fireEvent.click(screen.getByRole('button', { name: /review & continue/i }));
 
       expect(screen.getByText('Full name is required')).toBeTruthy();
       expect(screen.getByText('Institutional email is required')).toBeTruthy();
+      // Should not transition to Step 2
+      expect(screen.queryByText('Confirm New Team Member')).toBeNull();
     });
 
-    it('successfully provisions new staff and calls POST /api/staff', async () => {
+    it('supports two-step creation: Step 1 input -> Step 2 review -> Back to Edit -> Confirm & Provision', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
@@ -279,7 +300,7 @@ describe('StaffManagementPage', () => {
 
       fireEvent.click(screen.getByText('+ Add Staff Member'));
 
-      // Fill in fields
+      // Fill in Step 1 fields
       fireEvent.change(screen.getByPlaceholderText('Maria Santos'), {
         target: { value: 'Clara Del Rosario' },
       });
@@ -287,13 +308,39 @@ describe('StaffManagementPage', () => {
         target: { value: 'cdelrosario@sdca.edu.ph' },
       });
 
+      // Proceed to Step 2 Review
+      fireEvent.click(screen.getByRole('button', { name: /review & continue/i }));
+
+      // Step 2 Review screen assertion
+      await waitFor(() => {
+        expect(screen.getByText('Confirm New Team Member')).toBeTruthy();
+      });
+      const reviewDialog = screen.getByRole('dialog', { name: /confirm new team member/i });
+      expect(within(reviewDialog).getByText('Clara Del Rosario')).toBeTruthy();
+      expect(within(reviewDialog).getByText('cdelrosario@sdca.edu.ph')).toBeTruthy();
+      expect(within(reviewDialog).getByText('Main Campus')).toBeTruthy();
+      expect(within(reviewDialog).getByText('1st Shift (Morning)')).toBeTruthy();
+      expect(within(reviewDialog).getByText(/Password setup link will be emailed upon creation/i)).toBeTruthy();
+
+      // Test "Back to Edit" returns to Step 1 without resetting form values
+      fireEvent.click(screen.getByRole('button', { name: /back to edit/i }));
+      expect(screen.getByText('Provision New Staff Member')).toBeTruthy();
+      expect((screen.getByPlaceholderText('Maria Santos') as HTMLInputElement).value).toBe('Clara Del Rosario');
+      expect((screen.getByPlaceholderText('msantos@sdca.edu.ph') as HTMLInputElement).value).toBe('cdelrosario@sdca.edu.ph');
+
+      // Proceed back to Step 2
+      fireEvent.click(screen.getByRole('button', { name: /review & continue/i }));
+      expect(screen.getByText('Confirm New Team Member')).toBeTruthy();
+
+      // Mock API success for account provisioning
       mockApiFetch.mockResolvedValueOnce({
         success: true,
         uid: 'new-staff-uid',
         resetLink: 'https://example.com/reset',
       });
 
-      fireEvent.click(screen.getByText('Provision Staff Member'));
+      // Click Confirm & Create Account
+      fireEvent.click(screen.getByRole('button', { name: /confirm & create account/i }));
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
@@ -319,10 +366,10 @@ describe('StaffManagementPage', () => {
     });
   });
 
-  describe('Action Handlers (Edit, Reset, Deactivate)', () => {
+  describe('Action Handlers (Edit, Reset, Deactivate, Reactivate)', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue({
-        user: { uid: 'admin-1' },
+        user: { uid: 'admin-1', email: 'admin@sdca.edu.ph' },
         role: 'admin',
         roleLoading: false,
       });
@@ -330,9 +377,60 @@ describe('StaffManagementPage', () => {
         success: true,
         data: mockStaff,
       });
+      mockReauthenticateWithCredential.mockReset();
+      mockEmailAuthProviderCredential.mockReset();
     });
 
-    it('toggles deactivation of staff member via PATCH /api/staff/:id', async () => {
+    it('opens edit modal with locked read-only role and updates building and shift assignment without sending role', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[0]);
+
+      fireEvent.click(screen.getByText('Edit Assignment'));
+
+      expect(screen.getByText('Edit Assignment')).toBeTruthy();
+      // Role field is locked badge, not a dropdown
+      expect(screen.getByText('Current Role (Locked)')).toBeTruthy();
+      expect(screen.getByText(/Role permissions are set during account provisioning and cannot be altered via assignment editing/i)).toBeTruthy();
+      expect(screen.queryByLabelText(/^role$/i)).toBeNull();
+
+      // Change building and shift
+      fireEvent.change(screen.getByLabelText(/assigned facility/i), {
+        target: { value: 'SDCA Annex' },
+      });
+      fireEvent.change(screen.getByLabelText(/assigned shift/i), {
+        target: { value: '2nd' },
+      });
+
+      mockApiFetch.mockResolvedValueOnce({ success: true });
+
+      fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/api/staff/staff-1',
+          expect.objectContaining({ uid: 'admin-1' }),
+          expect.objectContaining({
+            method: 'PATCH',
+            body: JSON.stringify({
+              building: 'SDCA Annex',
+              shift: '2nd',
+            }),
+          }),
+        );
+      });
+
+      expect(mockToastSuccess).toHaveBeenCalledWith(
+        expect.stringContaining('Updated assignment for Juan Dela Cruz'),
+      );
+    });
+
+    it('requires step-up password authentication to deactivate staff member', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
@@ -345,11 +443,53 @@ describe('StaffManagementPage', () => {
 
       expect(screen.getByText('Deactivate Account')).toBeTruthy();
 
-      mockApiFetch.mockResolvedValueOnce({ success: true });
-
+      // Click Deactivate Account opens the step-up confirmation modal
       fireEvent.click(screen.getByText('Deactivate Account'));
 
+      expect(screen.getByRole('dialog', { name: /deactivate staff member/i })).toBeTruthy();
+      expect(screen.getByText(/Step-up authentication required for access revocation/i)).toBeTruthy();
+      expect(screen.getByText(/Deactivating this account will immediately revoke all active mobile and web sessions/i)).toBeTruthy();
+
+      // 1. Submit without password -> shows error
+      fireEvent.click(screen.getByRole('button', { name: /authorize & deactivate/i }));
+      expect(screen.getByText('Administrator password is required to authorize deactivation.')).toBeTruthy();
+      expect(mockReauthenticateWithCredential).not.toHaveBeenCalled();
+      expect(mockApiFetch).not.toHaveBeenCalledWith(
+        '/api/staff/staff-1',
+        expect.anything(),
+        expect.objectContaining({ method: 'PATCH' }),
+      );
+
+      // 2. Submit with wrong password -> shows rejection error
+      mockEmailAuthProviderCredential.mockReturnValueOnce({ providerId: 'password' });
+      mockReauthenticateWithCredential.mockRejectedValueOnce({ code: 'auth/wrong-password' });
+
+      fireEvent.change(screen.getByPlaceholderText(/enter your current admin password/i), {
+        target: { value: 'wrong-admin-password' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /authorize & deactivate/i }));
+
       await waitFor(() => {
+        expect(screen.getByText('Incorrect administrator password. Please verify your credentials.')).toBeTruthy();
+      });
+      expect(mockApiFetch).not.toHaveBeenCalledWith(
+        '/api/staff/staff-1',
+        expect.anything(),
+        expect.objectContaining({ method: 'PATCH' }),
+      );
+
+      // 3. Submit with correct password -> succeeds and executes PATCH
+      mockEmailAuthProviderCredential.mockReturnValueOnce({ providerId: 'password' });
+      mockReauthenticateWithCredential.mockResolvedValueOnce(undefined);
+      mockApiFetch.mockResolvedValueOnce({ success: true });
+
+      fireEvent.change(screen.getByPlaceholderText(/enter your current admin password/i), {
+        target: { value: 'valid-admin-password' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /authorize & deactivate/i }));
+
+      await waitFor(() => {
+        expect(mockReauthenticateWithCredential).toHaveBeenCalled();
         expect(mockApiFetch).toHaveBeenCalledWith(
           '/api/staff/staff-1',
           expect.objectContaining({ uid: 'admin-1' }),
@@ -362,7 +502,100 @@ describe('StaffManagementPage', () => {
 
       await waitFor(() => {
         expect(mockToastSuccess).toHaveBeenCalledWith(
-          expect.stringContaining('Juan Dela Cruz deactivated'),
+          expect.stringContaining('Juan Dela Cruz deactivated without altering task history'),
+        );
+        expect(screen.queryByRole('dialog', { name: /deactivate staff member/i })).toBeNull();
+      });
+    });
+
+    it('blocks self-deactivation of administrator account in UI action menu', async () => {
+      // Set current logged-in admin user to match staff-3 (Antonio Luna)
+      mockUseAuth.mockReturnValue({
+        user: { uid: 'staff-3', email: 'aluna@sdca.edu.ph' },
+        role: 'admin',
+        roleLoading: false,
+      });
+
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Antonio Luna')).toBeTruthy();
+      });
+
+      // Open Antonio Luna's action menu (index 2 in mockStaff)
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[2]);
+
+      // Deactivate Account button should be disabled for self
+      const deactivateBtn = screen.getByRole('menuitem', { name: /deactivate account/i });
+      expect(deactivateBtn).toHaveProperty('disabled', true);
+      expect(deactivateBtn.getAttribute('title')).toBe('Cannot deactivate your own administrator account');
+
+      // Clicking it does not open the modal
+      fireEvent.click(deactivateBtn);
+      expect(screen.queryByRole('dialog', { name: /deactivate staff member/i })).toBeNull();
+    });
+
+    it('handles rate-limiting (auth/too-many-requests) with accessible error message', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[0]);
+
+      fireEvent.click(screen.getByRole('menuitem', { name: /deactivate account/i }));
+
+      mockEmailAuthProviderCredential.mockReturnValueOnce({ providerId: 'password' });
+      mockReauthenticateWithCredential.mockRejectedValueOnce({ code: 'auth/too-many-requests' });
+
+      fireEvent.change(screen.getByPlaceholderText(/enter your current admin password/i), {
+        target: { value: 'password123' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /authorize & deactivate/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/too many failed attempts/i)).toBeTruthy();
+      });
+    });
+
+    it('safely reactivates an inactive staff member directly without password challenge', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Pedro Penduko')).toBeTruthy();
+      });
+
+      // Pedro Penduko is inactive (active: false, index 3)
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[3]);
+
+      expect(screen.getByText('Reactivate Account')).toBeTruthy();
+
+      mockApiFetch.mockResolvedValueOnce({ success: true });
+
+      fireEvent.click(screen.getByText('Reactivate Account'));
+
+      // Reactivation should NOT open step-up modal and should directly execute PATCH
+      expect(screen.queryByRole('dialog', { name: /deactivate staff member/i })).toBeNull();
+      expect(mockReauthenticateWithCredential).not.toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/api/staff/staff-4',
+          expect.objectContaining({ uid: 'admin-1' }),
+          expect.objectContaining({
+            method: 'PATCH',
+            body: JSON.stringify({ active: true }),
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith(
+          expect.stringContaining('Pedro Penduko reactivated'),
         );
       });
     });
@@ -394,40 +627,6 @@ describe('StaffManagementPage', () => {
 
       expect(mockToastSuccess).toHaveBeenCalledWith(
         expect.stringContaining('Password setup link generated'),
-      );
-    });
-
-    it('opens edit modal and updates building and shift assignment', async () => {
-      render(<StaffManagementPage />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
-      });
-
-      const menuButtons = screen.getAllByLabelText(/action menu for/i);
-      fireEvent.click(menuButtons[0]);
-
-      fireEvent.click(screen.getByText('Edit Assignment'));
-
-      expect(screen.getByText('Edit Assignment')).toBeTruthy();
-      expect(screen.getByText(/Updating facility, shift, and role for/)).toBeTruthy();
-
-      mockApiFetch.mockResolvedValueOnce({ success: true });
-
-      fireEvent.click(screen.getByText('Save Changes'));
-
-      await waitFor(() => {
-        expect(mockApiFetch).toHaveBeenCalledWith(
-          '/api/staff/staff-1',
-          expect.objectContaining({ uid: 'admin-1' }),
-          expect.objectContaining({
-            method: 'PATCH',
-          }),
-        );
-      });
-
-      expect(mockToastSuccess).toHaveBeenCalledWith(
-        expect.stringContaining('Updated assignment for Juan Dela Cruz'),
       );
     });
   });
@@ -577,6 +776,30 @@ describe('StaffManagementPage', () => {
       expect(dialog.className).toContain('fixed');
       expect(dialog.className).toContain('inset-0');
       expect(dialog.className).toContain('bg-slate-900/60');
+    });
+
+    it('locks body scroll when Deactivation modal opens and restores on Cancel', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[0]);
+
+      fireEvent.click(screen.getByText('Deactivate Account'));
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.documentElement.style.overflow).toBe('hidden');
+
+      const deactDialog = screen.getByRole('dialog', { name: /deactivate staff member/i });
+      expect(deactDialog.className).toContain('fixed');
+      expect(deactDialog.className).toContain('z-[100]');
+
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+      expect(document.body.style.overflow).toBe('');
+      expect(document.documentElement.style.overflow).toBe('');
+      expect(screen.queryByRole('dialog', { name: /deactivate staff member/i })).toBeNull();
     });
   });
 });

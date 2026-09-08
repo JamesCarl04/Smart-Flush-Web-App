@@ -105,7 +105,7 @@ describe('Web App Application Version Badge', () => {
     });
   });
 
-  it('renders package.json version badge in DashboardLayout navigation sidebar', async () => {
+  it('renders decluttered user footer in DashboardLayout navigation sidebar without version or role badges', async () => {
     render(
       <DashboardLayout>
         <div>Content</div>
@@ -113,8 +113,10 @@ describe('Web App Application Version Badge', () => {
     );
 
     await waitFor(() => {
-      const versionBadges = screen.getAllByText(`v${packageInfo.version}`);
-      expect(versionBadges.length).toBeGreaterThanOrEqual(1);
+      // Version badge should not be in sidebar footer
+      expect(screen.queryByText(`v${packageInfo.version}`)).toBeNull();
+      // User display name has full breathing room
+      expect(screen.getByText('System Admin')).toBeTruthy();
     });
   });
 
@@ -139,8 +141,30 @@ describe('Web App Application Version Badge', () => {
     );
 
     await waitFor(() => {
-      const versionBadges = screen.getAllByText(`v${packageInfo.version}`);
-      expect(versionBadges.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('System Admin')).toBeTruthy();
+      expect(screen.queryByText(`v${packageInfo.version}`)).toBeNull();
     });
+  });
+
+  it('strictly adheres to zero pulsing dots rule by having zero animate-ping or animate-pulse elements in layout', async () => {
+    mockUseAlerts.mockReturnValue({
+      alerts: [{ id: 'alert-1', message: 'Test alert' }],
+      unreadCount: 3,
+      loading: false,
+      refetch: jest.fn(),
+    });
+
+    const { container } = render(
+      <DashboardLayout>
+        <div>Content</div>
+      </DashboardLayout>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('3 Active Alerts')).toBeTruthy();
+    });
+
+    expect(container.querySelector('.animate-ping')).toBeNull();
+    expect(container.querySelector('.animate-pulse')).toBeNull();
   });
 });
