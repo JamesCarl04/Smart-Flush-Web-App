@@ -19,8 +19,6 @@ import {
   Search,
   X,
   ShieldAlert,
-  CheckCircle2,
-  AlertCircle,
   RotateCw,
 } from 'lucide-react';
 
@@ -108,6 +106,31 @@ export default function StaffManagementPage() {
       void loadStaff();
     }
   }, [loadStaff, role, roleLoading]);
+
+  // Prevent background page and main container scrolling while modal is open
+  useEffect(() => {
+    const isModalActive = isAddModalOpen || Boolean(editingStaff);
+    if (!isModalActive) return;
+
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const mainEl = document.querySelector('main');
+    const originalMainOverflow = mainEl ? mainEl.style.overflow : '';
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (mainEl) {
+      mainEl.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      if (mainEl) {
+        mainEl.style.overflow = originalMainOverflow;
+      }
+    };
+  }, [isAddModalOpen, editingStaff]);
 
   // Close menus on outside click or Escape key
   useEffect(() => {
@@ -769,7 +792,7 @@ export default function StaffManagementPage() {
       {/* 5. Provisioning Modal: + Add Staff Member */}
       {isAddModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-hidden overscroll-contain"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-add-staff-title"
@@ -777,19 +800,19 @@ export default function StaffManagementPage() {
             if (e.target === e.currentTarget) setIsAddModalOpen(false);
           }}
         >
-          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-6 sm:p-8">
+          <div className="relative w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
             {/* Single dismiss affordance (no double handles) */}
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B]"
+              className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
               aria-label="Close add staff modal"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
 
-            <div className="mb-6">
-              <h2 id="modal-add-staff-title" className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
+              <h2 id="modal-add-staff-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                 Provision New Staff Member
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -797,144 +820,146 @@ export default function StaffManagementPage() {
               </p>
             </div>
 
-            <form onSubmit={handleCreateStaff} className="space-y-4">
-              {/* Full Name */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="staff-fullname">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Full Name <span className="text-rose-500">*</span>
-                  </span>
-                </label>
-                <input
-                  id="staff-fullname"
-                  type="text"
-                  placeholder="Maria Santos"
-                  value={formValues.displayName}
-                  onChange={(e) => setFormValues({ ...formValues, displayName: e.target.value })}
-                  aria-describedby={formErrors.displayName ? 'staff-fullname-error' : undefined}
-                  className={`input input-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
-                    formErrors.displayName ? 'border-rose-500' : ''
-                  }`}
-                />
-                {formErrors.displayName && (
-                  <p id="staff-fullname-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
-                    {formErrors.displayName}
-                  </p>
-                )}
-              </div>
-
-              {/* Institutional Email */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="staff-email">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Institutional Email (@sdca.edu.ph) <span className="text-rose-500">*</span>
-                  </span>
-                </label>
-                <input
-                  id="staff-email"
-                  type="email"
-                  placeholder="msantos@sdca.edu.ph"
-                  value={formValues.email}
-                  onChange={(e) => setFormValues({ ...formValues, email: e.target.value })}
-                  aria-describedby={formErrors.email ? 'staff-email-error' : undefined}
-                  className={`input input-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
-                    formErrors.email ? 'border-rose-500' : ''
-                  }`}
-                />
-                {formErrors.email && (
-                  <p id="staff-email-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
-                    {formErrors.email}
-                  </p>
-                )}
-              </div>
-
-              {/* Role Selector */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="staff-role">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Institutional Role <span className="text-rose-500">*</span>
-                  </span>
-                </label>
-                <select
-                  id="staff-role"
-                  value={formValues.role}
-                  onChange={(e) => setFormValues({ ...formValues, role: e.target.value as NewStaffForm['role'] })}
-                  className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                >
-                  <option value="technician">Technician (Maintenance &amp; Task Execution)</option>
-                  <option value="supervisor">Supervisor (Field Shift Dispatch &amp; Verification)</option>
-                  <option value="admin">Administrator (Full Operations &amp; Provisioning)</option>
-                </select>
-              </div>
-
-              {/* Facility & Shift Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleCreateStaff} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                {/* Full Name */}
                 <div className="form-control">
-                  <label className="label py-1" htmlFor="staff-building">
+                  <label className="label py-1" htmlFor="staff-fullname">
                     <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Assigned Facility
+                      Full Name <span className="text-rose-500">*</span>
                     </span>
                   </label>
-                  <select
-                    id="staff-building"
-                    value={formValues.building}
-                    onChange={(e) => setFormValues({ ...formValues, building: e.target.value })}
-                    className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                  >
-                    <option value="Main Campus">Main Campus</option>
-                    <option value="SDCA Annex">SDCA Annex</option>
-                    <option value="Central Storage">Central Storage</option>
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label py-1" htmlFor="staff-shift">
-                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Assigned Shift
-                    </span>
-                  </label>
-                  <select
-                    id="staff-shift"
-                    value={formValues.shift}
-                    onChange={(e) => setFormValues({ ...formValues, shift: e.target.value })}
-                    className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                  >
-                    <option value="1st">1st Shift (06:00 - 14:00)</option>
-                    <option value="2nd">2nd Shift (14:00 - 22:00)</option>
-                    <option value="3rd">3rd Shift (22:00 - 06:00)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Password setup link checkbox */}
-              <div className="pt-2">
-                <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
-                    type="checkbox"
-                    checked={formValues.sendPasswordReset}
-                    onChange={(e) => setFormValues({ ...formValues, sendPasswordReset: e.target.checked })}
-                    className="checkbox checkbox-primary border-slate-300 dark:border-slate-700 text-[#B5121B] mt-0.5 rounded-md focus:ring-2 focus:ring-[#B5121B]"
+                    id="staff-fullname"
+                    type="text"
+                    placeholder="Maria Santos"
+                    value={formValues.displayName}
+                    onChange={(e) => setFormValues({ ...formValues, displayName: e.target.value })}
+                    aria-describedby={formErrors.displayName ? 'staff-fullname-error' : undefined}
+                    className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
+                      formErrors.displayName ? 'border-rose-500' : ''
+                    }`}
                   />
-                  <span className="text-xs text-slate-600 dark:text-slate-300">
-                    Send Welcome &amp; Password Setup Link to employee email upon provisioning.
-                  </span>
-                </label>
+                  {formErrors.displayName && (
+                    <p id="staff-fullname-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
+                      {formErrors.displayName}
+                    </p>
+                  )}
+                </div>
+
+                {/* Institutional Email */}
+                <div className="form-control">
+                  <label className="label py-1" htmlFor="staff-email">
+                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Institutional Email (@sdca.edu.ph) <span className="text-rose-500">*</span>
+                    </span>
+                  </label>
+                  <input
+                    id="staff-email"
+                    type="email"
+                    placeholder="msantos@sdca.edu.ph"
+                    value={formValues.email}
+                    onChange={(e) => setFormValues({ ...formValues, email: e.target.value })}
+                    aria-describedby={formErrors.email ? 'staff-email-error' : undefined}
+                    className={`input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 ${
+                      formErrors.email ? 'border-rose-500' : ''
+                    }`}
+                  />
+                  {formErrors.email && (
+                    <p id="staff-email-error" className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">
+                      {formErrors.email}
+                    </p>
+                  )}
+                </div>
+
+                {/* Role Selector */}
+                <div className="form-control">
+                  <label className="label py-1" htmlFor="staff-role">
+                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Institutional Role <span className="text-rose-500">*</span>
+                    </span>
+                  </label>
+                  <select
+                    id="staff-role"
+                    value={formValues.role}
+                    onChange={(e) => setFormValues({ ...formValues, role: e.target.value as NewStaffForm['role'] })}
+                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                  >
+                    <option value="technician">Technician (Maintenance &amp; Task Execution)</option>
+                    <option value="supervisor">Supervisor (Field Shift Dispatch &amp; Verification)</option>
+                    <option value="admin">Administrator (Full Operations &amp; Provisioning)</option>
+                  </select>
+                </div>
+
+                {/* Facility & Shift Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-control">
+                    <label className="label py-1" htmlFor="staff-building">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Assigned Facility
+                      </span>
+                    </label>
+                    <select
+                      id="staff-building"
+                      value={formValues.building}
+                      onChange={(e) => setFormValues({ ...formValues, building: e.target.value })}
+                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                    >
+                      <option value="Main Campus">Main Campus</option>
+                      <option value="SDCA Annex">SDCA Annex</option>
+                      <option value="Central Storage">Central Storage</option>
+                    </select>
+                  </div>
+
+                  <div className="form-control">
+                    <label className="label py-1" htmlFor="staff-shift">
+                      <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Assigned Shift
+                      </span>
+                    </label>
+                    <select
+                      id="staff-shift"
+                      value={formValues.shift}
+                      onChange={(e) => setFormValues({ ...formValues, shift: e.target.value })}
+                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                    >
+                      <option value="1st">1st Shift (06:00 - 14:00)</option>
+                      <option value="2nd">2nd Shift (14:00 - 22:00)</option>
+                      <option value="3rd">3rd Shift (22:00 - 06:00)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Password setup link checkbox */}
+                <div className="pt-1 sm:pt-2">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formValues.sendPasswordReset}
+                      onChange={(e) => setFormValues({ ...formValues, sendPasswordReset: e.target.checked })}
+                      className="checkbox checkbox-primary border-slate-300 dark:border-slate-700 text-[#B5121B] mt-0.5 rounded-md focus:ring-2 focus:ring-[#B5121B]"
+                    />
+                    <span className="text-xs text-slate-600 dark:text-slate-300">
+                      Send Welcome &amp; Password Setup Link to employee email upon provisioning.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {/* Submit & Cancel Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
                   disabled={isSubmitting}
-                  className="btn btn-ghost h-12 min-h-[48px] px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                  className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="btn btn-primary h-12 min-h-[48px] px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+                  className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
                 >
                   {isSubmitting ? (
                     <span className="loading loading-spinner loading-sm" />
@@ -951,7 +976,7 @@ export default function StaffManagementPage() {
       {/* 6. Edit Assignment Modal */}
       {editingStaff && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-hidden overscroll-contain"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-edit-assignment-title"
@@ -959,18 +984,18 @@ export default function StaffManagementPage() {
             if (e.target === e.currentTarget) setEditingStaff(null);
           }}
         >
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-6 sm:p-8">
+          <div className="relative w-full max-w-md rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-5 sm:p-6 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-hidden my-auto">
             <button
               type="button"
               onClick={() => setEditingStaff(null)}
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B]"
+              className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-[#B5121B] z-10"
               aria-label="Close edit assignment modal"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
 
-            <div className="mb-6">
-              <h2 id="modal-edit-assignment-title" className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="mb-3.5 sm:mb-4 shrink-0 pr-8">
+              <h2 id="modal-edit-assignment-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                 Edit Assignment
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -978,77 +1003,79 @@ export default function StaffManagementPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="space-y-4">
-              {/* Role */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="edit-role">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Role
-                  </span>
-                </label>
-                <select
-                  id="edit-role"
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as typeof editRole)}
-                  className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                >
-                  <option value="technician">Technician</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="admin">Administrator</option>
-                </select>
+            <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
+                {/* Role */}
+                <div className="form-control">
+                  <label className="label py-1" htmlFor="edit-role">
+                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Role
+                    </span>
+                  </label>
+                  <select
+                    id="edit-role"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as typeof editRole)}
+                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                  >
+                    <option value="technician">Technician</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="admin">Administrator</option>
+                  </select>
+                </div>
+
+                {/* Facility */}
+                <div className="form-control">
+                  <label className="label py-1" htmlFor="edit-facility">
+                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Assigned Facility
+                    </span>
+                  </label>
+                  <select
+                    id="edit-facility"
+                    value={editBuilding}
+                    onChange={(e) => setEditBuilding(e.target.value)}
+                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                  >
+                    <option value="Main Campus">Main Campus</option>
+                    <option value="SDCA Annex">SDCA Annex</option>
+                    <option value="Central Storage">Central Storage</option>
+                  </select>
+                </div>
+
+                {/* Shift */}
+                <div className="form-control">
+                  <label className="label py-1" htmlFor="edit-shift">
+                    <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Assigned Shift
+                    </span>
+                  </label>
+                  <select
+                    id="edit-shift"
+                    value={editShift}
+                    onChange={(e) => setEditShift(e.target.value)}
+                    className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
+                  >
+                    <option value="1st">1st Shift (06:00 - 14:00)</option>
+                    <option value="2nd">2nd Shift (14:00 - 22:00)</option>
+                    <option value="3rd">3rd Shift (22:00 - 06:00)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Facility */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="edit-facility">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Assigned Facility
-                  </span>
-                </label>
-                <select
-                  id="edit-facility"
-                  value={editBuilding}
-                  onChange={(e) => setEditBuilding(e.target.value)}
-                  className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                >
-                  <option value="Main Campus">Main Campus</option>
-                  <option value="SDCA Annex">SDCA Annex</option>
-                  <option value="Central Storage">Central Storage</option>
-                </select>
-              </div>
-
-              {/* Shift */}
-              <div className="form-control">
-                <label className="label py-1" htmlFor="edit-shift">
-                  <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Assigned Shift
-                  </span>
-                </label>
-                <select
-                  id="edit-shift"
-                  value={editShift}
-                  onChange={(e) => setEditShift(e.target.value)}
-                  className="select select-bordered w-full h-12 min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                >
-                  <option value="1st">1st Shift (06:00 - 14:00)</option>
-                  <option value="2nd">2nd Shift (14:00 - 22:00)</option>
-                  <option value="3rd">3rd Shift (22:00 - 06:00)</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingStaff(null)}
                   disabled={isEditSubmitting}
-                  className="btn btn-ghost h-12 min-h-[48px] px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
+                  className="btn btn-ghost h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-4 sm:px-5 rounded-xl text-slate-600 dark:text-slate-300 font-semibold text-sm focus-visible:ring-2 focus-visible:ring-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isEditSubmitting}
-                  className="btn btn-primary h-12 min-h-[48px] px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
+                  className="btn btn-primary h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] px-5 sm:px-6 rounded-xl bg-[#B5121B] hover:bg-[#8F0D16] text-white border-none shadow-md font-semibold text-sm focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all"
                 >
                   {isEditSubmitting ? (
                     <span className="loading loading-spinner loading-sm" />

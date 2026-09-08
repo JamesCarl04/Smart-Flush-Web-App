@@ -431,4 +431,134 @@ describe('StaffManagementPage', () => {
       );
     });
   });
+
+  describe('Modal Viewport Constraints & Body Scroll Lock', () => {
+    beforeEach(() => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      mockUseAuth.mockReturnValue({
+        user: { uid: 'admin-1' },
+        role: 'admin',
+        roleLoading: false,
+      });
+      mockApiFetch.mockResolvedValue({
+        success: true,
+        data: mockStaff,
+      });
+    });
+
+    it('locks body scroll when Add Staff modal opens and restores on Cancel button click', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+      });
+
+      expect(document.body.style.overflow).toBe('');
+      expect(document.documentElement.style.overflow).toBe('');
+
+      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.documentElement.style.overflow).toBe('hidden');
+
+      const modalDialog = screen.getByRole('dialog', { name: /provision new staff member/i });
+      expect(modalDialog.className).toContain('fixed');
+      expect(modalDialog.className).toContain('inset-0');
+      expect(modalDialog.className).toContain('overflow-hidden');
+      expect(modalDialog.className).toContain('overscroll-contain');
+
+      // Verify card constraints prevent overflow
+      const card = modalDialog.querySelector('.overflow-hidden');
+      expect(card).toBeTruthy();
+      expect(card?.className).toContain('max-h-[calc(100vh-2rem)]');
+
+      // Verify internal scrolling container exists for form fields
+      const scrollableBody = card?.querySelector('.overflow-y-auto');
+      expect(scrollableBody).toBeTruthy();
+      expect(scrollableBody?.className).toContain('min-h-0');
+      expect(scrollableBody?.className).toContain('pr-2');
+
+      // Click Cancel button
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+      expect(document.body.style.overflow).toBe('');
+      expect(document.documentElement.style.overflow).toBe('');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('locks body scroll when Add Staff modal opens and restores on backdrop click', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.documentElement.style.overflow).toBe('hidden');
+
+      const modalDialog = screen.getByRole('dialog', { name: /provision new staff member/i });
+
+      // Clicking directly on backdrop should close modal
+      fireEvent.click(modalDialog);
+      expect(document.body.style.overflow).toBe('');
+      expect(document.documentElement.style.overflow).toBe('');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('locks body scroll when Edit Assignment modal opens and restores on close', async () => {
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[0]);
+
+      fireEvent.click(screen.getByText('Edit Assignment'));
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(document.documentElement.style.overflow).toBe('hidden');
+
+      const editDialog = screen.getByRole('dialog', { name: /edit assignment/i });
+      expect(editDialog.className).toContain('fixed');
+      expect(editDialog.className).toContain('inset-0');
+      expect(editDialog.className).toContain('overflow-hidden');
+      expect(editDialog.className).toContain('overscroll-contain');
+
+      const editCard = editDialog.querySelector('.overflow-hidden');
+      expect(editCard).toBeTruthy();
+      expect(editCard?.className).toContain('max-h-[calc(100vh-2rem)]');
+
+      const editScrollableBody = editCard?.querySelector('.overflow-y-auto');
+      expect(editScrollableBody).toBeTruthy();
+      expect(editScrollableBody?.className).toContain('min-h-0');
+      expect(editScrollableBody?.className).toContain('pr-2');
+
+      // Close modal
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+      expect(document.body.style.overflow).toBe('');
+      expect(document.documentElement.style.overflow).toBe('');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('freezes and restores main element overflow when main is present in DOM', async () => {
+      const main = document.createElement('main');
+      main.style.overflow = 'auto';
+      document.body.appendChild(main);
+
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Add Staff Member')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByText('+ Add Staff Member'));
+      expect(main.style.overflow).toBe('hidden');
+
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+      expect(main.style.overflow).toBe('auto');
+
+      document.body.removeChild(main);
+    });
+  });
 });
