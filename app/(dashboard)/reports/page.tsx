@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -23,7 +23,6 @@ import {
   FileX,
   History,
   Hourglass,
-  Info,
   Layers,
   Printer,
   QrCode,
@@ -44,11 +43,8 @@ import { getErrorMessage } from '@/lib/error-utils';
 import type { Task, TaskStatus, TaskTriggerType } from '@/types';
 
 type ReportType =
-  | 'usage_summary'
   | 'daily'
-  | 'weekly'
-  | 'monthly'
-  | 'custom'
+  | 'usage_summary'
   | 'maintenance_tasks'
   | 'supervisor_audit';
 
@@ -56,7 +52,8 @@ type DateRangeOption =
   | 'last_7_days'
   | 'last_30_days'
   | 'this_month'
-  | 'last_month';
+  | 'last_month'
+  | 'custom';
 
 type ExportFormat = 'PDF' | 'CSV' | 'JSON';
 
@@ -80,39 +77,24 @@ interface ExportRecord {
 
 const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] = [
   {
-    label: 'Usage Summary',
-    value: 'usage_summary',
-    desc: 'Summary of total flushes, water saved, and cleaning cycles.',
-  },
-  {
-    label: 'Daily Audit Report',
+    label: 'Daily Restroom Activity',
     value: 'daily',
-    desc: 'Hourly restroom usage and activity breakdown for today.',
+    desc: 'Hour-by-hour flushes and water usage for a selected day.',
   },
   {
-    label: 'Weekly Performance',
-    value: 'weekly',
-    desc: '7-day overview of restroom usage and disinfection performance.',
+    label: 'Restroom Usage & Water Report',
+    value: 'usage_summary',
+    desc: 'Campus-wide flushes, water saved, and cleaning cycles.',
   },
   {
-    label: 'Monthly Executive Summary',
-    value: 'monthly',
-    desc: 'Monthly facility summary of restroom usage and water conservation.',
-  },
-  {
-    label: 'Custom Range Audit',
-    value: 'custom',
-    desc: 'Choose specific start and end dates for your report.',
-  },
-  {
-    label: 'Maintenance Task Report',
+    label: 'Cleaning & Maintenance Tasks',
     value: 'maintenance_tasks',
-    desc: 'Maintenance work order history, response times, and assigned staff.',
+    desc: 'Work orders, response times, and staff assignments.',
   },
   {
-    label: 'Supervisor QA & Approval Audit',
+    label: 'Supervisor Inspections',
     value: 'supervisor_audit',
-    desc: 'Supervisor inspection logs, verification rates, and follow-up reviews.',
+    desc: 'Inspection records, approval rates, and supervisor notes.',
   },
 ];
 
@@ -121,6 +103,7 @@ const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
   { label: 'Last 30 Days', value: 'last_30_days' },
   { label: 'This Month', value: 'this_month' },
   { label: 'Last Month', value: 'last_month' },
+  { label: 'Custom Date Range', value: 'custom' },
 ];
 
 const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
@@ -179,8 +162,7 @@ function getInspectionBadge(inspectionStatus?: string | null) {
   switch (inspectionStatus) {
     case 'approved':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
           Approved
         </span>
       );
@@ -206,7 +188,7 @@ function formatTaskTimestamp(value?: number | null): string {
   if (!value) {
     return '—';
   }
-  return format(new Date(value), 'MMM d, yyyy HH:mm');
+  return format(new Date(value), 'MMM d, yyyy hh:mm a');
 }
 
 function taskTimestampToCsv(value?: number | null): string {
@@ -511,43 +493,43 @@ export default function ReportsPage() {
   }));
   const [isGenerating, setIsGenerating] = useState(false);
   const [srAnnouncement, setSrAnnouncement] = useState('');
-  const [exportHistory, setExportHistory] = useState<ExportRecord[]>([
-    {
-      id: 'exp-recent-1',
-      name: 'Monthly_Usage_Summary_Jul2026',
-      type: 'monthly',
-      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      size: '2.4 MB',
-      format: 'PDF',
-    },
-    {
-      id: 'exp-recent-2',
-      name: 'Facility_Maintenance_Log_W32',
-      type: 'maintenance_tasks',
-      date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      size: '480 KB',
-      format: 'CSV',
-    },
-    {
-      id: 'exp-recent-3',
-      name: 'Restroom_Usage_Audit_Q3',
-      type: 'custom',
-      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-      size: '1.1 MB',
-      format: 'JSON',
-    },
-  ]);
+  const [exportHistory, setExportHistory] = useState<ExportRecord[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = sessionStorage.getItem('@smartflush:recent_downloads');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item: any) => ({
+            ...item,
+            date: new Date(item.date),
+          }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(
+        '@smartflush:recent_downloads',
+        JSON.stringify(exportHistory),
+      );
+    } catch {
+      // ignore
+    }
+  }, [exportHistory]);
 
   const isMaintenanceTaskReport = reportType === 'maintenance_tasks';
   const isSupervisorAuditReport = reportType === 'supervisor_audit';
   const isDailyReport = reportType === 'daily';
-  const isMonthlyReport = reportType === 'monthly';
-  const usesExplicitRange =
-    reportType === 'custom' ||
-    isMaintenanceTaskReport ||
-    isSupervisorAuditReport;
+  const usesExplicitRange = dateRange === 'custom';
   const hasInvalidDateRange =
-    usesExplicitRange && customRange.from > customRange.to;
+    !isDailyReport && usesExplicitRange && customRange.from > customRange.to;
 
   const resolvedRange = useMemo(() => {
     if (isDailyReport) {
@@ -879,11 +861,11 @@ export default function ReportsPage() {
       {/* Clean Slate Typography Headline (Hidden in Print) */}
       <div className="print:hidden">
         <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-          Restroom Reports &amp; Exports
+          Restroom Reports &amp; Downloads
         </h1>
-        <span className="sr-only">
-          Generate and download usage summaries, maintenance records, and inspection logs for SDCA Annex restrooms.
-        </span>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Generate and download restroom usage reports, water savings records, and maintenance logs for the campus.
+        </p>
       </div>
 
       {/* Top Action & Filter Bar (Design 3's Secondary Context Tier) */}
@@ -901,11 +883,11 @@ export default function ReportsPage() {
                 id="report-builder-heading"
                 className="text-base font-bold text-slate-900 dark:text-slate-100"
               >
-                Report Builder &amp; Data Export
+                Select Report &amp; Date Range
               </h2>
-              <span className="sr-only">
-                Choose your report type and date range, then download your report
-              </span>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Choose a report, pick your dates, and download or print.
+              </p>
             </div>
           </div>
 
@@ -953,22 +935,10 @@ export default function ReportsPage() {
           {/* Col 2: Adaptive Date Scope (lg:col-span-3) */}
           <div className="lg:col-span-3">
             <label
-              htmlFor={
-                isDailyReport
-                  ? 'audit-date-single'
-                  : usesExplicitRange
-                    ? 'range-date-from'
-                    : 'date-range-preset'
-              }
+              htmlFor={isDailyReport ? 'audit-date-single' : 'date-range-preset'}
               className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
             >
-              {isDailyReport
-                ? 'Report Date (Day)'
-                : isMonthlyReport
-                  ? 'Month'
-                  : usesExplicitRange
-                    ? 'Date Range'
-                    : 'Time Period'}
+              {isDailyReport ? 'Select Day' : 'Date Range'}
             </label>
 
             {isDailyReport ? (
@@ -978,52 +948,56 @@ export default function ReportsPage() {
                 className="w-full min-h-[44px] rounded-[10px] border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 value={singleDate}
                 onChange={(e) => setSingleDate(e.target.value)}
-                aria-label="Select audit day"
+                aria-label="Select report day"
               />
-            ) : usesExplicitRange ? (
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  id="range-date-from"
-                  type="date"
-                  className="w-full min-h-[44px] rounded-[10px] border border-slate-300 bg-white px-2 py-2 text-xs font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  value={customRange.from}
-                  onChange={(event) =>
-                    setCustomRange((current) => ({
-                      ...current,
-                      from: event.target.value,
-                    }))
-                  }
-                  aria-label="Start date"
-                />
-                <input
-                  id="range-date-to"
-                  type="date"
-                  className="w-full min-h-[44px] rounded-[10px] border border-slate-300 bg-white px-2 py-2 text-xs font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  value={customRange.to}
-                  onChange={(event) =>
-                    setCustomRange((current) => ({
-                      ...current,
-                      to: event.target.value,
-                    }))
-                  }
-                  aria-label="End date"
-                />
-              </div>
             ) : (
-              <select
-                id="date-range-preset"
-                className="w-full min-h-[44px] rounded-[10px] border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-900 transition-colors focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                value={dateRange}
-                onChange={(event) =>
-                  setDateRange(event.target.value as DateRangeOption)
-                }
-              >
-                {RANGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <select
+                  id="date-range-preset"
+                  className="w-full min-h-[44px] rounded-[10px] border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-900 transition-colors focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:focus-visible:ring-red-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  value={dateRange}
+                  onChange={(event) =>
+                    setDateRange(event.target.value as DateRangeOption)
+                  }
+                >
+                  {RANGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                {dateRange === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      id="range-date-from"
+                      type="date"
+                      className="w-full min-h-[38px] rounded-[8px] border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      value={customRange.from}
+                      onChange={(event) =>
+                        setCustomRange((current) => ({
+                          ...current,
+                          from: event.target.value,
+                        }))
+                      }
+                      aria-label="Start date"
+                    />
+                    <input
+                      id="range-date-to"
+                      type="date"
+                      className="w-full min-h-[38px] rounded-[8px] border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      value={customRange.to}
+                      onChange={(event) =>
+                        setCustomRange((current) => ({
+                          ...current,
+                          to: event.target.value,
+                        }))
+                      }
+                      aria-label="End date"
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             {hasInvalidDateRange && (
@@ -1271,10 +1245,10 @@ function DailyAuditReportCanvas({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                Hourly Restroom Activity Breakdown
+                Hourly Restroom Activity
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                24-hour hourly usage logs for {date}
+                Hour-by-hour flushes and water used on {date}
               </p>
             </div>
           </div>
@@ -1284,15 +1258,15 @@ function DailyAuditReportCanvas({
         <div className="w-full overflow-x-auto print:overflow-visible">
           <table
             className="w-full text-left text-xs print:border-collapse print:text-black"
-            aria-label="Hourly telemetry data"
+            aria-label="Hourly restroom usage"
           >
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Time Period</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flush Count</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Time</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Flushes</th>
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Used</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Traffic Level</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Status</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Activity Level</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1331,7 +1305,7 @@ function DailyAuditReportCanvas({
                       )}
                     </td>
                     <td className="py-2.5 px-4 text-[11px] text-slate-500 dark:text-slate-400">
-                      {bin.count > 0 ? 'Active Restroom Traffic' : 'Idle / Standby'}
+                      {bin.count > 0 ? 'Active' : 'Idle'}
                     </td>
                   </tr>
                 );
@@ -1348,14 +1322,11 @@ function DailyAuditReportCanvas({
 // Canvas Component: Usage Summary / Weekly / Monthly Executive Canvas
 // ─────────────────────────────────────────────────────────────────────────────
 function UsageTelemetryReportCanvas({
-  reportType,
   range,
   telemetry,
   loading,
-  onPrint,
-  onGenerate,
 }: {
-  reportType: ReportType;
+  reportType?: ReportType;
   range: { from: string; to: string };
   telemetry: {
     flushes: number;
@@ -1366,18 +1337,10 @@ function UsageTelemetryReportCanvas({
     uptime: string;
   };
   loading: boolean;
-  onPrint: () => void;
-  onGenerate: () => void;
+  onPrint?: () => void;
+  onGenerate?: () => void;
 }) {
-  const isMonthly = reportType === 'monthly';
-  const isWeekly = reportType === 'weekly';
   const { connected: pilotConnected } = useDeviceStatus('toilet-01');
-
-  const title = isMonthly
-    ? 'Monthly Executive Conservation Summary'
-    : isWeekly
-      ? 'Weekly Facility Performance & Hygiene Summary'
-      : 'Overall Restroom Usage Summary';
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -1386,35 +1349,35 @@ function UsageTelemetryReportCanvas({
         <SummaryCard
           icon={<Waves className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
           label="Total Flushes"
-          sublabel="Pilot Unit completed flushes"
+          sublabel="Flushes recorded across campus"
           loading={loading}
           value={String(telemetry.flushes)}
         />
         <SummaryCard
           icon={<Droplets className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />}
           label="Water Used"
-          sublabel="Pilot Unit metered volume"
+          sublabel="Measured water volume"
           loading={loading}
           value={`${telemetry.waterLiters} L`}
         />
         <SummaryCard
           icon={<Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
           label="Water Conserved"
-          sublabel={`${telemetry.conservationRate}% vs 6.0L baseline (Pilot)`}
+          sublabel={`${telemetry.conservationRate}% saved vs standard toilets`}
           loading={loading}
           value={`${telemetry.waterSaved} L`}
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
           label="Disinfection Rate"
-          sublabel="Pilot Unit UV-C status"
+          sublabel="Automatic UV cleaning cycles"
           loading={loading}
           value={telemetry.uvRate}
         />
         <SummaryCard
           icon={<Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
           label="System Reliability"
-          sublabel="Target: 99.5% uptime"
+          sublabel="Online connection rate"
           loading={loading}
           value={telemetry.uptime}
         />
@@ -1429,10 +1392,10 @@ function UsageTelemetryReportCanvas({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                {title}
+                Campus Restroom Status &amp; Usage
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Report period: {range.from} to {range.to} · SDCA Annex Restroom Network
+                Report period: {range.from} to {range.to} · SDCA Annex Restrooms
               </p>
             </div>
           </div>
@@ -1446,11 +1409,11 @@ function UsageTelemetryReportCanvas({
           >
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Facility</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Location / Floor</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Unit ID</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Location</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Device ID</th>
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Conserved</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Water Saved</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1466,11 +1429,6 @@ function UsageTelemetryReportCanvas({
                     <td className="py-3 px-4">
                       <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                         <span>{info.name}</span>
-                        {isPilot && (
-                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-800 dark:bg-sky-950/70 dark:text-sky-300">
-                            IoT Pilot Bench
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
@@ -1497,9 +1455,9 @@ function UsageTelemetryReportCanvas({
                           </span>
                         )
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400">
-                          <QrCode className="h-3 w-3 text-slate-500" />
-                          Standard (QR Dispatch Active)
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400">
+                          <QrCode className="h-3 w-3 text-slate-500 shrink-0" />
+                          QR Dispatch
                         </span>
                       )}
                     </td>
@@ -1510,7 +1468,7 @@ function UsageTelemetryReportCanvas({
                             {telemetry.conservationRate}% Conserved
                           </span>
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400">
-                            YF-S201 Flow Sensor
+                            Smart Water Sensor
                           </span>
                         </div>
                       ) : (
@@ -1519,7 +1477,7 @@ function UsageTelemetryReportCanvas({
                             —
                           </span>
                           <span className="block text-[10px] text-slate-400 dark:text-slate-500">
-                            Unmetered Fixture
+                            Standard Restroom
                           </span>
                         </div>
                       )}
@@ -1529,21 +1487,6 @@ function UsageTelemetryReportCanvas({
               })}
             </tbody>
           </table>
-        </div>
-
-        {/* Footnote Notice */}
-        <div className="border-t border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/30 text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2.5 print:bg-white print:border-slate-300">
-          <Info className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" aria-hidden="true" />
-          <div>
-            <span className="font-bold text-slate-800 dark:text-slate-200 print:text-black">
-              Campus Restroom Infrastructure Note:
-            </span>{' '}
-            Live water conservation, automated flushing, and UV-C disinfection are metered directly on the{' '}
-            <strong className="text-slate-800 dark:text-slate-200 print:text-black">SDCA Smart Flush Pilot Unit (<code className="font-mono text-[11px]">toilet-01</code>)</strong>.
-            All other SDCA Annex campus facilities operate standard gravity/flushometer fixtures managed through{' '}
-            <strong className="text-slate-800 dark:text-slate-200 print:text-black">QR-code public incident reporting</strong> and{' '}
-            <strong className="text-slate-800 dark:text-slate-200 print:text-black">mobile custodial workforce dispatch</strong>.
-          </div>
         </div>
       </div>
     </div>
@@ -1667,8 +1610,6 @@ function MaintenanceTaskReport({
   averageResponseMinutes,
   error,
   loading,
-  onExportCsv,
-  onPrint,
   pendingNow,
   resolveAssignedName,
   tasks,
@@ -1678,7 +1619,7 @@ function MaintenanceTaskReport({
   averageResponseMinutes: number | null;
   error: string | null;
   loading: boolean;
-  onExportCsv: () => void;
+  onExportCsv?: () => void;
   onPrint?: () => void;
   pendingNow: number;
   resolveAssignedName: (assignedUserId?: string | null) => string;
@@ -1728,10 +1669,10 @@ function MaintenanceTaskReport({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                Maintenance Work Orders
+                Cleaning &amp; Maintenance Tasks
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Work order history for the selected report period
+                Task history for the selected date range
               </p>
             </div>
           </div>
@@ -1756,26 +1697,26 @@ function MaintenanceTaskReport({
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" aria-hidden="true" />
             <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              No maintenance work orders found
+              No cleaning or maintenance tasks found
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              No tasks match the active date range. Try broadening the audit scope.
+              No tasks match the selected date range.
             </p>
           </div>
         ) : (
           <div className="w-full overflow-x-auto print:overflow-visible">
             <table
               className="w-full text-left text-xs print:border-collapse print:text-black"
-              aria-label="Maintenance tasks audit table"
+              aria-label="Maintenance tasks table"
             >
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
                   <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Trigger Reason</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Stall</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Technician</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Created</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Reason / Trigger</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Staff</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Date Created</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Date Completed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1911,15 +1852,20 @@ function RecentExportsHistory({
           >
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Report File</th>
-                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Generated</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">File Name</th>
+                <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Downloaded On</th>
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Format</th>
                 <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Size</th>
-                <th scope="col" className="py-3 px-4 text-right font-bold uppercase tracking-wider text-[10px] print:hidden">Action</th>
+                <th scope="col" className="py-3 px-4 text-right font-bold uppercase tracking-wider text-[10px] print:hidden">Download Again</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
-              {reports.map((report) => (
+              {reports.map((report) => {
+                const reportDate =
+                  report.date instanceof Date
+                    ? report.date
+                    : new Date(report.date);
+                return (
                 <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 break-inside-avoid print:hover:bg-transparent">
                   <td className="py-3 px-4">
                     <div className="font-bold text-slate-900 dark:text-slate-100 print:text-black">
@@ -1930,9 +1876,9 @@ function RecentExportsHistory({
                     </div>
                   </td>
                   <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400 whitespace-nowrap print:text-black">
-                    {format(report.date, 'MMM dd, yyyy')}
+                    {format(reportDate, 'MMM dd, yyyy')}
                     <div className="text-[10px] text-slate-400 print:text-slate-600">
-                      {format(report.date, 'HH:mm')}
+                      {format(reportDate, 'hh:mm a')}
                     </div>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
@@ -1963,7 +1909,8 @@ function RecentExportsHistory({
                     </button>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -1981,8 +1928,6 @@ function SupervisorAuditReport({
   error,
   flaggedCount,
   loading,
-  onExportCsv,
-  onPrint,
   pendingAuditCount,
   resolveAssignedName,
   tasks,
@@ -1994,7 +1939,7 @@ function SupervisorAuditReport({
   error: string | null;
   flaggedCount: number;
   loading: boolean;
-  onExportCsv: () => void;
+  onExportCsv?: () => void;
   onPrint?: () => void;
   pendingAuditCount: number;
   resolveAssignedName: (assignedUserId?: string | null) => string;
@@ -2085,10 +2030,10 @@ function SupervisorAuditReport({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                Supervisor Inspection &amp; QA Log
+                Supervisor Inspection Records
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Maintenance work orders verified by supervisors with inspection notes
+                Maintenance work verified by supervisors with inspection notes
               </p>
             </div>
           </div>
@@ -2162,29 +2107,6 @@ function SupervisorAuditReport({
                 </span>
               </button>
             </div>
-
-            {onPrint && (
-              <button
-                type="button"
-                className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-                onClick={onPrint}
-                disabled={loading}
-                title="Print this audit report"
-              >
-                <Printer className="h-3.5 w-3.5 text-[#B5121B] dark:text-red-400" aria-hidden="true" />
-                Print Audit
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="tactile-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-[8px] border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 focus-visible:ring-2 focus-visible:ring-[#B5121B] focus:outline-none"
-              onClick={onExportCsv}
-              disabled={loading}
-            >
-              <Download className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
-              Export Audit CSV
-            </button>
           </div>
         </div>
 
@@ -2219,16 +2141,16 @@ function SupervisorAuditReport({
           <div className="w-full overflow-x-auto print:overflow-visible">
             <table
               className="w-full text-left text-xs print:border-collapse print:text-black"
-              aria-label="Supervisor QA audit log"
+              aria-label="Supervisor inspection log"
             >
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300 print:bg-slate-100 print:text-black print:border-b-2 print:border-slate-400">
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Inspection Status</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom Location</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Technician</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Inspected By</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Supervisor Remarks</th>
-                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Completed Date</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Restroom</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Assigned Staff</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Reviewed By</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Supervisor Notes</th>
+                  <th scope="col" className="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Date Completed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
