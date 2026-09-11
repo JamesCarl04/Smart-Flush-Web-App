@@ -497,14 +497,15 @@ The ESP32 microcontroller continuously polls the HC-SR04 ultrasonic sensor. When
 ### 2. Continuous Telemetry Ingestion & Watchdog Monitor
 Because serverless runtimes kill long-lived TCP connections, Klir runs a dedicated **`mqtt-listener`** service on Railway. It maintains a 24/7 TLS connection to HiveMQ Cloud. A built-in watchdog monitors device heartbeats; if an ESP32 fails to check in within 60 seconds, the device is flagged as offline and an alert is issued.
 
-### 3. Closed-Loop Supervisor QA Audit Workflow
-To prevent "ghost cleaning" (technicians marking tasks complete without cleaning), Klir enforces closed-loop QA:
+### 3. Closed-Loop Supervisor QA Audit Workflow & Direct Accountability Lock
+To prevent "ghost cleaning" (technicians marking tasks complete without cleaning) and enforce individual custodial accountability:
 1. Technician finishes work, checks off tasks, and snaps a live photo.
 2. The task enters the **Supervisor QA Queue**.
 3. The supervisor audits the submission using zero-scroll quick filter tabs:
    * **Approve (✓)**: Formally closes the work order.
    * **Flag (⚠️)**: Rejects the task with mandatory remarks (e.g. *"Mirror uncleaned, restock hand soap"*).
-   * The technician must accept the re-inspection and re-clean the facility.
+   * **Direct Accountability Lock (ISO 9001 / CAPA)**: When flagged, the work order **locks directly to the original technician** who submitted it. The technician must accept the re-inspection and rectify their work. Reassignment is disabled by default to prevent task dumping.
+   * **Authorized Shift-Handoff Override**: If the original technician is off-shift, on leave, or unavailable, supervisors can toggle an explicit override with a mandatory justification ($\ge 5$ characters) to reassign the task, logging a `TASK_REASSIGNED` audit record.
 
 ### 4. Automated Dispatch & Leak Anomaly Engine
 The system processes continuous flow meter pulses. If water flows continuously at $>0.5\text{ L/min}$ for $>45\text{ seconds}$ outside of an active flush cycle, the engine:
@@ -551,13 +552,21 @@ Klir enforces strict server-side RBAC using Firebase Custom Claims and JWT Beare
 | **Manage Automation Rules** | ✅ Edit / Create | 👁️ View Only | ❌ No | ❌ No | ❌ No |
 | **Export Compliance Reports (PDF/CSV)** | ✅ Yes | ✅ Yes | ❌ No | 👁️ View Only | ❌ No |
 
-### Enterprise Security Safeguards (OWASP & Institutional Governance 2026):
+### Enterprise Security & Audit Safeguards (NIST SP 800-92, ISO 27001, 21 CFR Part 11):
+* **Append-Only System Audit Trail**: All operational and security actions across web and mobile clients are logged to the immutable `/auditLogs/{logId}` collection in Cloud Firestore. Security rules enforce `allow create: if isStaff(); allow update, delete: if false;`, ensuring tamper-evident non-repudiation in full compliance with **21 CFR Part 11** and **SOC 2 Type II**.
+* **Administrative Soft Deletion Standard**: In compliance with institutional audit standards, work orders and user records are **never hard-deleted** from the database. Instead, administrative removals follow soft deletion (`status: 'cancelled'` or `isDeleted: true` with recorded actor, timestamp, and mandatory reason) to preserve complete evidence and analytical integrity for academic papers.
+* **Multi-Period Compliance Aggregations**: Supports automated compliance tracking across **Today (24h)**, **This Week (7d)**, and **This Month (30d)**:
+  * User authentications & shift terminations.
+  * Work order lifecycle volumes (automated IoT triggers vs. manual admin dispatch).
+  * SLA performance: Response time (alert to acknowledgement) and execution duration.
+  * First-Time Pass Rate (FTPR): Percentage of work orders approved on first inspection vs. returned for rework.
+  * Administrative soft-deletions and configuration changes.
 * **Decommissioned Public Self-Registration**: In accordance with institutional data policies, self-service registration endpoints (`/portal-admin/register`) are disabled. All operational credentials require deliberate administrative provisioning.
 * **No Token Storage in Cookies**: Prevents Cross-Site Scripting (XSS) session hijacking by storing auth tokens in Firebase's internal IndexedDB storage.
 * **Per-IP & Per-User Rate Limiting**: All critical API endpoints are protected by `lib/rate-limit.ts` to thwart brute-force and DDoS attacks.
 * **Strict Zod Input Validation**: Every request payload is strictly sanitized against Zod schemas in `lib/schemas.ts`.
 * **CORS Origin Whitelisting**: Strict origin headers reject unauthorized cross-domain API calls.
-* **Logic Audit & GCS Security Assessment**: Full end-to-end audit confirms strict role claim checks on user creation (`/api/staff`, `/api/auth/register`), atomic rollback on failure, immediate token revocation upon deactivation, and SAIF-compliant cloud storage bucket isolation.
+* **Logic Audit & Storage Security Assessment**: Full end-to-end audit confirms strict role claim checks on user creation (`/api/staff`, `/api/auth/register`), atomic rollback on failure, immediate token revocation upon deactivation, and SAIF-compliant cloud storage bucket isolation.
 
 ---
 
