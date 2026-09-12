@@ -19,6 +19,7 @@ jest.mock('@/lib/auth-helpers', () => ({
   verifyAuthToken: jest.fn(),
   requireAdmin: jest.fn(),
   getUserRole: jest.fn(),
+  getUserProfile: jest.fn(),
 }));
 
 jest.mock('@/lib/password-validator', () => ({
@@ -34,13 +35,17 @@ jest.mock('firebase-admin/firestore', () => ({
 import { POST as registerUser } from '@/app/api/auth/register/route';
 import { GET as getStaff, POST as createStaff } from '@/app/api/staff/route';
 import { PATCH as updateStaff, POST as resetStaffPassword } from '@/app/api/staff/[id]/route';
+import { GET as authMe } from '@/app/api/auth/me/route';
+import { POST as authLogout } from '@/app/api/auth/logout/route';
+import { POST as staffPresence } from '@/app/api/staff/presence/route';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin, getUserProfile } from '@/lib/auth-helpers';
 
 const mockAdminAuth = adminAuth as jest.Mocked<typeof adminAuth>;
 const mockAdminDb = adminDb as jest.Mocked<typeof adminDb>;
 const mockVerifyAuthToken = verifyAuthToken as jest.Mock;
 const mockRequireAdmin = requireAdmin as jest.Mock;
+const mockGetUserProfile = getUserProfile as jest.Mock;
 
 const originalFetch = global.fetch;
 
@@ -700,4 +705,243 @@ describe('Staff Management and Registration APIs', () => {
       }
     });
   });
+
+  describe('GET /api/auth/me (Presence Synchronization)', () => {
+    it('marks an active offline user as available and isOnline: true', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+      mockGetUserProfile.mockResolvedValue({
+        id: 'tech-1',
+        email: 'tech@sdca.edu.ph',
+        displayName: 'Tech Tester',
+        role: 'technician',
+      });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      const mockDocGet = jest.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({
+          active: true,
+          isActive: true,
+          status: 'offline',
+          isOnline: false,
+        }),
+      });
+
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: mockDocGet,
+          set: mockDocSet,
+        }),
+      } as any);
+
+      const req = new Request('http://localhost/api/auth/me', {
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+
+      const res = await authMe(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data.role).toBe('technician');
+
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isOnline: true,
+          status: 'available',
+        }),
+        { merge: true },
+      );
+    });
+
+    it('preserves on_task status if the user is already on_task', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+      mockGetUserProfile.mockResolvedValue({
+        id: 'tech-1',
+        email: 'tech@sdca.edu.ph',
+        displayName: 'Tech Tester',
+        role: 'technician',
+      });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      const mockDocGet = jest.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({
+          active: true,
+          isActive: true,
+          status: 'on_task',
+          isOnline: true,
+        }),
+      });
+
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: mockDocGet,
+          set: mockDocSet,
+        }),
+      } as any);
+
+      const req = new Request('http://localhost/api/auth/me', {
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+
+      const res = await authMe(req);
+      expect(res.status).toBe(200);
+
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isOnline: true,
+          status: 'on_task',
+        }),
+        { merge: true },
+      );
+    });
+
+    it('does not update presence if user is deactivated (active: false)', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-deactivated' });
+      mockGetUserProfile.mockResolvedValue({
+        id: 'tech-deactivated',
+        email: 'tech-deact@sdca.edu.ph',
+        displayName: 'Deactivated Tech',
+        role: 'technician',
+      });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      const mockDocGet = jest.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({
+          active: false,
+          isActive: false,
+          status: 'offline',
+          isOnline: false,
+        }),
+      });
+
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: mockDocGet,
+          set: mockDocSet,
+        }),
+      } as any);
+
+      const req = new Request('http://localhost/api/auth/me', {
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+
+      const res = await authMe(req);
+      expect(res.status).toBe(200);
+      expect(mockDocSet).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/auth/logout (Presence Synchronization)', () => {
+    it('sets user to offline and isOnline: false when Authorization header is provided', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
+      } as any);
+
+      const req = new Request('http://localhost/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+
+      const res = await authLogout(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isOnline: false,
+          status: 'offline',
+        }),
+        { merge: true },
+      );
+    });
+
+    it('succeeds without Authorization header without error', async () => {
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
+      } as any);
+
+      const req = new Request('http://localhost/api/auth/logout', {
+        method: 'POST',
+      });
+
+      const res = await authLogout(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(mockDocSet).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/staff/presence', () => {
+    it('rejects unauthenticated requests with 401', async () => {
+      mockVerifyAuthToken.mockRejectedValue(
+        new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401 }),
+      );
+
+      const req = new Request('http://localhost/api/staff/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'available' }),
+      });
+
+      const res = await staffPresence(req);
+      expect(res.status).toBe(401);
+    });
+
+    it('updates presence successfully for authenticated technician', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
+      } as any);
+
+      const req = new Request('http://localhost/api/staff/presence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer valid-token',
+        },
+        body: JSON.stringify({ status: 'available', isOnline: true }),
+      });
+
+      const res = await staffPresence(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'available',
+          isOnline: true,
+        }),
+        { merge: true },
+      );
+    });
+
+    it('validates invalid status with 400', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+
+      const req = new Request('http://localhost/api/staff/presence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer valid-token',
+        },
+        body: JSON.stringify({ status: 'sleeping' }),
+      });
+
+      const res = await staffPresence(req);
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toContain('Invalid status');
+    });
+  });
 });
+

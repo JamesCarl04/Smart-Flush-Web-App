@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Eye,
   EyeOff,
+  RefreshCw,
 } from 'lucide-react';
 
 export interface StaffMember {
@@ -607,6 +608,16 @@ export default function StaffManagementPage() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void loadStaff(false)}
+            disabled={loading}
+            aria-label="Refresh Roster"
+            className="btn btn-outline h-12 min-h-[48px] px-4 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs font-semibold text-sm inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            <span>Refresh Roster</span>
+          </button>
           <button
             type="button"
             onClick={() => {
