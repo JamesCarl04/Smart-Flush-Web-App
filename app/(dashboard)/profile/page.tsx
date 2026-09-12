@@ -9,7 +9,6 @@ import {
   Bell,
   CheckCircle2,
   Wrench,
-  Lock,
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -209,37 +208,13 @@ export default function ProfilePage() {
                   <span>Klir Admin Web • v{packageInfo.version}</span>
                 </div>
 
-                {user?.uid && (
-                  <div className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-mono text-slate-400 bg-base-200 border border-base-300">
-                    <span>UID: {user.uid.slice(0, 8)}...</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── SECTION B: Institutional Security & Provisioning Notice ──────── */}
-      <div className="card bg-base-100 border border-base-200 shadow-xl overflow-hidden">
-        <div className="card-body p-6 sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <Lock className="h-5 w-5 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Institutional Security &amp; Access Governance
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Account credentials, administrative roles, and authentication passwords are centrally managed by the Superadmin via the Firebase Console. Self-service credential modification is restricted in accordance with institutional security policies.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── SECTION C: Alert Notification Toggles ──────────────────────── */}
+      {/* ── SECTION B: Alert Notification Toggles ──────────────────────── */}
       <div className="card bg-base-100 border border-base-200 shadow-xl">
         <div className="card-body p-6 sm:p-8">
           <div className="flex items-center justify-between pb-4 border-b border-base-200 mb-2">

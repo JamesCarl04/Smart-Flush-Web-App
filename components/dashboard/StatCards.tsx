@@ -14,7 +14,12 @@ import {
   WifiOff,
 } from 'lucide-react';
 
-type SystemStateKey = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
+type SystemStateKey =
+  | 'standby'
+  | 'lid_open'
+  | 'flushing'
+  | 'uv_active'
+  | 'offline';
 
 interface StateVisualConfig {
   label: string;
@@ -87,6 +92,20 @@ const STATE_CONFIGS: Record<SystemStateKey, StateVisualConfig> = {
     ledColor: 'bg-amber-400',
     pulseLed: true,
   },
+  offline: {
+    label: 'Offline',
+    badgeLabel: 'No Signal',
+    subtext: 'Device disconnected',
+    icon: WifiOff,
+    iconColor: 'text-slate-400 dark:text-slate-500',
+    iconBg: 'bg-slate-500/10 dark:bg-slate-500/15',
+    badgeStyle:
+      'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400',
+    meterPercent: 0,
+    meterColor: 'bg-slate-300 dark:bg-slate-700',
+    ledColor: 'bg-slate-400 dark:bg-slate-600',
+    pulseLed: false,
+  },
 };
 
 export function StatCards() {
@@ -139,7 +158,7 @@ export function StatCards() {
 
   // Occupancy Proximity Metric Calculations (0 - 100 cm range)
   const distanceVal =
-    ultrasonicDistance !== undefined && !isNaN(ultrasonicDistance)
+    ultrasonicDistance != null && !isNaN(Number(ultrasonicDistance))
       ? Number(ultrasonicDistance)
       : null;
   // Ultrasonic sensors have a 2-3cm blind zone; 0 indicates timeout/no-echo/uninitialized
@@ -153,7 +172,7 @@ export function StatCards() {
 
   // Flow Rate Calculations (0 - 10.0 L/min range)
   const flowVal =
-    waterFlowRate !== undefined && !isNaN(waterFlowRate)
+    waterFlowRate != null && !isNaN(Number(waterFlowRate))
       ? Number(waterFlowRate)
       : 0;
   const isFlowActive = connected && flowVal > 0.05;
@@ -163,10 +182,17 @@ export function StatCards() {
     return Math.min(100, Math.max(0, Math.round((flowVal / 10) * 100)));
   }, [connected, flowVal]);
 
-  // System Operating State Config
-  const safeSystemState = (systemState || 'standby') as SystemStateKey;
+  // Reactively derive current operating state from live telemetry
+  const derivedSystemState: SystemStateKey = useMemo(() => {
+    if (!connected) return 'offline';
+    if (isFlowActive) return 'flushing';
+    if (systemState === 'uv_active') return 'uv_active';
+    if (isPersonPresent) return 'lid_open';
+    return 'standby';
+  }, [connected, isFlowActive, systemState, isPersonPresent]);
+
   const currentStateConfig =
-    STATE_CONFIGS[safeSystemState] ?? STATE_CONFIGS.standby;
+    STATE_CONFIGS[derivedSystemState] ?? STATE_CONFIGS.standby;
   const CurrentStateIcon = currentStateConfig.icon;
 
   return (
@@ -499,7 +525,7 @@ export function StatCards() {
             </div>
 
             {/* Metric Value */}
-            {systemLoading ? (
+            {(connected ? (systemLoading || sensorLoading) : deviceLoading) ? (
               <div className="space-y-2 py-1">
                 <div className="h-8 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
                 <div className="h-5 w-24 animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/60" />
@@ -533,7 +559,9 @@ export function StatCards() {
             <div className="mb-1.5 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 tabular-nums">
               <span className="truncate pr-1">{currentStateConfig.subtext}</span>
               <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">
-                {currentStateConfig.meterPercent}%
+                {derivedSystemState === 'offline'
+                  ? '--%'
+                  : `${currentStateConfig.meterPercent}%`}
               </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">

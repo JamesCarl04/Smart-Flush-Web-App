@@ -10,7 +10,40 @@ type SystemState = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
 interface SensorReading {
   sensorType: string;
   value: number;
-  timestamp: { _seconds: number };
+  timestamp?:
+    | { _seconds?: number; seconds?: number }
+    | string
+    | number
+    | null;
+}
+
+function getReadingTimestampMillis(timestamp: unknown): number {
+  if (!timestamp) return 0;
+  if (typeof timestamp === 'number') {
+    return timestamp > 1e11 ? timestamp : timestamp * 1000;
+  }
+  if (typeof timestamp === 'string') {
+    const parsed = Date.parse(timestamp);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof timestamp === 'object') {
+    if (
+      'toMillis' in timestamp &&
+      typeof (timestamp as { toMillis: () => number }).toMillis === 'function'
+    ) {
+      return (timestamp as { toMillis: () => number }).toMillis();
+    }
+    const seconds =
+      ('_seconds' in timestamp &&
+        typeof (timestamp as { _seconds: unknown })._seconds === 'number' &&
+        (timestamp as { _seconds: number })._seconds) ||
+      ('seconds' in timestamp &&
+        typeof (timestamp as { seconds: unknown }).seconds === 'number' &&
+        (timestamp as { seconds: number }).seconds) ||
+      0;
+    return seconds * 1000;
+  }
+  return 0;
 }
 
 export function useSystemState(deviceId = 'toilet-01') {
@@ -50,12 +83,20 @@ export function useSystemState(deviceId = 'toilet-01') {
 
         if (response.success && response.data && response.data.length > 0) {
           const latest = response.data[response.data.length - 1];
-          switch (latest.sensorType) {
-            case 'waterflow':
-              setSystemState('flushing');
-              break;
-            default:
-              setSystemState('standby');
+          const timestampMillis = getReadingTimestampMillis(latest.timestamp);
+          const age = Date.now() - timestampMillis;
+          const isStale =
+            timestampMillis === 0 || age > 15_000 || age < -15_000;
+
+          if (!isStale && latest.sensorType === 'waterflow') {
+            setSystemState('flushing');
+          } else if (
+            !isStale &&
+            (latest.sensorType === 'uv' || latest.sensorType === 'uv_active')
+          ) {
+            setSystemState('uv_active');
+          } else {
+            setSystemState('standby');
           }
         } else {
           setSystemState('standby');

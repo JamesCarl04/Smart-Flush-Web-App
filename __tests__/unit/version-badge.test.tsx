@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import packageInfo from '@/package.json';
 
 const mockUseAuth = jest.fn();
@@ -95,17 +95,19 @@ describe('Web App Application Version Badge', () => {
     });
   });
 
-  it('renders package.json version badge in ProfilePage header', async () => {
+  it('renders package.json version badge in ProfilePage header and excludes UID badge and Institutional Security card', async () => {
     render(<ProfilePage />);
 
     await waitFor(() => {
       expect(
         screen.getByText(`Klir Admin Web • v${packageInfo.version}`),
       ).toBeTruthy();
+      expect(screen.queryByText(/UID:/i)).toBeNull();
+      expect(screen.queryByText(/Institutional Security/i)).toBeNull();
     });
   });
 
-  it('renders decluttered user footer in DashboardLayout navigation sidebar without version or role badges', async () => {
+  it('renders decluttered user footer in DashboardLayout navigation sidebar without version or role badges or email', async () => {
     render(
       <DashboardLayout>
         <div>Content</div>
@@ -117,6 +119,29 @@ describe('Web App Application Version Badge', () => {
       expect(screen.queryByText(`v${packageInfo.version}`)).toBeNull();
       // User display name has full breathing room
       expect(screen.getByText('System Admin')).toBeTruthy();
+      // User email should not be rendered in the sidebar footer
+      expect(screen.queryByText('admin@klir.com')).toBeNull();
+      expect(screen.queryByText('operator@klir.local')).toBeNull();
+    });
+  });
+
+  it('renders decluttered user footer in mobile drawer without email when drawer is opened', async () => {
+    render(
+      <DashboardLayout>
+        <div>Content</div>
+      </DashboardLayout>,
+    );
+
+    const openMenuBtn = screen.getByLabelText('Open navigation menu');
+    fireEvent.click(openMenuBtn);
+
+    await waitFor(() => {
+      // User display name appears in mobile drawer
+      const names = screen.getAllByText('System Admin');
+      expect(names.length).toBeGreaterThanOrEqual(1);
+      // User email should not be rendered in mobile drawer footer
+      expect(screen.queryByText('admin@klir.com')).toBeNull();
+      expect(screen.queryByText('operator@klir.local')).toBeNull();
     });
   });
 

@@ -278,9 +278,6 @@ export default function DashboardLayout({
                 <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
                   {userDisplayName}
                 </p>
-                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                  {user?.email || 'operator@klir.local'}
-                </p>
               </div>
             </Link>
             <button
@@ -392,9 +389,6 @@ export default function DashboardLayout({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#B5121B] dark:group-hover:text-red-400 transition-colors">
                       {userDisplayName}
-                    </p>
-                    <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                      {user?.email || 'operator@klir.local'}
                     </p>
                   </div>
                 </Link>
