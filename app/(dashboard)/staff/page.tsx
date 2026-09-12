@@ -97,7 +97,7 @@ export default function StaffManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'supervisor' | 'technician' | 'admin'>('all');
-  const [activityTab, setActivityTab] = useState<'all' | 'on_task' | 'available' | 'leadership'>('all');
+  const [activityTab, setActivityTab] = useState<'all' | 'on_task' | 'available'>('all');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -225,10 +225,7 @@ export default function StaffManagementPage() {
     const onTask = staffList.filter(
       (s) => (s.role === 'technician' || s.role === 'maintenance') && Boolean(s.currentTaskId),
     ).length;
-    const leadership = staffList.filter(
-      (s) => s.role === 'admin' || s.role === 'supervisor',
-    ).length;
-    return { total, supervisors, technicians, available, onTask, leadership };
+    return { total, supervisors, technicians, available, onTask };
   }, [staffList]);
 
   // Filtered roster
@@ -251,9 +248,7 @@ export default function StaffManagementPage() {
           ? true
           : activityTab === 'on_task'
             ? Boolean(person.currentTaskId)
-            : activityTab === 'available'
-              ? person.active && person.isAvailable && !person.currentTaskId
-              : person.role === 'admin' || person.role === 'supervisor';
+            : person.active && person.isAvailable && !person.currentTaskId;
 
       return matchesQuery && matchesRole && matchesActivity;
     });
@@ -792,20 +787,7 @@ export default function StaffManagementPage() {
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Available to Assign ({kpis.available})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activityTab === 'leadership'}
-              onClick={() => setActivityTab('leadership')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                activityTab === 'leadership'
-                  ? 'bg-white dark:bg-slate-800 text-sky-800 dark:text-sky-300 shadow-xs border border-sky-200 dark:border-sky-800'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Campus Leadership ({kpis.leadership})
+              Available ({kpis.available})
             </button>
           </div>
         </div>
