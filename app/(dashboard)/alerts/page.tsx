@@ -8,17 +8,13 @@ import { useTasks } from '@/hooks/useTasks';
 import { getViewedTaskAlertIds, markTaskAlertsViewed } from '@/lib/viewed-alerts';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  Bell,
-  CheckCircle2,
   AlertTriangle,
   Info,
   AlertOctagon,
-  CheckSquare,
-  AlertCircle,
   Clock,
-  ExternalLink,
   ShieldCheck,
   Check,
+  WifiOff,
   X,
 } from 'lucide-react';
 
@@ -47,6 +43,105 @@ type DashboardAlert =
     };
 
 const OVERDUE_TASK_THRESHOLD_MS = 30 * 60 * 1000;
+
+const ALERT_TITLE_MAP: Record<string, string> = {
+  hardware_pump_failure: 'Water Pump Failure',
+  hardware_failure: 'Hardware Fault Detected',
+  water_overuse: 'High Water Consumption',
+  flush_count_exceeded: 'High Usage Volume Exceeded',
+  device_offline: 'Device Offline / Connection Lost',
+  internet_offline: 'Connection Lost / Offline',
+  wifi_disconnected: 'Device Offline / Connection Lost',
+  connection_lost: 'Connection Lost',
+  leak_detected: 'Water Leak Detected',
+  water_leak: 'Water Leak Detected',
+  sensor_error: 'Sensor Fault Detected',
+  sensor_fault: 'Sensor Issue',
+  ultrasonic_sensor_fault: 'Ultrasonic Sensor Issue',
+  sensor_disconnected: 'Sensor Disconnected',
+  tank_level_low: 'Low Tank Water Level',
+  water_no_flow: 'No Water Flow Detected',
+  no_water_after_flush: 'No Water Flow Detected',
+  uv_failed: 'UV Disinfection Cycle Failed',
+  uv_cycle_failed: 'UV Disinfection Cycle Failed',
+  maintenance_due: 'Scheduled Maintenance Due',
+};
+
+export function formatAlertTitle(titleOrType: string): string {
+  if (!titleOrType) return 'System Alert';
+  const key = titleOrType.toLowerCase().trim().replace(/-/g, '_');
+  if (ALERT_TITLE_MAP[key]) {
+    return ALERT_TITLE_MAP[key];
+  }
+  if (!key.includes('_')) {
+    return titleOrType;
+  }
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+export function isConnectionAlert(alert: DashboardAlert): boolean {
+  if (alert.source === 'task') return false;
+  const text = `${alert.title} ${alert.description}`.toLowerCase();
+  return (
+    text.includes('offline') ||
+    text.includes('connection') ||
+    text.includes('internet') ||
+    text.includes('wifi') ||
+    text.includes('disconnected')
+  );
+}
+
+export function isErrorOrCriticalAlert(alert: DashboardAlert): boolean {
+  if (alert.source === 'task') return false;
+  if (isConnectionAlert(alert)) return true;
+  if (alert.severity === 'critical') return true;
+  const text = `${alert.title} ${alert.description}`.toLowerCase();
+  return (
+    text.includes('error') ||
+    text.includes('failure') ||
+    text.includes('failed') ||
+    text.includes('fault') ||
+    text.includes('leak') ||
+    text.includes('issue')
+  );
+}
+
+function getAlertIcon(alert: DashboardAlert) {
+  if (isConnectionAlert(alert)) {
+    return <WifiOff className="h-5 w-5 text-rose-600 dark:text-rose-400" aria-hidden="true" />;
+  }
+
+  if (isErrorOrCriticalAlert(alert)) {
+    return <AlertOctagon className="h-5 w-5 text-rose-600 dark:text-rose-400" aria-hidden="true" />;
+  }
+
+  if (alert.source === 'task') {
+    return <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+  }
+
+  if (alert.severity === 'high' || alert.severity === 'medium') {
+    return <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+  }
+
+  return <Info className="h-5 w-5 text-slate-500 dark:text-slate-400" aria-hidden="true" />;
+}
+
+function getAlertIconContainerClass(alert: DashboardAlert) {
+  if (alert.acknowledged) {
+    return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700';
+  }
+  if (isErrorOrCriticalAlert(alert)) {
+    return 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/80 dark:border-rose-900/50';
+  }
+  if (alert.source === 'task' || alert.severity === 'high' || alert.severity === 'medium') {
+    return 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-900/50';
+  }
+  return 'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
+}
 
 export default function AlertsPage() {
   const {
@@ -131,7 +226,7 @@ export default function AlertsPage() {
   const loading = alertsLoading || tasksLoading;
   const unreadCount = dashboardAlerts.filter((alert) => !alert.acknowledged).length;
   const criticalHighCount = dashboardAlerts.filter(
-    (a) => a.severity === 'critical' || a.severity === 'high',
+    (a) => isErrorOrCriticalAlert(a) || a.severity === 'high',
   ).length;
   const taskAlertsCount = dashboardAlerts.filter((a) => a.source === 'task').length;
 
@@ -147,7 +242,7 @@ export default function AlertsPage() {
         }
 
         if (filter === 'critical_high') {
-          return alert.severity === 'critical' || alert.severity === 'high';
+          return isErrorOrCriticalAlert(alert) || alert.severity === 'high';
         }
 
         return true;
@@ -155,38 +250,55 @@ export default function AlertsPage() {
     [dashboardAlerts, filter],
   );
 
-  const getSeverityBadge = (severity: AlertSeverity) => {
-    switch (severity) {
-      case 'critical':
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
-            <AlertOctagon className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
-            Critical
-          </span>
-        );
-      case 'high':
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-            Warning (High)
-          </span>
-        );
-      case 'medium':
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-            <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-            Warning
-          </span>
-        );
-      case 'low':
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-300">
-            <Info className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-            Info
-          </span>
-        );
+  const getSeverityBadge = (alert: DashboardAlert) => {
+    if (isErrorOrCriticalAlert(alert)) {
+      const isConn = isConnectionAlert(alert);
+      const label = isConn ? 'Offline' : alert.severity === 'critical' ? 'Critical' : 'Error / Issue';
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-200">
+          {isConn ? (
+            <WifiOff className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" aria-hidden="true" />
+          ) : (
+            <AlertOctagon className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" aria-hidden="true" />
+          )}
+          {label}
+        </span>
+      );
     }
+
+    if (alert.source === 'task') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          Task Overdue
+        </span>
+      );
+    }
+
+    if (alert.severity === 'high') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          Warning (High)
+        </span>
+      );
+    }
+
+    if (alert.severity === 'medium') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          Warning
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <Info className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
+        Notice
+      </span>
+    );
   };
 
   const handleViewTask = (alertId: string, taskId: string) => {
@@ -295,7 +407,7 @@ export default function AlertsPage() {
 
           <button
             type="button"
-            className="tactile-btn inline-flex min-h-[40px] items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            className="tactile-btn inline-flex min-h-[44px] items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             onClick={() => handleAcknowledge('ALL')}
             disabled={
               loading ||
@@ -388,9 +500,8 @@ export default function AlertsPage() {
           ) : filteredAlerts.length === 0 ? (
             /* Illustrated Calm Empty State */
             <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-              <div className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600 shadow-inner dark:bg-emerald-950/50 dark:text-emerald-400">
-                <div className="absolute inset-0 rounded-3xl bg-emerald-400/20 blur-xl"></div>
-                <ShieldCheck className="relative h-10 w-10" />
+              <div className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-slate-200/80 bg-slate-100 text-slate-600 shadow-inner dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <ShieldCheck className="h-10 w-10 text-slate-600 dark:text-slate-300" aria-hidden="true" />
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 All Systems Normal
@@ -404,7 +515,7 @@ export default function AlertsPage() {
                   setFilter('all');
                   void refresh();
                 }}
-                className="mt-6 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                className="mt-6 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100"
               >
                 Reset Filter
               </button>
@@ -413,19 +524,28 @@ export default function AlertsPage() {
             <div className="space-y-4">
               {filteredAlerts.map((alert) => {
                 const isDismissing = dismissingIds.includes(alert.id);
+                const isAlertCritical = isErrorOrCriticalAlert(alert);
+                const isAlertWarning = alert.source === 'task' || alert.severity === 'high' || alert.severity === 'medium';
 
                 return (
                   <div
                     key={alert.id}
-                    className={`group relative flex flex-col justify-between gap-4 rounded-2xl border p-5 transition-all duration-200 sm:flex-row sm:items-center ${
+                    className={`group relative flex flex-col justify-between gap-4 rounded-2xl p-5 transition-all duration-200 sm:flex-row sm:items-center ${
                       isDismissing
                         ? 'translate-x-2 scale-[0.98] opacity-0'
                         : alert.acknowledged
-                          ? 'border-slate-100 bg-slate-50/60 opacity-75 dark:border-slate-800/60 dark:bg-slate-800/30'
-                          : 'border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                          ? 'border border-slate-100 bg-slate-50/60 opacity-75 dark:border-slate-800/60 dark:bg-slate-800/30'
+                          : isAlertCritical
+                            ? 'border-l-4 border-l-rose-500 border-y border-r border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:shadow-md dark:border-y-slate-800 dark:border-r-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                            : isAlertWarning
+                              ? 'border-l-4 border-l-amber-500 border-y border-r border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:shadow-md dark:border-y-slate-800 dark:border-r-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                              : 'border-l-4 border-l-slate-300 dark:border-l-slate-600 border-y border-r border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:shadow-md dark:border-y-slate-800 dark:border-r-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
                     }`}
                   >
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                      <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${getAlertIconContainerClass(alert)}`}>
+                        {getAlertIcon(alert)}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
                           <h3
@@ -435,9 +555,9 @@ export default function AlertsPage() {
                                 : 'text-slate-900 dark:text-slate-100'
                             }`}
                           >
-                            {alert.title}
+                            {formatAlertTitle(alert.title)}
                           </h3>
-                          {getSeverityBadge(alert.severity)}
+                          {getSeverityBadge(alert)}
                         </div>
 
                         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
@@ -447,7 +567,7 @@ export default function AlertsPage() {
                         {/* Timestamp Chip */}
                         <div className="mt-3 flex items-center gap-2">
                           <span className="inline-flex items-center gap-1 rounded-md border border-slate-100 bg-slate-50 px-2 py-0.5 font-mono text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
-                            <Clock className="h-3 w-3 text-slate-400" />
+                            <Clock className="h-3 w-3 text-slate-400" aria-hidden="true" />
                             {formatDistanceToNow(new Date(alert.timestamp), {
                               addSuffix: true,
                             })}
@@ -471,30 +591,32 @@ export default function AlertsPage() {
                               {/* Dismiss Button */}
                               <button
                                 type="button"
-                                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors"
+                                className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2"
                                 title="Dismiss Alert"
+                                aria-label="Dismiss Alert"
                                 onClick={() => handleDismiss(alert.id)}
                               >
-                                <X className="h-4 w-4" />
+                                <X className="h-4 w-4" aria-hidden="true" />
                               </button>
 
                               {/* View Task Button */}
                               <Link
                                 href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
                                 onClick={() => handleViewTask(alert.id, alert.taskId)}
-                                className="tactile-btn inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 shadow-sm transition-all hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                                className="tactile-btn inline-flex min-h-[44px] items-center rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-xs transition-all hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-900/50"
                               >
                                 View Task
                               </Link>
                             </>
                           ) : (
                             <>
-                              <div className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                              <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                <Check className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                                 Acknowledged
                               </div>
                               <Link
                                 href={`/tasks?taskId=${encodeURIComponent(alert.taskId)}`}
-                                className="tactile-btn inline-flex items-center rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                className="tactile-btn inline-flex min-h-[44px] items-center rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition-all hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                               >
                                 View Task
                               </Link>
@@ -506,29 +628,31 @@ export default function AlertsPage() {
                           {/* Dismiss Button */}
                           <button
                             type="button"
-                            className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors"
+                            className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2"
                             title="Dismiss Alert"
+                            aria-label="Dismiss Alert"
                             onClick={() => handleDismiss(alert.id)}
                           >
-                            <X className="h-4 w-4" />
+                            <X className="h-4 w-4" aria-hidden="true" />
                           </button>
 
                           {/* Acknowledge Button */}
                           <button
                             type="button"
-                            className="tactile-btn inline-flex min-h-[40px] items-center rounded-xl bg-[#B5121B] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#8F0D16] focus:outline-none"
+                            className="tactile-btn inline-flex min-h-[44px] items-center rounded-xl bg-[#B5121B] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-[#8F0D16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 disabled:opacity-50"
                             disabled={isDismissing}
                             data-loading={isDismissing}
                             onClick={() => handleAcknowledge(alert.id)}
                           >
                             {isDismissing ? (
-                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent mr-1.5"></span>
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent mr-1.5" aria-hidden="true" />
                             ) : null}
                             Acknowledge
                           </button>
                         </div>
                       ) : (
-                        <div className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          <Check className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                           Acknowledged
                         </div>
                       )}

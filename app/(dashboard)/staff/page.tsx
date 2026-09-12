@@ -868,12 +868,16 @@ export default function StaffManagementPage() {
                   return (
                     <tr
                       key={person.id}
-                      className={`border-l-4 border-l-transparent hover:border-l-[#B5121B] hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-all ${
+                      className={`group hover:bg-slate-50/70 dark:hover:bg-slate-800/40 focus-within:bg-slate-50/70 dark:focus-within:bg-slate-800/40 transition-all ${
                         !person.active ? 'opacity-75 bg-slate-50/40 dark:bg-slate-900/40' : ''
                       }`}
                     >
                       {/* Avatar with Role Color & Live Presence Dot, Name, Email */}
-                      <td className="py-4 px-6">
+                      <td className="relative py-4 px-6">
+                        <div
+                          className="absolute left-0 inset-y-0 w-1 bg-transparent group-hover:bg-[#B5121B] group-focus-within:bg-[#B5121B] transition-colors rounded-l"
+                          aria-hidden="true"
+                        />
                         <div className="flex items-center gap-3">
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
                             <div className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-xs ${avatarBg}`}>

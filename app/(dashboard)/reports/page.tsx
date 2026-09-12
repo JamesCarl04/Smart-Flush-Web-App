@@ -26,7 +26,6 @@ import {
   Layers,
   Printer,
   QrCode,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
   Timer,
@@ -117,48 +116,43 @@ const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
   water_no_flow: 'No Water After Flush',
 };
 
-function getStatusBadge(status: TaskStatus) {
+export function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case 'acknowledged':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300">
-          <Clock className="h-3 w-3" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300">
           Acknowledged
         </span>
       );
     case 'completed':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
           Completed
         </span>
       );
     case 'flagged':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-          <AlertCircle className="h-3 w-3" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
           Flagged (Recheck)
         </span>
       );
     case 'rechecking':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
-          <RefreshCw className="h-3 w-3" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
           Rechecking
         </span>
       );
     case 'pending':
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-          <Clock className="h-3 w-3" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
           Pending
         </span>
       );
   }
 }
 
-function getInspectionBadge(inspectionStatus?: string | null) {
+export function getInspectionBadge(inspectionStatus?: string | null) {
   switch (inspectionStatus) {
     case 'approved':
       return (
@@ -168,16 +162,14 @@ function getInspectionBadge(inspectionStatus?: string | null) {
       );
     case 'flagged':
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-          <AlertCircle className="h-3 w-3 text-rose-600 dark:text-rose-400" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
           Flagged
         </span>
       );
     case 'pending_review':
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-          <Clock className="h-3 w-3 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+        <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
           Pending Review
         </span>
       );
@@ -1290,8 +1282,7 @@ function DailyAuditReportCanvas({
                     </td>
                     <td className="py-2.5 px-4">
                       {isPeak ? (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                          <Sparkles className="h-3 w-3" aria-hidden="true" />
+                        <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
                           Peak Hour
                         </span>
                       ) : bin.count > 10 ? (
