@@ -43,6 +43,7 @@ function categoryLabel(value: string | null): string {
 export default function IssueReportsPage() {
   const { user, role, roleLoading, roleError } = useAuth();
   const [status, setStatus] = useState<Status>('pending_review');
+  const ALL_STATUSES: Status[] = ['pending_review', 'confirmed', 'dismissed'];
   const [reportsByStatus, setReportsByStatus] = useState<Record<Status, IssueReportView[]>>({
     pending_review: [],
     confirmed: [],
@@ -58,14 +59,10 @@ export default function IssueReportsPage() {
     confirmed: false,
     dismissed: false,
   });
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (targetStatus: Status, showLoading = false) => {
+  const load = useCallback(async (targetStatus: Status) => {
     if (!user || role !== 'admin' || roleLoading) return;
-    if (showLoading) {
-      setLoading(true);
-    }
     try {
       const response = await apiFetch<{ success: boolean; data?: IssueReportView[]; error?: string }>(
         `/api/issue-reports?status=${targetStatus}`,
@@ -77,33 +74,32 @@ export default function IssueReportsPage() {
       setLoadedStatuses((prev) => ({ ...prev, [targetStatus]: true }));
       setError(null);
     } catch (loadError) {
-      if (showLoading) {
-        setReportsByStatus((prev) => ({ ...prev, [targetStatus]: [] }));
-      }
       setError(loadError instanceof Error ? loadError.message : 'Failed to load reports');
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
     }
   }, [role, roleLoading, user]);
 
   useEffect(() => {
     let cancelled = false;
 
-    // Initial fetch for target status
-    const isInitial = !loadedRef.current[status];
-    void load(status, isInitial);
+    // Load active status and prefetch remaining statuses in parallel for instant tab switching
+    void load(status);
+    ALL_STATUSES.filter((s) => s !== status).forEach((s) => {
+      void load(s);
+    });
 
     // Event listener for cross-component refresh (e.g. actions from layout or mutations)
     const handleRefresh = () => {
-      if (!cancelled) void load(status, false);
+      if (!cancelled) {
+        ALL_STATUSES.forEach((s) => {
+          void load(s);
+        });
+      }
     };
     window.addEventListener('issue-reports:refresh', handleRefresh);
 
     // Polling interval every 10 seconds for real-time background sync
     const intervalId = window.setInterval(() => {
-      if (!cancelled) void load(status, false);
+      if (!cancelled) void load(status);
     }, 10_000);
 
     return () => {
@@ -117,7 +113,7 @@ export default function IssueReportsPage() {
     if (!user || role !== 'admin') return;
     await apiFetch(path, user, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
     window.dispatchEvent(new Event('issue-reports:refresh'));
-    await load(status, false);
+    await load(status);
   };
 
   const viewEvidence = async (reportId: string, submissionId: string) => {
@@ -145,7 +141,6 @@ export default function IssueReportsPage() {
 
   const reports = reportsByStatus[status] ?? [];
   const isStatusLoaded = loadedStatuses[status];
-  const isSectionLoading = loading && !isStatusLoaded;
 
   return (
     <section className="space-y-6">
@@ -158,9 +153,13 @@ export default function IssueReportsPage() {
           <button key={value} role="tab" aria-selected={status === value} onClick={() => setStatus(value)} className={`rounded-lg px-4 py-2 text-sm font-medium ${status === value ? 'bg-[#B5121B] text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{STATUS_LABELS[value]}</button>
         ))}
       </div>
-      {isSectionLoading ? <p role="status">Loading reports…</p> : null}
+      {!isStatusLoaded && !error ? (
+        <div className="space-y-4">
+          <div className="h-32 rounded-xl border border-slate-200/80 bg-white p-5 animate-pulse dark:border-slate-800 dark:bg-slate-900" />
+        </div>
+      ) : null}
       {error ? <p role="alert" className="text-rose-600">{error}</p> : null}
-      {!isSectionLoading && !error && isStatusLoaded && reports.length === 0 ? <p className="rounded-xl border p-8 text-center text-slate-500">No {STATUS_LABELS[status].toLowerCase()} reports.</p> : null}
+      {isStatusLoaded && reports.length === 0 ? <p className="rounded-xl border p-8 text-center text-slate-500">No {STATUS_LABELS[status].toLowerCase()} reports.</p> : null}
       <div className="grid gap-4">
         {reports.map((report) => (
           <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">

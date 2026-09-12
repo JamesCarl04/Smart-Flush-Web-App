@@ -46,28 +46,61 @@ describe('issue reports page authority gate', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/issue-reports?status=pending_review', expect.objectContaining({ uid: 'admin-1' }));
   });
 
-  it('automatically refetches reports every 10 seconds and on refresh events', async () => {
+    it('automatically refetches reports every 10 seconds and on refresh events', async () => {
     jest.useFakeTimers();
     try {
       mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
       mockApiFetch.mockResolvedValue({ success: true, data: [] });
 
-      render(<IssueReportsPage />);
-      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        render(<IssueReportsPage />);
+      });
+      // All 3 statuses are preloaded on mount for instant tab switching
+      expect(mockApiFetch).toHaveBeenCalledTimes(3);
 
       // Advance 10 seconds for polling interval
       await act(async () => {
         jest.advanceTimersByTime(10_000);
       });
-      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+      expect(mockApiFetch).toHaveBeenCalledTimes(4);
 
       // Dispatch issue-reports:refresh event
       await act(async () => {
         window.dispatchEvent(new Event('issue-reports:refresh'));
       });
-      expect(mockApiFetch).toHaveBeenCalledTimes(3);
+      expect(mockApiFetch).toHaveBeenCalledTimes(7);
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('switches tabs instantaneously without showing Loading reports text', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('dismissed')) {
+        return Promise.resolve({ success: true, data: [{
+          id: 'r-dismissed', deviceId: 'stall-2', category: 'odor', confirmationCount: 1,
+          firstReportedAt: 100, lastReportedAt: 200, descriptions: ['Mild odor reported'], evidence: [],
+          device: { name: 'Stall 2', location: '1F Restroom' }, status: 'dismissed',
+        }] });
+      }
+      return Promise.resolve({ success: true, data: [] });
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    // Clicking Dismissed tab
+    const dismissedTab = screen.getByRole('tab', { name: /dismissed/i });
+    await act(async () => {
+      fireEvent.click(dismissedTab);
+    });
+
+    // Report content is instantly rendered from preloaded cache
+    expect(screen.getByText('Stall 2')).toBeTruthy();
+    expect(screen.getByText('Mild odor reported')).toBeTruthy();
+    // Ensure "Loading reports…" never appears
+    expect(screen.queryByText(/loading reports/i)).toBeNull();
   });
 });
