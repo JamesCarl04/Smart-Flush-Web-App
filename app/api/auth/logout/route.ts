@@ -4,9 +4,9 @@ import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken } from '@/lib/auth-helpers';
 
-export async function POST(request: Request): Promise<NextResponse> {
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
+export async function POST(request?: Request): Promise<NextResponse> {
+  const authHeader = request?.headers?.get('Authorization');
+  if (request && authHeader?.startsWith('Bearer ')) {
     try {
       const user = await verifyAuthToken(request);
       if (user?.uid) {

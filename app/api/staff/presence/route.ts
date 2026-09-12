@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       updateData.status = status;
       if (status === 'offline' && isOnline === undefined) {
         updateData.isOnline = false;
-      } else if (status === 'available' && isOnline === undefined) {
+      } else if ((status === 'available' || status === 'on_task') && isOnline === undefined) {
         updateData.isOnline = true;
       }
     }

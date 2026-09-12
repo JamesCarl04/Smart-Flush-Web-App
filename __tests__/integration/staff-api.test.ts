@@ -877,6 +877,13 @@ describe('Staff Management and Registration APIs', () => {
       expect(json.success).toBe(true);
       expect(mockDocSet).not.toHaveBeenCalled();
     });
+
+    it('succeeds even when called with no arguments (undefined request)', async () => {
+      const res = await authLogout();
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+    });
   });
 
   describe('POST /api/staff/presence', () => {
@@ -941,6 +948,70 @@ describe('Staff Management and Registration APIs', () => {
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toContain('Invalid status');
+    });
+
+    it('automatically marks isOnline: true when status is on_task without explicit isOnline', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
+      } as any);
+
+      const req = new Request('http://localhost/api/staff/presence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer valid-token',
+        },
+        body: JSON.stringify({ status: 'on_task' }),
+      });
+
+      const res = await staffPresence(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data.isOnline).toBe(true);
+      expect(json.data.status).toBe('on_task');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'on_task',
+          isOnline: true,
+        }),
+        { merge: true },
+      );
+    });
+
+    it('automatically marks isOnline: false when status is offline without explicit isOnline', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
+      } as any);
+
+      const req = new Request('http://localhost/api/staff/presence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer valid-token',
+        },
+        body: JSON.stringify({ status: 'offline' }),
+      });
+
+      const res = await staffPresence(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data.isOnline).toBe(false);
+      expect(json.data.status).toBe('offline');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'offline',
+          isOnline: false,
+        }),
+        { merge: true },
+      );
     });
   });
 });

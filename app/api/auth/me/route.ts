@@ -11,13 +11,17 @@ export async function GET(request: Request): Promise<NextResponse> {
     const userRef = adminDb.collection('users').doc(user.uid);
     const userSnap = await userRef.get();
 
-    if (userSnap.exists) {
-      const userData = userSnap.data() || {};
+    const targetDocId = userSnap.exists ? user.uid : (profile.id || user.uid);
+    const targetRef = targetDocId === user.uid ? userRef : adminDb.collection('users').doc(targetDocId);
+    const targetSnap = targetDocId === user.uid ? userSnap : await targetRef.get();
+
+    if (targetSnap.exists) {
+      const userData = targetSnap.data() || {};
       const isActive = userData.active !== false && userData.isActive !== false;
       if (isActive) {
         const currentStatus = userData.status;
         const targetStatus = currentStatus === 'on_task' ? 'on_task' : 'available';
-        await userRef.set(
+        await targetRef.set(
           {
             isOnline: true,
             status: targetStatus,
