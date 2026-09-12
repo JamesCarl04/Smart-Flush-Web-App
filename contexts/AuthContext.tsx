@@ -63,7 +63,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
+  // Periodic 60s presence heartbeat while user is authenticated and browser tab is visible
+  useEffect(() => {
+    if (!user) return;
+
+    const sendHeartbeat = async (isOnline = true, status?: 'available' | 'offline') => {
+      try {
+        const body: Record<string, unknown> = { isOnline };
+        if (status) body.status = status;
+        await apiFetch('/api/staff/presence', user, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+      } catch {
+        // Silent catch for background presence heartbeat
+      }
+    };
+
+    // Periodic heartbeat every 60 seconds
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void sendHeartbeat(true);
+      }
+    }, 60_000);
+
+    // Refresh immediately when returning to the tab
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void sendHeartbeat(true);
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(intervalId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [user]);
+
   const logout = async () => {
+    if (user) {
+      try {
+        await apiFetch('/api/staff/presence', user, {
+          method: 'POST',
+          body: JSON.stringify({ isOnline: false, status: 'offline' }),
+        });
+      } catch {
+        // Continue with logout even if presence update fails
+      }
+    }
     const auth = getAuth(app);
     await signOut(auth);
     setRole(null);

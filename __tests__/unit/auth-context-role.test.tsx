@@ -39,4 +39,68 @@ describe('AuthContext authoritative role', () => {
     expect(result.current.roleError).toBeNull();
     expect(mockApiFetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ uid: 'u1' }));
   });
+
+  it('dispatches presence heartbeat on 60s interval and tab visibility change', async () => {
+    jest.useFakeTimers();
+    let callback: (user: unknown) => void = () => undefined;
+    mockOnAuthStateChanged.mockImplementation((_auth, handler) => { callback = handler; return jest.fn(); });
+    mockApiFetch.mockResolvedValue({ success: true, data: { role: 'admin' } });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => callback({ uid: 'u1', email: 'admin@example.com' }));
+
+    // Advance by 60 seconds
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/api/staff/presence',
+      expect.objectContaining({ uid: 'u1' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ isOnline: true }),
+      }),
+    );
+
+    // Trigger visibilitychange
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/api/staff/presence',
+      expect.objectContaining({ uid: 'u1' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ isOnline: true }),
+      }),
+    );
+
+    jest.useRealTimers();
+  });
+
+  it('updates presence to offline upon logout before signing out', async () => {
+    let callback: (user: unknown) => void = () => undefined;
+    mockOnAuthStateChanged.mockImplementation((_auth, handler) => { callback = handler; return jest.fn(); });
+    mockApiFetch.mockResolvedValue({ success: true, data: { role: 'admin' } });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => callback({ uid: 'u1', email: 'admin@example.com' }));
+    await act(async () => result.current.logout());
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/api/staff/presence',
+      expect.objectContaining({ uid: 'u1' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ isOnline: false, status: 'offline' }),
+      }),
+    );
+    expect(mockSignOut).toHaveBeenCalled();
+  });
 });
