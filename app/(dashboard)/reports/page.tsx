@@ -19,7 +19,6 @@ import {
   Clock,
   Download,
   Droplets,
-  FileBarChart,
   FileX,
   History,
   Hourglass,
@@ -464,7 +463,6 @@ export default function ReportsPage() {
   const { user } = useAuth();
   const {
     tasks,
-    pendingCount,
     loading: tasksLoading,
     error: tasksError,
   } = useTasks();
@@ -492,10 +490,10 @@ export default function ReportsPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          return parsed.map((item: any) => ({
+          return parsed.map((item: Record<string, unknown>) => ({
             ...item,
-            date: new Date(item.date),
-          }));
+            date: new Date(String(item.date)),
+          })) as ExportRecord[];
         }
       }
     } catch {
@@ -855,9 +853,6 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Restroom Reports &amp; Downloads
         </h1>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Generate and download restroom usage reports, water savings records, and maintenance logs for the campus.
-        </p>
       </div>
 
       {/* Top Action & Filter Bar (Design 3's Secondary Context Tier) */}
@@ -877,9 +872,6 @@ export default function ReportsPage() {
               >
                 Select Report &amp; Date Range
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Choose a report, pick your dates, and download or print.
-              </p>
             </div>
           </div>
 
@@ -1155,8 +1147,8 @@ function DailyAuditReportCanvas({
   telemetry,
   analyticsData,
   loading,
-  onPrint,
-  onGenerate,
+  onPrint: _onPrint,
+  onGenerate: _onGenerate,
 }: {
   date: string;
   telemetry: {
@@ -1167,18 +1159,18 @@ function DailyAuditReportCanvas({
     uvRate: string;
     uptime: string;
   };
-  analyticsData: any;
+  analyticsData: Record<string, unknown> | null | undefined;
   loading: boolean;
   onPrint: () => void;
   onGenerate: () => void;
 }) {
   const hourlyBins = useMemo(() => {
-    const rawHourly = analyticsData?.charts?.hourlyUsage ?? [];
+    const rawHourly = (analyticsData as { charts?: { hourlyUsage?: Array<{ hour: string; count: number }> } } | undefined)?.charts?.hourlyUsage ?? [];
     const bins: Array<{ hour: string; count: number; volume: number }> = [];
 
     for (let h = 0; h < 24; h++) {
       const hourStr = `${h.toString().padStart(2, '0')}:00`;
-      const match = rawHourly.find((item: any) => item.hour === hourStr);
+      const match = rawHourly.find((item: { hour: string; count: number }) => item.hour === hourStr);
       const count = match ? Number(match.count) : 0;
       const volume = Math.round(count * 2.1 * 10) / 10;
       bins.push({ hour: hourStr, count, volume });
@@ -1239,9 +1231,6 @@ function DailyAuditReportCanvas({
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
                 Hourly Restroom Activity
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Hour-by-hour flushes and water used on {date}
-              </p>
             </div>
           </div>
         </div>
@@ -1662,9 +1651,6 @@ function MaintenanceTaskReport({
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
                 Cleaning &amp; Maintenance Tasks
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Task history for the selected date range
-              </p>
             </div>
           </div>
         </div>
@@ -1689,9 +1675,6 @@ function MaintenanceTaskReport({
             <FileX className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" aria-hidden="true" />
             <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
               No cleaning or maintenance tasks found
-            </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              No tasks match the selected date range.
             </p>
           </div>
         ) : (
@@ -1831,9 +1814,6 @@ function RecentExportsHistory({
           <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
             No recent downloads yet
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Use the Report Builder above to generate and download reports.
-          </p>
         </div>
       ) : (
         <div className="w-full overflow-x-auto print:overflow-visible">
@@ -1915,7 +1895,7 @@ type QAFilterTab = 'all' | 'pending' | 'approved' | 'flagged';
 function SupervisorAuditReport({
   approvalRate,
   approvedCount,
-  complianceRate,
+  complianceRate: _complianceRate,
   error,
   flaggedCount,
   loading,
@@ -1990,28 +1970,6 @@ function SupervisorAuditReport({
         />
       </div>
 
-      {/* Compliance Rate Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-sky-200 bg-sky-50/70 p-4.5 dark:border-sky-950 dark:bg-sky-950/40 print:border-slate-300 print:bg-slate-50 print:p-3 break-inside-avoid">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-sky-600 text-white shadow-xs shrink-0 print:bg-slate-800">
-            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-sky-950 dark:text-sky-100 print:text-black flex items-center gap-2">
-              <span>Inspection Completion: {complianceRate}</span>
-              <span className="inline-flex items-center rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-0.5 text-[11px] font-bold text-sky-800 dark:text-sky-200 print:border print:border-slate-400 print:text-black">
-                {totalSubmissions - pendingAuditCount} / {totalSubmissions} Inspected
-              </span>
-            </div>
-            <div className="text-xs text-sky-700 dark:text-sky-300 mt-0.5 print:text-slate-700">
-              {pendingAuditCount > 0
-                ? `${pendingAuditCount} completed work order(s) currently awaiting supervisor QA review.`
-                : 'All maintenance submissions have been audited and verified.'}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* QA Audit Matrix Table */}
       <div className="rounded-[14px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden print:overflow-visible print:border-slate-300 print:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800 print:border-slate-300 print:p-3">
@@ -2023,9 +1981,6 @@ function SupervisorAuditReport({
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 print:text-black">
                 Supervisor Inspection Records
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600">
-                Maintenance work verified by supervisors with inspection notes
-              </p>
             </div>
           </div>
 
@@ -2123,9 +2078,6 @@ function SupervisorAuditReport({
               {activeTab === 'all'
                 ? 'No completed maintenance submissions found'
                 : `No work orders currently in "${activeTab}" status`}
-            </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Technician work orders in the selected date range will appear here for auditing.
             </p>
           </div>
         ) : (

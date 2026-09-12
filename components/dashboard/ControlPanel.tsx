@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -53,7 +52,6 @@ export function ControlPanel() {
   const presentationMode = usePresentationMode();
   const {
     connected,
-    status,
     reason: deviceReason,
     loading: deviceStatusLoading,
   } = useDeviceStatus();
@@ -269,23 +267,6 @@ export function ControlPanel() {
                 <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
                   Restroom Device Controls
                 </h2>
-                <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
-                  <span className="relative flex h-2 w-2 items-center justify-center">
-                    {connected && (
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                    )}
-                    <span
-                      className={`relative inline-flex h-2 w-2 rounded-full ${
-                        connected ? 'bg-emerald-500' : 'bg-rose-500'
-                      }`}
-                    />
-                  </span>
-                  <span className="tabular-nums">
-                    {connected
-                      ? 'Device Connected'
-                      : 'Device Offline'}
-                  </span>
-                </div>
               </div>
             </div>
           </div>
@@ -540,7 +521,7 @@ export function ControlPanel() {
 
           <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
             <p className="font-semibold">
-              Warning: This command will restart the toilet unit's controller.
+              Warning: This command will restart the toilet unit&apos;s controller.
             </p>
             <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] opacity-90">
               <li>Any active flush or UV cleaning cycles will stop immediately.</li>

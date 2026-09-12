@@ -242,7 +242,7 @@ export function StatCards() {
                       }`}
                     />
                     {!connected
-                      ? 'Offline'
+                      ? 'Standby'
                       : isPersonPresent
                         ? 'Occupied'
                         : 'Vacant'}
@@ -344,7 +344,7 @@ export function StatCards() {
                       }`}
                     />
                     {!connected
-                      ? 'Offline'
+                      ? 'No Signal'
                       : isFlowActive
                         ? 'Water Flowing'
                         : 'No Flow'}
@@ -433,23 +433,6 @@ export function StatCards() {
                         : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
-                    {connected ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                      connected
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                        : 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        connected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
-                      }`}
-                    />
                     {connected ? 'Online' : 'Offline'}
                   </span>
                 </div>

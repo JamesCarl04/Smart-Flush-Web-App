@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -142,7 +142,6 @@ function getStatusBadge(
       label: 'Rechecking',
       className:
         'bg-purple-500/15 text-purple-800 dark:text-purple-300 border border-purple-500/40',
-      icon: <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />,
     };
   }
   if (status === 'flagged' || inspectionStatus === 'flagged') {
@@ -150,7 +149,6 @@ function getStatusBadge(
       label: 'Flagged for Re-inspection',
       className:
         'bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-500/40',
-      icon: <Flag className="w-3.5 h-3.5" aria-hidden="true" />,
     };
   }
 
@@ -160,35 +158,30 @@ function getStatusBadge(
         label: 'Acknowledged',
         className:
           'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/40',
-        icon: <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'completed':
       return {
         label: 'Completed',
         className:
           'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40',
-        icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'reassignment_needed':
       return {
         label: 'Reassignment Needed',
         className:
           'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
-        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'assigned':
       return {
         label: 'Assigned',
         className:
           'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
-        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'unassigned':
       return {
         label: 'Unassigned',
         className:
           'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
-        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'pending':
     default:
@@ -196,7 +189,6 @@ function getStatusBadge(
         label: 'Pending',
         className:
           'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
-        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
   }
 }
@@ -376,8 +368,11 @@ export function MaintenanceTaskPanel() {
     enabled: canManageTasks,
   });
 
-  const resolveDeviceLabel = (deviceId: string) =>
-    devices.find((device) => device.id === deviceId)?.name || deviceId;
+  const resolveDeviceLabel = useCallback(
+    (deviceId: string) =>
+      devices.find((device) => device.id === deviceId)?.name || deviceId,
+    [devices],
+  );
 
   // Toast auto-dismissal
   useEffect(() => {
@@ -518,29 +513,32 @@ export function MaintenanceTaskPanel() {
     };
   }, [isCreateDrawerOpen, taskAction]);
 
-  const resolveAssignedName = (
-    assignedUserId?: string | null,
-    assignedUserIds: string[] = [],
-  ) => {
-    const userIds =
-      assignedUserIds.length > 0
-        ? assignedUserIds
-        : assignedUserId
-          ? [assignedUserId]
-          : [];
+  const resolveAssignedName = useCallback(
+    (
+      assignedUserId?: string | null,
+      assignedUserIds: string[] = [],
+    ) => {
+      const userIds =
+        assignedUserIds.length > 0
+          ? assignedUserIds
+          : assignedUserId
+            ? [assignedUserId]
+            : [];
 
-    if (userIds.length === 0) {
-      return 'All maintenance team';
-    }
+      if (userIds.length === 0) {
+        return 'All maintenance team';
+      }
 
-    if (personnelLoading) {
-      return 'Loading staff...';
-    }
+      if (personnelLoading) {
+        return 'Loading staff...';
+      }
 
-    return userIds
-      .map((userId) => personnelById[userId]?.displayName ?? userId)
-      .join(', ');
-  };
+      return userIds
+        .map((userId) => personnelById[userId]?.displayName ?? userId)
+        .join(', ');
+    },
+    [personnelLoading, personnelById],
+  );
 
   const getRequiredAssigneeIds = (task: Task) => {
     if (task.assignedToIds && task.assignedToIds.length > 0) {
@@ -668,7 +666,13 @@ export function MaintenanceTaskPanel() {
 
       return true;
     });
-  }, [tasks, filterStatus, searchQuery, devices, personnelById]);
+  }, [
+    tasks,
+    filterStatus,
+    searchQuery,
+    resolveAssignedName,
+    resolveDeviceLabel,
+  ]);
 
   // Drawer assignees toggle
   const toggleAllModalAssignedToIds = () => {
@@ -1006,9 +1010,6 @@ export function MaintenanceTaskPanel() {
                     Maintenance Task Operations
                   </h2>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Dispatch cleaning and repair tasks, track technician status, and monitor response times.
-                </p>
               </div>
             </div>
 
@@ -1210,10 +1211,6 @@ export function MaintenanceTaskPanel() {
               <p className="font-semibold text-base text-slate-800 dark:text-slate-200">
                 No tasks assigned yet
               </p>
-              <p className="text-xs mt-1 max-w-sm mx-auto">
-                All toilet units are operating smoothly. Create a manual request
-                or wait for automated maintenance triggers.
-              </p>
               {canManageTasks && (
                 <button
                   type="button"
@@ -1290,9 +1287,8 @@ export function MaintenanceTaskPanel() {
 
                       <div className="flex items-center gap-2 shrink-0">
                         <div
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
+                          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
                         >
-                          {statusInfo.icon}
                           <span>{statusInfo.label}</span>
                           {acknowledgementSummary &&
                           task.status !== 'completed' &&
@@ -1481,9 +1477,6 @@ export function MaintenanceTaskPanel() {
                       >
                         Dispatch Maintenance Task
                       </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Send real-time alerts and mobile push to technicians
-                      </p>
                     </div>
                   </div>
                   <button
@@ -1689,9 +1682,6 @@ export function MaintenanceTaskPanel() {
               >
                 Edit Task
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Update task description, target unit, or assignees
-              </p>
             </div>
             <button
               type="button"
@@ -1863,9 +1853,6 @@ export function MaintenanceTaskPanel() {
               >
                 Delete Task
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Remove task from maintenance dispatch queue
-              </p>
             </div>
             <button
               type="button"

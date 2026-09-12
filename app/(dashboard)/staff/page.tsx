@@ -605,9 +605,6 @@ export default function StaffManagementPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Facility Staff Management
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Manage facility staff accounts, shift assignments, and live task activity.
-          </p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -641,9 +638,6 @@ export default function StaffManagementPage() {
             <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
               {kpis.total}
             </span>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Registered team members
-            </p>
           </div>
         </div>
 
@@ -661,9 +655,6 @@ export default function StaffManagementPage() {
             <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
               {kpis.supervisors}
             </span>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Field shift managers &amp; quality review
-            </p>
           </div>
         </div>
 
@@ -681,9 +672,6 @@ export default function StaffManagementPage() {
             <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
               {kpis.technicians}
             </span>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Custodial &amp; repair technicians
-            </p>
           </div>
         </div>
 
@@ -701,9 +689,6 @@ export default function StaffManagementPage() {
             <span className="text-3xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400 tabular-nums">
               {kpis.available}
             </span>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Available for task dispatch
-            </p>
           </div>
         </div>
       </section>
@@ -841,7 +826,6 @@ export default function StaffManagementPage() {
                     <div className="max-w-xs mx-auto space-y-2">
                       <Users className="h-8 w-8 mx-auto text-slate-400" aria-hidden="true" />
                       <p className="font-semibold text-slate-800 dark:text-slate-200">No staff members match criteria</p>
-                      <p className="text-xs">Adjust your search query or role filter.</p>
                     </div>
                   </td>
                 </tr>
@@ -1074,9 +1058,6 @@ export default function StaffManagementPage() {
                     <h2 id="modal-add-staff-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                       Provision New Staff Member
                     </h2>
-                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-                      Create institutional credentials and assign facility duties.
-                    </p>
                   </div>
 
                   <form onSubmit={handleProceedToReview} className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -1351,9 +1332,6 @@ export default function StaffManagementPage() {
                 <h2 id="modal-edit-assignment-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                   Edit Assignment
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Update facility and shift assignment for <span className="font-semibold">{editingStaff.displayName}</span>.
-                </p>
               </div>
 
               <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">

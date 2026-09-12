@@ -1,49 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import toast from 'react-hot-toast';
 import {
   ShieldCheck,
   Shield,
-  Eye,
-  EyeOff,
-  User,
   Mail,
-  Lock,
   Bell,
   CheckCircle2,
   Wrench,
-  KeyRound,
+  Lock,
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useProfile } from '@/hooks/useProfile';
-import { validatePassword } from '@/lib/password-validator';
 import type { NotificationPrefs } from '@/types';
 import packageInfo from '@/package.json';
-
-// ── Zod schemas ───────────────────────────────────────────────────────────────
-const accountSchema = z.object({
-  displayName: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-});
-
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z.string().min(12, 'Password must be at least 12 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-  })
-  .refine((d) => d.newPassword === d.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  });
-
-type AccountFormValues = z.infer<typeof accountSchema>;
-type PasswordFormValues = z.infer<typeof passwordSchema>;
 
 // ── Notification row config ───────────────────────────────────────────────────
 const NOTIF_ROWS: {
@@ -69,18 +41,11 @@ export default function ProfilePage() {
     user,
     notifPrefs,
     loading: profileLoading,
-    updateProfile,
-    changePassword,
     updateNotifications,
   } = useProfile();
 
   const [userRole, setUserRole] = useState<string>('Operator');
   const [_roleLoading, _setRoleLoading] = useState(true);
-
-  // ── Show/hide toggles for password fields ────────────────────────────────
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
 
   // ── Per-toggle "Saved" feedback ──────────────────────────────────────────
   const [savedKey, setSavedKey] = useState<keyof NotificationPrefs | null>(
@@ -129,87 +94,6 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [user]);
-
-  // ── Account form ─────────────────────────────────────────────────────────
-  const {
-    register: regAccount,
-    handleSubmit: handleAccount,
-    reset: resetAccount,
-    formState: {
-      errors: errAccount,
-      isDirty: isDirtyAccount,
-      isSubmitting: isSavingAccount,
-    },
-  } = useForm<AccountFormValues>({
-    resolver: zodResolver(accountSchema),
-    defaultValues: { displayName: '', email: '' },
-  });
-
-  // Populate once user loads
-  useEffect(() => {
-    if (user) {
-      resetAccount({
-        displayName: user.displayName ?? '',
-        email: user.email ?? '',
-      });
-    }
-  }, [user, resetAccount]);
-
-  const onSaveAccount = async (data: AccountFormValues) => {
-    try {
-      await updateProfile(data);
-      resetAccount(data);
-      toast.success('Profile details updated successfully');
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to update profile';
-      toast.error(message);
-    }
-  };
-
-  // ── Password form ────────────────────────────────────────────────────────
-  const {
-    register: regPassword,
-    handleSubmit: handlePassword,
-    reset: resetPassword,
-    setError: setPasswordError,
-    formState: { errors: errPassword, isSubmitting: isSavingPassword },
-  } = useForm<PasswordFormValues>({ resolver: zodResolver(passwordSchema) });
-
-  const onChangePassword = async (data: PasswordFormValues) => {
-    try {
-      const validation = await validatePassword(data.newPassword);
-      if (!validation.valid) {
-        setPasswordError('newPassword', {
-          message:
-            validation.errors[0] ||
-            'Password does not meet security requirements',
-        });
-        return;
-      }
-
-      await changePassword({
-        currentPassword: data.currentPassword,
-        newPassword: data.newPassword,
-      });
-      resetPassword();
-      toast.success('Security password changed successfully');
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (
-        code === 'auth/wrong-password' ||
-        code === 'auth/invalid-credential'
-      ) {
-        setPasswordError('currentPassword', {
-          message: 'Current password is incorrect',
-        });
-      } else {
-        toast.error(
-          `Failed to change password: ${err instanceof Error ? err.message : 'unknown error'}`,
-        );
-      }
-    }
-  };
 
   // ── Notification toggle handler ──────────────────────────────────────────
   const handleToggle = async (key: keyof NotificationPrefs) => {
@@ -336,246 +220,26 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ── SECTION B: Account Details ────────────────────────────────── */}
-        <div className="card bg-base-100 border border-base-200 shadow-xl">
-          <div className="card-body p-6">
-            <div className="flex items-center gap-2.5 pb-4 border-b border-base-200 mb-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
-                <User className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="card-title text-lg font-bold">Personal Information</h2>
-                <p className="text-xs text-base-content/60">Update display name and registered email</p>
-              </div>
+      {/* ── SECTION B: Institutional Security & Provisioning Notice ──────── */}
+      <div className="card bg-base-100 border border-base-200 shadow-xl overflow-hidden">
+        <div className="card-body p-6 sm:p-8">
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <Lock className="h-5 w-5 text-slate-700 dark:text-slate-300" aria-hidden="true" />
             </div>
-
-            <form onSubmit={handleAccount(onSaveAccount)} className="space-y-4">
-              <div className="form-control w-full">
-                <label className="label py-1" htmlFor="displayName">
-                  <span className="label-text text-xs font-semibold">Display Name</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <input
-                    id="displayName"
-                    type="text"
-                    className={`input input-bordered w-full pl-9 bg-slate-50/50 dark:bg-slate-950/40 text-sm focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none ${
-                      errAccount.displayName ? 'input-error border-rose-500' : ''
-                    }`}
-                    {...regAccount('displayName')}
-                  />
-                </div>
-                {errAccount.displayName && (
-                  <label className="label py-1">
-                    <span className="label-text-alt text-rose-500 font-medium">
-                      {errAccount.displayName.message}
-                    </span>
-                  </label>
-                )}
-              </div>
-
-              <div className="form-control w-full">
-                <label className="label py-1" htmlFor="email">
-                  <span className="label-text text-xs font-semibold">Email Address</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="h-4 w-4" />
-                  </div>
-                  <input
-                    id="email"
-                    type="email"
-                    className={`input input-bordered w-full pl-9 bg-slate-50/50 dark:bg-slate-950/40 text-sm focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none ${
-                      errAccount.email ? 'input-error border-rose-500' : ''
-                    }`}
-                    {...regAccount('email')}
-                  />
-                </div>
-                {errAccount.email && (
-                  <label className="label py-1">
-                    <span className="label-text-alt text-rose-500 font-medium">
-                      {errAccount.email.message}
-                    </span>
-                  </label>
-                )}
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  type="submit"
-                  className="btn btn-sm h-10 px-5 shadow-sm font-semibold bg-[#B5121B] hover:bg-[#8F0D16] text-white border-[#B5121B] hover:border-[#8F0D16]"
-                  disabled={!isDirtyAccount || isSavingAccount}
-                >
-                  {isSavingAccount ? (
-                    <>
-                      <span className="loading loading-spinner loading-xs" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        {/* ── SECTION C: Change Password ────────────────────────────────── */}
-        <div className="card bg-base-100 border border-base-200 shadow-xl">
-          <div className="card-body p-6">
-            <div className="flex items-center gap-2.5 pb-4 border-b border-base-200 mb-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#B5121B] dark:bg-red-950/60 dark:text-red-400">
-                <KeyRound className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="card-title text-lg font-bold">Security &amp; Password</h2>
-                <p className="text-xs text-base-content/60">Update login security credentials</p>
-              </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Institutional Security &amp; Access Governance
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Account credentials, administrative roles, and authentication passwords are centrally managed by the Superadmin via the Firebase Console. Self-service credential modification is restricted in accordance with institutional security policies.
+              </p>
             </div>
-
-            <form
-              onSubmit={handlePassword(onChangePassword)}
-              className="space-y-3.5"
-            >
-              {/* Current Password */}
-              <div className="form-control w-full">
-                <label className="label py-1" htmlFor="currentPassword">
-                  <span className="label-text text-xs font-semibold">Current Password</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Lock className="h-4 w-4" />
-                  </div>
-                  <input
-                    id="currentPassword"
-                    type={showCurrent ? 'text' : 'password'}
-                    className={`input input-bordered w-full pl-9 pr-11 bg-slate-50/50 dark:bg-slate-950/40 text-sm focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none ${
-                      errPassword.currentPassword ? 'input-error border-rose-500' : ''
-                    }`}
-                    placeholder="••••••••••••"
-                    {...regPassword('currentPassword')}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
-                    onClick={() => setShowCurrent((v) => !v)}
-                    tabIndex={-1}
-                    aria-label="Toggle current password"
-                  >
-                    {showCurrent ? (
-                  <EyeOff className="w-4 h-4" />
-                ) : (
-                  <Eye className="w-4 h-4" />
-                )}
-                  </button>
-                </div>
-                {errPassword.currentPassword && (
-                  <label className="label py-1">
-                    <span className="label-text-alt text-rose-500 font-medium">
-                      {errPassword.currentPassword.message}
-                    </span>
-                  </label>
-                )}
-              </div>
-
-              {/* New Password & Confirm Password */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="form-control w-full">
-                  <label className="label py-1" htmlFor="newPassword">
-                    <span className="label-text text-xs font-semibold">New Password</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="newPassword"
-                      type={showNew ? 'text' : 'password'}
-                      className="input input-bordered w-full pr-11 bg-slate-50/50 dark:bg-slate-950/40 text-sm focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none"
-                      placeholder="••••••••••••"
-                      {...regPassword('newPassword')}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
-                      onClick={() => setShowNew((v) => !v)}
-                      tabIndex={-1}
-                      aria-label="Toggle new password"
-                    >
-                      {showNew ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  {errPassword.newPassword && (
-                    <label className="label py-1">
-                      <span className="label-text-alt text-rose-500 font-medium">
-                        {errPassword.newPassword.message}
-                      </span>
-                    </label>
-                  )}
-                </div>
-
-                <div className="form-control w-full">
-                  <label className="label py-1" htmlFor="confirmPassword">
-                    <span className="label-text text-xs font-semibold">Confirm Password</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="confirmPassword"
-                      type={showConfirm ? 'text' : 'password'}
-                      className="input input-bordered w-full pr-11 bg-slate-50/50 dark:bg-slate-950/40 text-sm focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20 focus:outline-none"
-                      placeholder="••••••••••••"
-                      {...regPassword('confirmPassword')}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
-                      onClick={() => setShowConfirm((v) => !v)}
-                      tabIndex={-1}
-                      aria-label="Toggle confirm password"
-                    >
-                      {showConfirm ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  {errPassword.confirmPassword && (
-                    <label className="label py-1">
-                      <span className="label-text-alt text-rose-500 font-medium">
-                        {errPassword.confirmPassword.message}
-                      </span>
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  type="submit"
-                  className="btn btn-neutral btn-sm h-10 px-5 shadow-sm font-semibold"
-                  disabled={isSavingPassword}
-                >
-                  {isSavingPassword ? (
-                    <>
-                      <span className="loading loading-spinner loading-xs" />
-                      Updating...
-                    </>
-                  ) : (
-                    'Update Password'
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       </div>
 
-      {/* ── SECTION D: Alert Notification Toggles ──────────────────────── */}
+      {/* ── SECTION C: Alert Notification Toggles ──────────────────────── */}
       <div className="card bg-base-100 border border-base-200 shadow-xl">
         <div className="card-body p-6 sm:p-8">
           <div className="flex items-center justify-between pb-4 border-b border-base-200 mb-2">

@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import {
   AlertTriangle,
   Building2,
-  CheckCircle2,
   Clock,
   Cpu,
   Droplets,
@@ -19,13 +18,11 @@ import {
   Pencil,
   Radio,
   RefreshCw,
-  Save,
   Sliders,
   Sparkles,
   Sun,
   Trash2,
   UserCheck,
-  Zap,
 } from 'lucide-react';
 import { reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { useSensorData } from '@/hooks/useSensorData';
@@ -1176,11 +1173,11 @@ export default function ConfigurationPage() {
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-            {/* Input 1: Pump Duration */}
+            {/* Input 1: Flush Duration */}
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Droplets className="h-4 w-4 text-sky-500" />
-                Flush Duration
+                Flush Duration (1–30s)
               </div>
               <div className="relative">
                 <input
@@ -1202,16 +1199,13 @@ export default function ConfigurationPage() {
                   sec
                 </span>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                How long water flushes (1 - 30s).
-              </p>
             </div>
 
             {/* Input 2: UV Duration */}
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Sun className="h-4 w-4 text-amber-500" />
-                UV Cleaning Duration
+                UV Cleaning Duration (10–120s)
               </div>
               <div className="relative">
                 <input
@@ -1233,16 +1227,13 @@ export default function ConfigurationPage() {
                   sec
                 </span>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                How long UV cleaning runs (10 - 120s).
-              </p>
             </div>
 
             {/* Input 3: Departure Confirmation */}
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                 <Sparkles className="h-4 w-4 text-emerald-500" />
-                Departure Delay
+                Departure Delay (1–10s)
               </div>
               <div className="relative">
                 <input
@@ -1264,9 +1255,6 @@ export default function ConfigurationPage() {
                   sec
                 </span>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-                Seconds after user leaves before flush starts (1 - 10s).
-              </p>
             </div>
           </div>
 
@@ -1355,9 +1343,6 @@ export default function ConfigurationPage() {
                 <Sliders className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   No {activeRuleTab === 'alerts' ? 'alert' : 'maintenance'} rules configured yet
-                </p>
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  Click the &quot;Add Rule&quot; button above to create an automated workflow.
                 </p>
               </div>
             ) : (
