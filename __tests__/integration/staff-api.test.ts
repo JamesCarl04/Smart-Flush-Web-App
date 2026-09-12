@@ -294,6 +294,7 @@ describe('Staff Management and Registration APIs', () => {
             role: 'technician',
             active: true,
             status: 'online',
+            lastSeen: new Date(),
             currentTaskId: 'deleted-task-404',
           }),
         },
@@ -405,6 +406,7 @@ describe('Staff Management and Registration APIs', () => {
             role: 'technician',
             active: true,
             status: 'online',
+            lastSeen: new Date(),
           }),
         },
       ];
@@ -492,9 +494,9 @@ describe('Staff Management and Registration APIs', () => {
           building: 'SDCA Annex',
           shift: '3rd',
           active: true,
-          isOnline: true,
-          status: 'online',
-          isAvailable: true,
+          isOnline: false,
+          status: 'offline',
+          isAvailable: false,
         }),
       );
     });

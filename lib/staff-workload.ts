@@ -8,6 +8,7 @@ export interface StaffUserLike {
   status?: string | null;
   isOnline?: boolean | null;
   isAvailable?: boolean | null;
+  lastSeen?: unknown;
   [key: string]: unknown;
 }
 
@@ -40,6 +41,30 @@ export interface StaffOperationalStatus {
   isAvailable: boolean;
   isOnline: boolean;
   status: 'available' | 'on_task' | 'offline';
+}
+
+export const PRESENCE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+export function extractTimestampMillis(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof (value as { toMillis?: () => unknown }).toMillis === 'function') {
+    const millis = (value as { toMillis: () => unknown }).toMillis();
+    if (typeof millis === 'number' && Number.isFinite(millis)) return millis;
+  }
+  if (typeof (value as { _seconds?: unknown })._seconds === 'number') {
+    const seconds = (value as { _seconds: number })._seconds;
+    const nanoseconds = typeof (value as { _nanoseconds?: unknown })._nanoseconds === 'number'
+      ? (value as { _nanoseconds: number })._nanoseconds
+      : 0;
+    return seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value).getTime();
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return null;
 }
 
 function isTaskActive(task: ActiveTaskLike): boolean {
@@ -137,11 +162,20 @@ export function resolveStaffOperationalStatus(
   }
 
   const isActive = rawData.active !== false && rawData.isActive !== false;
-  const isOnline =
-    isActive &&
-    rawData.isOnline !== false &&
-    rawData.status !== 'offline' &&
-    rawData.status !== 'inactive';
+  const isExplicitlyOffline =
+    rawData.active === false ||
+    rawData.isActive === false ||
+    rawData.isOnline === false ||
+    rawData.status === 'offline' ||
+    rawData.status === 'inactive';
+
+  let isOnline = false;
+  if (isActive && !isExplicitlyOffline) {
+    const lastSeenMillis = extractTimestampMillis(rawData.lastSeen);
+    if (lastSeenMillis !== null) {
+      isOnline = Date.now() - lastSeenMillis <= PRESENCE_TIMEOUT_MS;
+    }
+  }
 
   if (activeMatchingTask !== null) {
     const location =

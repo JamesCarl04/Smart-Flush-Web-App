@@ -16,6 +16,7 @@ describe('resolveStaffOperationalStatus', () => {
     status: 'online',
     isAvailable: true,
     currentTaskId: null,
+    lastSeen: new Date(),
   };
 
   it('returns available when user has no active tasks and is online', () => {
@@ -242,6 +243,7 @@ describe('resolveStaffOperationalStatus', () => {
         email: 'doctech@sdca.edu.ph',
         status: 'online',
         active: true,
+        lastSeen: new Date(),
       }),
     };
 
@@ -283,5 +285,31 @@ describe('resolveStaffOperationalStatus', () => {
     const result = resolveStaffOperationalStatus(user, tasks);
     expect(result.currentTaskId).toBe('task-active-2');
     expect(result.activeTask?.message).toBe('Second');
+  });
+
+  it('reports isOnline: false and offline when lastSeen is missing (no active session)', () => {
+    const userWithoutLastSeen = { ...baseUser, lastSeen: null };
+    const result = resolveStaffOperationalStatus(userWithoutLastSeen, []);
+    expect(result.isOnline).toBe(false);
+    expect(result.isAvailable).toBe(false);
+    expect(result.status).toBe('offline');
+  });
+
+  it('reports isOnline: false and offline when lastSeen is older than 2 minutes', () => {
+    const staleTime = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
+    const staleUser = { ...baseUser, lastSeen: staleTime };
+    const result = resolveStaffOperationalStatus(staleUser, []);
+    expect(result.isOnline).toBe(false);
+    expect(result.isAvailable).toBe(false);
+    expect(result.status).toBe('offline');
+  });
+
+  it('reports isOnline: true and available when lastSeen is fresh within 2 minutes', () => {
+    const freshTime = new Date(Date.now() - 30 * 1000); // 30 seconds ago
+    const activeUser = { ...baseUser, lastSeen: freshTime };
+    const result = resolveStaffOperationalStatus(activeUser, []);
+    expect(result.isOnline).toBe(true);
+    expect(result.isAvailable).toBe(true);
+    expect(result.status).toBe('available');
   });
 });
