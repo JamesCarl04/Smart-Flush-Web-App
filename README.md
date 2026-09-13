@@ -53,11 +53,12 @@ Whether you are a **campus administrator**, a **facility supervisor**, a **custo
 7. [Core Platform Features Deep Dive](#-core-platform-features-deep-dive)
    - [Autonomous Touchless Operation](#1-autonomous-touchless-sanitation)
    - [Continuous Ingestion & Watchdog Monitor](#2-continuous-telemetry-ingestion--watchdog-monitor)
-   - [Closed-Loop Supervisor QA Workflow](#3-closed-loop-supervisor-qa-audit-workflow)
+   - [Closed-Loop Supervisor QA Workflow & Direct Accountability Lock](#3-closed-loop-supervisor-qa-audit-workflow--direct-accountability-lock)
    - [Automated Dispatch & Leak Anomaly Engine](#4-automated-dispatch--leak-anomaly-engine)
    - [Campus Batch QR Generator & Printable Sheets](#5-campus-batch-qr-generator--printable-sheets)
    - [Double-Action Safety Locks (Poka-Yoke)](#6-double-action-actuator-safety-locks-poka-yoke)
    - [Institutional Staff Provisioning & Lifecycle Security](#7-institutional-staff-provisioning--lifecycle-security)
+   - [60s Presence Heartbeat & 2-Minute TTL Watchdog Engine](#8-60s-presence-heartbeat--2-minute-ttl-watchdog-engine)
 8. [Role-Based Access Control (RBAC) & Security Architecture](#-role-based-access-control-rbac--security-architecture)
 9. [Comprehensive REST API Reference (52 Endpoints)](#-comprehensive-rest-api-reference-52-endpoints)
 10. [Design System & Accessibility (WCAG 2.2 AA)](#-design-system--accessibility-wcag-22-aa)
@@ -375,6 +376,7 @@ flowchart TD
   * **Peak Traffic Heatmap & Hourly Flush Curve**: Pinpoints exact campus peak hours to optimize custodial shift scheduling.
   * **Floor-by-Floor Flush Distribution Bar Chart**: Compares 1F Canteen & Faculty vs 2F, 3F, and 4F wings to detect heavily utilized restrooms.
   * **Sustainability Impact Metrics**: Real-time computation of cubic meters of water saved and institutional utility bill reduction.
+  * **Philippine Standard Time (PHT, UTC+8) Telemetry Bucketing**: Hourly and daily flush volume aggregation queries explicitly bucket timestamps in Philippine Standard Time (PHT, UTC+8), ensuring metrics align precisely with local campus operating hours and avoiding UTC day-boundary reporting discrepancies.
 
 ---
 
@@ -424,6 +426,7 @@ flowchart TD
 * **Key Features**:
   * **Status Triage Tabs**: Quick tabs for `Pending Review`, `Confirmed`, and `Dismissed`.
   * **Photo Evidence Viewer**: Inspect high-resolution photo evidence captured during report submission.
+  * **Parallel Triage Tab Prefetching**: Concurrently prefetches data for all triage tabs (`Pending Review`, `Confirmed`, `Dismissed`) on initial component mount, enabling instantaneous zero-latency tab switching without layout shift or intermediate loading text.
   * **Confirm & Auto-Dispatch**: 1-click confirmation converts the report into a high-priority custodial maintenance work order linked to that stall.
   * **Dismiss Spam**: Flag false alarms or duplicate submissions to unlock the stall for future reports.
 
@@ -454,7 +457,7 @@ flowchart TD
 ### 12. Institutional Staff Management & Provisioning (`/staff`)
 * **URL Route**: `/staff`
 * **Target Audience**: Campus Administrators (`role: admin` only).
-* **Purpose**: Mission-critical administrative control center for provisioning, managing, and auditing institutional custodial personnel and field supervisors without relying on public registration endpoints.
+* **Purpose**: Mission-critical administrative control center for provisioning, managing, and auditing institutional custodial personnel and field supervisors without relying on public registration endpoints. All staff records are strictly scoped to the **SDCA Annex Building** without phantom facilities (`Main Campus`, `Central Storage`).
 * **Key Visual Elements & Capabilities**:
   * **Header & Quick Refresh**: Single-row layout with title, descriptive subtitle, manual roster refresh button (with accessible spin state), and primary CTA `+ Add Staff Member`.
   * **Top 4 Metric KPI Cards**:
@@ -465,21 +468,25 @@ flowchart TD
   * **Dynamic Multi-Criteria Filtering**:
     * **Search Input**: Live instant filtering by employee name or `@sdca.edu.ph` email.
     * **Role Dropdown Filter**: Quick filter across `All Roles`, `Supervisor`, `Technician`, and `Admin`.
-    * **Facility Dropdown Filter**: Quick filter across `All Facilities`, `SDCA Annex`, and `Main Campus`.
+    * **Segmented Activity Status Pills**: High-contrast filter tabs for `All Staff`, `Working on Tasks`, and `Available` (displaying dynamic live count of uncommitted staff).
   * **Staff Roster Directory Table**:
-    * **Avatar**: High-contrast initials badge with solid SDCA brand crimson background (`#B5121B`).
+    * **Avatar & Presence Dot**: High-contrast initials badge with solid SDCA brand crimson background (`#B5121B`) paired with a live presence indicator dot: vibrant emerald (`#16A34A`) for online staff and muted slate (`#94A3B8`) for offline staff, driven by the real-time presence engine.
     * **Staff Identity**: Formatted full name and RFC-compliant institutional email.
-    * **Role Indicator**: Static high-contrast pill with custom Lucide icon (`ShieldCheck` for Supervisor, `Wrench` for Technician, `ShieldAlert` for Admin).
-    * **Assigned Facility & Shift**: Clearly indicates primary building assignment and working shift (`1st`, `2nd`, or `3rd`).
+    * **Role Indicator**: Static high-contrast pill with custom Lucide icon (`ShieldCheck` for Supervisor, `Wrench` for Technician, `ShieldAlert` for Admin). Role claims are configured during provisioning and are strictly immutable in assignment management.
+    * **Assigned Facility & Shift**: Facility is strictly locked to `SDCA Annex Building`; working shift is clearly indicated as `1st`, `2nd`, or `3rd`.
     * **Workload Status**: Real-time status badge (`Available` with green dot, `On Task #TK-...` linking to active work order, or `Deactivated`).
     * **Contextual Actions Menu**:
-      * **`Edit Assignment`**: Opens an accessible modal to reassign campus building, shift, or role claims.
-      * **`Send Password Reset`**: Generates and dispatches a verified password setup link directly to the employee's institutional email address.
+      * **`Edit Assignment`**: Opens an accessible modal to reassign shift schedules. Role claims are immutable, the facility is locked to `SDCA Annex Building`, and only the **Assigned Shift** (`1st`, `2nd`, or `3rd`) is editable.
+      * **`Send Password Reset`**: Generates and dispatches a verified password setup link directly to the employee's institutional email address via Firebase Identity Toolkit.
       * **`Deactivate / Reactivate Account`**: Toggles employee active state. Deactivating soft-disables the profile in Firestore, sets `disabled: true` in Firebase Auth, and **instantly revokes all active JWT refresh tokens** (`adminAuth.revokeRefreshTokens`), immediately booting deactivated users without erasing historical cleaning records or audit history.
-      * **Self-Protection Safeguards**: Prohibits self-deactivation or self-demotion to ensure campus administrators cannot accidentally lock themselves out of the management system.
+      * **Administrator & Self-Protection Safeguards**: For administrator accounts and self-sessions, the `Deactivate Account` button and preceding divider are **completely omitted from the DOM** (not merely disabled), guaranteeing that administrators cannot accidentally lock themselves or peer administrators out of the management system.
+  * **60s Presence Heartbeat & 2-Minute TTL Watchdog Engine**:
+    * Authenticated web clients periodically dispatch a background presence heartbeat to `/api/staff/presence` every 60 seconds (coordinated with window visibility and focus states), continuously updating `lastSeen: serverTimestamp()` in Firestore.
+    * Roster evaluation enforces a strict 2-minute heartbeat TTL expiration window ($\Delta t \le 120\text{s}$): personnel without an active heartbeat within 2 minutes are automatically treated as offline.
+    * Live emerald (online) and slate (offline) presence dots on staff avatars update in real time across the roster.
   * **Provisioning Modal (`+ Add Staff Member`)**:
     * Clean single-dismiss `✕` modal dialog conforming to Design 3's guidelines (no duplicate header handles).
-    * Inputs with strict validation: Full Name, Institutional Email (`@sdca.edu.ph`), Role Selector, Facility Assignment, and Shift Assignment.
+    * Inputs with strict validation: Full Name, Institutional Email (`@sdca.edu.ph`), Role Selector, Facility Assignment (locked to `SDCA Annex Building`), and Shift Assignment (`1st`, `2nd`, `3rd`).
     * **Welcome & Password Setup Checkbox**: When checked, automatically generates and emails an onboarding password setup link to the employee.
     * **Atomic Compensation Rollback**: If Cloud Firestore profile creation encounters an error, the newly provisioned Firebase Auth user is deleted immediately, guaranteeing zero orphaned credentials.
 * **Design System & Accessibility Standards**:
@@ -530,6 +537,12 @@ To eliminate security vulnerabilities inherent in public self-registration endpo
 * **Tiered Governance Boundary**: The institutional Superadmin manages administrator access directly via Firebase Console. The Campus Administrator manages field supervisors and custodial technicians exclusively through the authenticated `/staff` portal.
 * **Atomic Compensation Rollback**: Account provisioning executes a two-phase transaction. If Firestore staff profile creation fails after Firebase Auth creation, an automated compensation step deletes the newly created Auth user, guaranteeing zero dangling authentication records.
 * **Instantaneous Session Token Revocation**: When an administrator toggles a staff member to "Deactivated", the backend marks their Firestore document `active: false`, disables the Firebase Auth account (`disabled: true`), and executes `adminAuth.revokeRefreshTokens(uid)`. This immediately invalidates active refresh tokens across both mobile and web clients, preventing unauthorized access while preserving historical work order audit logs.
+
+### 8. 60s Presence Heartbeat & 2-Minute TTL Watchdog Engine
+To maintain precise, real-time situational awareness of personnel across the campus:
+* **Background Web Presence Heartbeat**: Authenticated web clients periodically dispatch a presence heartbeat via `/api/staff/presence` every 60 seconds (coordinated with browser visibility and focus state transitions), continuously updating `lastSeen: serverTimestamp()` in Cloud Firestore.
+* **2-Minute Heartbeat TTL Watchdog**: The platform evaluates active staff connectivity against a strict 2-minute TTL expiration threshold ($\Delta t \le 120\text{s}$). Staff accounts without an active heartbeat within 2 minutes are automatically flagged as offline (`isOnline: false`).
+* **Cross-Platform Presence Dot Indicators**: Staff avatars in the management portal render a live emerald (`#16A34A`) indicator for online personnel and a muted slate (`#94A3B8`) dot for offline personnel, seamlessly synchronizing with mobile background/foreground presence state.
 
 ---
 
