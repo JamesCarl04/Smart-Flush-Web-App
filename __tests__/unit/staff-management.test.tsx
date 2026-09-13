@@ -51,7 +51,7 @@ const mockStaff: StaffMember[] = [
     displayName: 'Juan Dela Cruz',
     email: 'jdelacruz@sdca.edu.ph',
     role: 'supervisor',
-    building: 'Main Campus',
+    building: 'SDCA Annex Building',
     shift: '1st',
     active: true,
     isAvailable: true,
@@ -63,7 +63,7 @@ const mockStaff: StaffMember[] = [
     displayName: 'Maria Santos',
     email: 'msantos@sdca.edu.ph',
     role: 'technician',
-    building: 'SDCA Annex',
+    building: 'SDCA Annex Building',
     shift: '2nd',
     active: true,
     isAvailable: false,
@@ -75,7 +75,7 @@ const mockStaff: StaffMember[] = [
     displayName: 'Antonio Luna',
     email: 'aluna@sdca.edu.ph',
     role: 'admin',
-    building: 'Main Campus',
+    building: 'SDCA Annex Building',
     shift: '1st',
     active: true,
     isAvailable: true,
@@ -87,7 +87,7 @@ const mockStaff: StaffMember[] = [
     displayName: 'Pedro Penduko',
     email: 'ppenduko@sdca.edu.ph',
     role: 'technician',
-    building: 'SDCA Annex',
+    building: 'SDCA Annex Building',
     shift: '3rd',
     active: false,
     isAvailable: false,
@@ -419,7 +419,7 @@ describe('StaffManagementPage', () => {
       const reviewDialog = screen.getByRole('dialog', { name: /confirm new team member/i });
       expect(within(reviewDialog).getByText('Clara Del Rosario')).toBeTruthy();
       expect(within(reviewDialog).getByText('cdelrosario@sdca.edu.ph')).toBeTruthy();
-      expect(within(reviewDialog).getByText('Main Campus')).toBeTruthy();
+      expect(within(reviewDialog).getByText('SDCA Annex Building')).toBeTruthy();
       expect(within(reviewDialog).getByText('1st Shift (Morning)')).toBeTruthy();
       expect(within(reviewDialog).getByText(/Password setup link will be emailed upon creation/i)).toBeTruthy();
 
@@ -428,6 +428,9 @@ describe('StaffManagementPage', () => {
       expect(screen.getByText('Provision New Staff Member')).toBeTruthy();
       expect((screen.getByPlaceholderText('Maria Santos') as HTMLInputElement).value).toBe('Clara Del Rosario');
       expect((screen.getByPlaceholderText('msantos@sdca.edu.ph') as HTMLInputElement).value).toBe('cdelrosario@sdca.edu.ph');
+      const facilityInput = screen.getByLabelText(/assigned facility/i) as HTMLInputElement;
+      expect(facilityInput.value).toBe('SDCA Annex Building');
+      expect(facilityInput.readOnly).toBe(true);
 
       // Proceed back to Step 2
       fireEvent.click(screen.getByRole('button', { name: /review & continue/i }));
@@ -453,7 +456,7 @@ describe('StaffManagementPage', () => {
               displayName: 'Clara Del Rosario',
               email: 'cdelrosario@sdca.edu.ph',
               role: 'technician',
-              building: 'Main Campus',
+              building: 'SDCA Annex Building',
               shift: '1st',
               sendPasswordReset: true,
             }),
@@ -482,7 +485,7 @@ describe('StaffManagementPage', () => {
       mockEmailAuthProviderCredential.mockReset();
     });
 
-    it('opens edit modal with locked read-only role and updates building and shift assignment without sending role', async () => {
+    it('opens edit modal with locked read-only role and locked facility and updates shift assignment without sending role', async () => {
       render(<StaffManagementPage />);
 
       await waitFor(() => {
@@ -494,17 +497,23 @@ describe('StaffManagementPage', () => {
 
       fireEvent.click(screen.getByText('Edit Assignment'));
 
-      expect(screen.getByText('Edit Assignment')).toBeTruthy();
-      // Role field is locked badge, not a dropdown
-      expect(screen.getByText('Current Role (Locked)')).toBeTruthy();
-      expect(screen.getByText(/Role permissions are set during account provisioning and cannot be altered via assignment editing/i)).toBeTruthy();
-      expect(screen.queryByLabelText(/^role$/i)).toBeNull();
+      const editDialog = screen.getByRole('dialog', { name: /edit assignment/i });
+      expect(editDialog).toBeTruthy();
 
-      // Change building and shift
-      fireEvent.change(screen.getByLabelText(/assigned facility/i), {
-        target: { value: 'SDCA Annex' },
-      });
-      fireEvent.change(screen.getByLabelText(/assigned shift/i), {
+      // Clean Role display without "Current Role (Locked)" and without sub-description
+      expect(within(editDialog).getByText('Role')).toBeTruthy();
+      expect(within(editDialog).getByText('Supervisor')).toBeTruthy();
+      expect(within(editDialog).queryByText(/Current Role \(Locked\)/i)).toBeNull();
+      expect(within(editDialog).queryByText(/Role permissions are set during account provisioning and cannot be altered via assignment editing/i)).toBeNull();
+      expect(within(editDialog).queryByLabelText(/^role$/i)).toBeNull();
+
+      // Facility is locked to SDCA Annex Building without helper text
+      const facilityInput = within(editDialog).getByLabelText(/assigned facility/i) as HTMLInputElement;
+      expect(facilityInput.value).toBe('SDCA Annex Building');
+      expect(facilityInput.readOnly).toBe(true);
+
+      // Change shift
+      fireEvent.change(within(editDialog).getByLabelText(/assigned shift/i), {
         target: { value: '2nd' },
       });
 
@@ -519,7 +528,7 @@ describe('StaffManagementPage', () => {
           expect.objectContaining({
             method: 'PATCH',
             body: JSON.stringify({
-              building: 'SDCA Annex',
+              building: 'SDCA Annex Building',
               shift: '2nd',
             }),
           }),
@@ -609,7 +618,7 @@ describe('StaffManagementPage', () => {
       });
     });
 
-    it('blocks self-deactivation of administrator account in UI action menu', async () => {
+    it('removes Deactivate Account option entirely from UI action menu for administrator accounts and self', async () => {
       // Set current logged-in admin user to match staff-3 (Antonio Luna)
       mockUseAuth.mockReturnValue({
         user: { uid: 'staff-3', email: 'aluna@sdca.edu.ph' },
@@ -623,18 +632,90 @@ describe('StaffManagementPage', () => {
         expect(screen.getByText('Antonio Luna')).toBeTruthy();
       });
 
-      // Open Antonio Luna's action menu (index 2 in mockStaff)
+      // Open Antonio Luna's action menu (index 2 in mockStaff - role is admin, isSelf is true)
       const menuButtons = screen.getAllByLabelText(/action menu for/i);
       fireEvent.click(menuButtons[2]);
 
-      // Deactivate Account button should be disabled for self
-      const deactivateBtn = screen.getByRole('menuitem', { name: /deactivate account/i });
-      expect(deactivateBtn).toHaveProperty('disabled', true);
-      expect(deactivateBtn.getAttribute('title')).toBe('Cannot deactivate your own administrator account');
+      // Deactivate Account button should NOT be rendered in the menu at all
+      expect(screen.queryByRole('menuitem', { name: /deactivate account/i })).toBeNull();
+      expect(screen.queryByText(/deactivate account/i)).toBeNull();
 
-      // Clicking it does not open the modal
-      fireEvent.click(deactivateBtn);
-      expect(screen.queryByRole('dialog', { name: /deactivate staff member/i })).toBeNull();
+      // Only Edit Assignment and Send Password Reset are available
+      expect(screen.getByRole('menuitem', { name: /edit assignment/i })).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: /send password reset/i })).toBeTruthy();
+
+      // Close menu
+      fireEvent.click(menuButtons[2]);
+
+      // Open Juan Dela Cruz's action menu (index 0 - supervisor, not self)
+      fireEvent.click(menuButtons[0]);
+
+      // Non-admin account retains Deactivate Account option
+      expect(screen.getByRole('menuitem', { name: /deactivate account/i })).toBeTruthy();
+      fireEvent.click(menuButtons[0]);
+
+      // Verify that another admin account (not self) also does NOT render Deactivate Account
+      mockUseAuth.mockReturnValue({
+        user: { uid: 'admin-other', email: 'other@sdca.edu.ph' },
+        role: 'admin',
+        roleLoading: false,
+      });
+      fireEvent.click(menuButtons[2]);
+      expect(screen.queryByRole('menuitem', { name: /deactivate account/i })).toBeNull();
+    });
+
+    it('normalizes legacy phantom building (e.g. Main Campus) to SDCA Annex Building on edit and save', async () => {
+      const legacyStaff: StaffMember[] = [
+        {
+          id: 'staff-legacy',
+          uid: 'staff-legacy',
+          displayName: 'Legacy Staff Member',
+          email: 'legacy@sdca.edu.ph',
+          role: 'technician',
+          building: 'Main Campus',
+          shift: '1st',
+          active: true,
+          isAvailable: true,
+          currentTaskId: null,
+        },
+      ];
+
+      mockApiFetch.mockResolvedValueOnce({
+        success: true,
+        data: legacyStaff,
+      });
+
+      render(<StaffManagementPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Legacy Staff Member')).toBeTruthy();
+      });
+
+      const menuButtons = screen.getAllByLabelText(/action menu for/i);
+      fireEvent.click(menuButtons[0]);
+      fireEvent.click(screen.getByText('Edit Assignment'));
+
+      const editDialog = screen.getByRole('dialog', { name: /edit assignment/i });
+      const facilityInput = within(editDialog).getByLabelText(/assigned facility/i) as HTMLInputElement;
+      expect(facilityInput.value).toBe('SDCA Annex Building');
+
+      mockApiFetch.mockResolvedValueOnce({ success: true });
+
+      fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/api/staff/staff-legacy',
+          expect.anything(),
+          expect.objectContaining({
+            method: 'PATCH',
+            body: JSON.stringify({
+              building: 'SDCA Annex Building',
+              shift: '1st',
+            }),
+          }),
+        );
+      });
     });
 
     it('handles rate-limiting (auth/too-many-requests) with accessible error message', async () => {

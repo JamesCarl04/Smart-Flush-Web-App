@@ -80,7 +80,7 @@ const INITIAL_FORM: NewStaffForm = {
   displayName: '',
   email: '',
   role: 'technician',
-  building: 'Main Campus',
+  building: 'SDCA Annex Building',
   shift: '1st',
   sendPasswordReset: true,
 };
@@ -321,7 +321,14 @@ export default function StaffManagementPage() {
   // Open Edit Modal
   const handleOpenEdit = (staff: StaffMember) => {
     setEditingStaff(staff);
-    setEditBuilding(staff.building || 'Main Campus');
+    const normalizedBuilding =
+      !staff.building ||
+      staff.building === 'Main Campus' ||
+      staff.building === 'Central Storage' ||
+      staff.building === 'SDCA Annex'
+        ? 'SDCA Annex Building'
+        : staff.building;
+    setEditBuilding(normalizedBuilding);
     setEditShift(staff.shift || '1st');
     setActiveMenuId(null);
   };
@@ -339,7 +346,7 @@ export default function StaffManagementPage() {
         {
           method: 'PATCH',
           body: JSON.stringify({
-            building: editBuilding,
+            building: editBuilding || 'SDCA Annex Building',
             shift: editShift,
           }),
         },
@@ -373,6 +380,11 @@ export default function StaffManagementPage() {
       setActiveMenuId(null);
       return;
     }
+    if (staff.role === 'admin') {
+      toast.error('Administrator accounts cannot be deactivated.');
+      setActiveMenuId(null);
+      return;
+    }
     setActiveMenuId(null);
     setDeactivatingStaff(staff);
     setAdminPasswordConfirm('');
@@ -389,8 +401,8 @@ export default function StaffManagementPage() {
       return;
     }
 
-    if (user.uid === deactivatingStaff.id || user.uid === deactivatingStaff.uid) {
-      setDeactivatePasswordError('Cannot deactivate your own administrator account.');
+    if (user.uid === deactivatingStaff.id || user.uid === deactivatingStaff.uid || deactivatingStaff.role === 'admin') {
+      setDeactivatePasswordError('Cannot deactivate administrator accounts.');
       return;
     }
 
@@ -834,6 +846,7 @@ export default function StaffManagementPage() {
 
                   const isMenuOpen = activeMenuId === person.id;
                   const isSelf = Boolean(user && (user.uid === person.id || user.uid === person.uid));
+                  const canDeactivate = person.role !== 'admin' && !isSelf;
                   const isBottomRow = index >= 2 && index >= filteredStaff.length - 2;
                   const avatarBg =
                     person.role === 'admin'
@@ -966,41 +979,41 @@ export default function StaffManagementPage() {
                                   <span>Send Password Reset</span>
                                 </button>
 
-                                <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+                                {canDeactivate && (
+                                  <>
+                                    <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
-                                <button
-                                  type="button"
-                                  disabled={person.active && isSelf}
-                                  onClick={() => {
-                                    setActiveMenuId(null);
-                                    if (person.active) {
-                                      handleOpenDeactivateModal(person);
-                                    } else {
-                                      void handleReactivateStaff(person);
-                                    }
-                                  }}
-                                  title={person.active && isSelf ? 'Cannot deactivate your own administrator account' : undefined}
-                                  className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center gap-2.5 focus-visible:outline-none ${
-                                    person.active && isSelf
-                                      ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
-                                      : person.active
-                                        ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
-                                        : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
-                                  }`}
-                                  role="menuitem"
-                                >
-                                  {person.active ? (
-                                    <>
-                                      <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                                      <span>Deactivate Account</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                                      <span>Reactivate Account</span>
-                                    </>
-                                  )}
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveMenuId(null);
+                                        if (person.active) {
+                                          handleOpenDeactivateModal(person);
+                                        } else {
+                                          void handleReactivateStaff(person);
+                                        }
+                                      }}
+                                      className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center gap-2.5 focus-visible:outline-none ${
+                                        person.active
+                                          ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
+                                          : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
+                                      }`}
+                                      role="menuitem"
+                                    >
+                                      {person.active ? (
+                                        <>
+                                          <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                                          <span>Deactivate Account</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                          <span>Reactivate Account</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </>
                           )}
@@ -1132,16 +1145,14 @@ export default function StaffManagementPage() {
                               Assigned Facility
                             </span>
                           </label>
-                          <select
+                          <input
                             id="staff-facility"
+                            type="text"
+                            readOnly
+                            disabled
                             value={formValues.building}
-                            onChange={(e) => setFormValues({ ...formValues, building: e.target.value })}
-                            className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                          >
-                            <option value="Main Campus">Main Campus</option>
-                            <option value="SDCA Annex">SDCA Annex</option>
-                            <option value="Central Storage">Central Storage</option>
-                          </select>
+                            className="input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-xl cursor-not-allowed select-none font-medium"
+                          />
                         </div>
 
                         <div className="form-control">
@@ -1329,19 +1340,16 @@ export default function StaffManagementPage() {
 
               <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div className="space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 sm:pr-3 py-1">
-                  {/* Current Role (Locked) */}
+                  {/* Role */}
                   <div className="form-control">
                     <label className="label py-1">
                       <span className="label-text text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Current Role (Locked)
+                        Role
                       </span>
                     </label>
                     <div className="pt-0.5">
                       {renderRoleBadge(editingStaff.role)}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                      Role permissions are set during account provisioning and cannot be altered via assignment editing.
-                    </p>
                   </div>
 
                   {/* Facility */}
@@ -1351,16 +1359,14 @@ export default function StaffManagementPage() {
                         Assigned Facility
                       </span>
                     </label>
-                    <select
+                    <input
                       id="edit-facility"
-                      value={editBuilding}
-                      onChange={(e) => setEditBuilding(e.target.value)}
-                      className="select select-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-50/80 dark:bg-slate-950/60 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl focus:border-[#B5121B] focus:ring-2 focus:ring-[#B5121B]/20"
-                    >
-                      <option value="Main Campus">Main Campus</option>
-                      <option value="SDCA Annex">SDCA Annex</option>
-                      <option value="Central Storage">Central Storage</option>
-                    </select>
+                      type="text"
+                      readOnly
+                      disabled
+                      value={editBuilding || 'SDCA Annex Building'}
+                      className="input input-bordered w-full h-11 min-h-[44px] sm:h-12 sm:min-h-[48px] bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-xl cursor-not-allowed select-none font-medium"
+                    />
                   </div>
 
                   {/* Shift */}
