@@ -282,55 +282,67 @@ export default function IssueReportsPage() {
               </div>
 
               {/* Zone 2: Content, Metadata & Evidence */}
-              <div className="mt-4 space-y-4">
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+              <div className="mt-4 space-y-3.5">
+                {/* 3 Balanced Metric Cards (Triad) */}
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col justify-center rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 dark:border-slate-800 dark:bg-slate-800/50">
                     <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ticket #</dt>
                     <dd className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-slate-100">{ticketCode}</dd>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                  <div className="flex flex-col justify-center rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 dark:border-slate-800 dark:bg-slate-800/50">
                     <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Urgency</dt>
                     <dd className="mt-1 flex items-center gap-1.5 font-medium">
                       {report.confirmationCount >= 3 ? (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-300">
-                          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                        <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-300">
+                          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
                           High
                         </span>
                       ) : report.confirmationCount === 2 ? (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-300">
-                          <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-300">
+                          <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
                           Medium
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                           Normal
                         </span>
                       )}
                     </dd>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                  <div className="flex flex-col justify-center rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 dark:border-slate-800 dark:bg-slate-800/50">
                     <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Confirmations</dt>
                     <dd className="mt-1 flex items-center gap-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
                       <Users className="h-4 w-4 text-slate-400" aria-hidden="true" />
                       <span>{report.confirmationCount}</span>
                     </dd>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/50">
-                    <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Timeline</dt>
-                    <dd className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      {report.firstReportedAt === report.lastReportedAt || !report.lastReportedAt ? (
-                        <div>
-                          <span className="font-semibold text-slate-700 dark:text-slate-300">Reported:</span> {formatTime(report.firstReportedAt)}
-                        </div>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <div><span className="font-semibold text-slate-700 dark:text-slate-300">First:</span> {formatTime(report.firstReportedAt)}</div>
-                          <div><span className="font-semibold text-slate-700 dark:text-slate-300">Last:</span> {formatTime(report.lastReportedAt)}</div>
-                        </div>
-                      )}
-                    </dd>
-                  </div>
                 </dl>
+
+                {/* Timeline Bar: Full width to comfortably show timestamps without wrapping into tall blocks */}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                    <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Timeline</span>
+                  </div>
+                  {report.firstReportedAt === report.lastReportedAt || !report.lastReportedAt ? (
+                    <div>
+                      <span className="text-slate-500 dark:text-slate-400">Reported:</span>{' '}
+                      <span className="font-medium text-slate-800 dark:text-slate-200">{formatTime(report.firstReportedAt)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <div>
+                        <span className="text-slate-500 dark:text-slate-400">First report:</span>{' '}
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{formatTime(report.firstReportedAt)}</span>
+                      </div>
+                      <span className="hidden sm:inline text-slate-300 dark:text-slate-600">&bull;</span>
+                      <div>
+                        <span className="text-slate-500 dark:text-slate-400">Latest confirmation:</span>{' '}
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{formatTime(report.lastReportedAt)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {report.descriptions.length > 0 ? (
                   <div className="space-y-2">
@@ -350,28 +362,42 @@ export default function IssueReportsPage() {
                 ) : null}
 
                 {((report.submissions && report.submissions.length > 0) || report.evidence.length > 0) ? (
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Evidence & Submissions
-                    </h3>
-                    {report.submissions?.map((submission) => {
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Evidence & Submissions
+                      </h3>
+                      {report.submissions && report.submissions.length > 1 ? (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {report.submissions.length} submissions
+                        </span>
+                      ) : null}
+                    </div>
+                    {report.submissions?.map((submission, index) => {
                       const matchingEvidence = report.evidence.find((e) => e.submissionId === submission.submissionId);
                       const isCaptured = submission.photoCaptureStatus === 'captured';
                       return (
                         <div
                           key={submission.submissionId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 text-xs dark:border-slate-800 dark:bg-slate-800/40"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 text-xs dark:border-slate-800 dark:bg-slate-800/40"
                         >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                              {isCaptured ? (
-                                <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                              ) : (
-                                <FileText className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                              )}
-                              <span className="font-semibold">
-                                {isCaptured ? 'Photo captured' : 'Submitted without photo'}
-                              </span>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              {report.submissions && report.submissions.length > 1 ? (
+                                <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                  #{index + 1}
+                                </span>
+                              ) : null}
+                              <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+                                {isCaptured ? (
+                                  <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                                ) : (
+                                  <FileText className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                                )}
+                                <span className="font-semibold">
+                                  {isCaptured ? 'Photo captured' : 'Submitted without photo'}
+                                </span>
+                              </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-400">
                               {isCaptured && submission.photoCapturedAt ? (
@@ -397,14 +423,21 @@ export default function IssueReportsPage() {
                     })}
                     {report.evidence
                       .filter((item) => !report.submissions?.some((s) => s.submissionId === item.submissionId))
-                      .map((item) => (
+                      .map((item, index) => (
                         <div
                           key={item.submissionId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 text-xs dark:border-slate-800 dark:bg-slate-800/40"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 text-xs dark:border-slate-800 dark:bg-slate-800/40"
                         >
-                          <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                            <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                            <span className="font-semibold">Photo captured</span>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                Attachment {index + 1}
+                              </span>
+                              <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+                                <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                                <span className="font-semibold">Photo captured</span>
+                              </div>
+                            </div>
                           </div>
                           <button
                             type="button"
