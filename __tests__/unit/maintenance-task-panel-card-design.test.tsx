@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mocks
@@ -317,14 +317,21 @@ describe('MaintenanceTaskPanel - Card Design Threes & WCAG Standards', () => {
   });
 
   describe('Advanced Edge Cases & Robustness', () => {
-    it('renders assignee initials avatar for individual assigned technicians', async () => {
+    it('renders assignee details clearly without confusing initials badges', async () => {
       await act(async () => {
         render(<MaintenanceTaskPanel />);
       });
 
-      // Carlos Garcia initials = CG, Maria Santos initials = MS
-      expect(screen.getAllByText('CG').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('MS').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Carlos Garcia').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Maria Santos').length).toBeGreaterThanOrEqual(1);
+
+      // Verify task cards do not render ambiguous initials circle badges next to assignees
+      const taskCards = document.querySelectorAll('[id^="task-"]');
+      expect(taskCards.length).toBeGreaterThanOrEqual(1);
+      taskCards.forEach((card) => {
+        expect(within(card as HTMLElement).queryByText('CG')).toBeNull();
+        expect(within(card as HTMLElement).queryByText('MS')).toBeNull();
+      });
     });
 
     it('displays multi-staff ack progress count alongside ack timestamp', async () => {

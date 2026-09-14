@@ -1409,21 +1409,11 @@ export function MaintenanceTaskPanel() {
                   task.status === 'rechecking' ||
                   task.inspectionStatus === 'flagged';
 
-                const statusBorderAccent = isFlagged
-                  ? 'border-l-4 border-l-rose-500'
-                  : requiresSupervisorAssignment
-                    ? 'border-l-4 border-l-violet-500'
-                    : task.status === 'completed'
-                      ? 'border-l-4 border-l-emerald-500'
-                      : task.status === 'acknowledged'
-                        ? 'border-l-4 border-l-sky-500'
-                        : 'border-l-4 border-l-amber-500';
-
                 return (
                   <div
                     key={task.id}
                     id={`task-${task.id}`}
-                    className={`group rounded-xl border p-4 sm:p-5 transition-all duration-700 ease-out ${statusBorderAccent} ${
+                    className={`group rounded-xl border p-4 sm:p-5 transition-all duration-300 ease-out ${
                       isHighlighted
                         ? 'border-rose-400 bg-rose-50/80 shadow-lg ring-2 ring-primary/80 ring-offset-2 scale-[1.01] dark:border-rose-500 dark:bg-rose-950/40 dark:ring-offset-slate-900'
                         : 'border-slate-200/90 bg-white shadow-xs hover:border-slate-300 hover:bg-slate-50/50 hover:shadow-sm dark:border-slate-800/90 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800'
@@ -1548,32 +1538,17 @@ export function MaintenanceTaskPanel() {
                       const assignedName = isUnassigned
                         ? 'Unassigned (Pending supervisor dispatch)'
                         : resolveAssignedName(task.assignedTo, task.assignedToIds);
-                      const singleAssigneeInitials =
-                        !isUnassigned &&
-                        assignedName &&
-                        assignedName !== 'All maintenance team' &&
-                        !assignedName.includes(',')
-                          ? getInitials(assignedName)
-                          : null;
-
                       return (
                         <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
                           <div className="flex flex-col gap-2 min-w-0">
-                            {/* Assignee Details with Avatar / Initials */}
+                            {/* Assignee Details */}
                             <div className="flex items-center gap-2">
                               {isUnassigned ? (
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 ring-1 ring-violet-300 dark:ring-violet-700 shrink-0">
+                                <div className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 shrink-0">
                                   <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
                                 </div>
-                              ) : singleAssigneeInitials ? (
-                                <div
-                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary dark:bg-primary/25 dark:text-rose-300 ring-1 ring-primary/30 shrink-0"
-                                  aria-hidden="true"
-                                >
-                                  {singleAssigneeInitials}
-                                </div>
                               ) : (
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-600 shrink-0">
+                                <div className="flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">
                                   <User className="h-3.5 w-3.5" aria-hidden="true" />
                                 </div>
                               )}
