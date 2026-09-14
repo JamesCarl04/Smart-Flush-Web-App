@@ -11,7 +11,9 @@ import {
   ClipboardList,
   Clock,
   Droplets,
+  Eye,
   Flag,
+  MapPin,
   Pencil,
   Plus,
   RefreshCw,
@@ -21,6 +23,7 @@ import {
   Sparkles,
   Ticket,
   Trash2,
+  User,
   UserCheck,
   Wrench,
   X,
@@ -73,6 +76,54 @@ function getDefaultMessage(deviceLabel: string): string {
   return `Manual maintenance requested for ${deviceLabel}.`;
 }
 
+interface ParsedTaskMessage {
+  ticketCode?: string;
+  category?: string;
+  cleanMessage: string;
+}
+
+function parseTaskMessage(rawMessage?: string): ParsedTaskMessage {
+  if (!rawMessage || !rawMessage.trim()) {
+    return { cleanMessage: 'No message provided' };
+  }
+
+  let text = rawMessage.trim();
+  let ticketCode: string | undefined;
+  let category: string | undefined;
+
+  // Extract leading bracketed tokens in any order (e.g. [Ticket #IR-123], [category], etc.)
+  while (text.startsWith('[')) {
+    const endBracketIdx = text.indexOf(']');
+    if (endBracketIdx === -1) break;
+
+    const tokenContent = text.slice(1, endBracketIdx).trim();
+    const rest = text.slice(endBracketIdx + 1).trim();
+
+    const ticketMatch = tokenContent.match(/^(?:Ticket\s*#?|#)(.+)$/i);
+    if (ticketMatch && !ticketCode) {
+      ticketCode = ticketMatch[1].replace(/^#+/, '').trim();
+      text = rest;
+      continue;
+    }
+
+    if (!category && !ticketMatch) {
+      category = tokenContent;
+      text = rest;
+      continue;
+    }
+
+    break;
+  }
+
+  return {
+    ticketCode,
+    category,
+    cleanMessage:
+      text ||
+      (ticketCode || category ? 'No additional message' : 'No message provided'),
+  };
+}
+
 function getPriorityBadge(
   triggerType?: TaskTriggerType,
   automationTrigger?: Task['automationTrigger'],
@@ -85,49 +136,49 @@ function getPriorityBadge(
             ? 'Routine Toilet Check'
             : 'Scheduled Maintenance',
         className:
-          'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30',
+          'bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-200 border border-rose-300 dark:border-rose-800',
         icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'uv_complete':
       return {
         label: 'Sanitation Check',
         className:
-          'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30',
+          'bg-indigo-100 text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800',
         icon: <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'flush_count':
       return {
         label: 'High Usage Check',
         className:
-          'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30',
+          'bg-cyan-100 text-cyan-950 dark:bg-cyan-950/50 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800',
         icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'water_overuse':
       return {
         label: 'Water Overuse',
         className:
-          'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30',
+          'bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-200 border border-amber-300 dark:border-amber-800',
         icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'water_no_flow':
       return {
         label: 'No Water After Flush',
         className:
-          'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30',
+          'bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-200 border border-red-300 dark:border-red-800',
         icon: <Droplets className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'sensor_fault':
       return {
         label: 'Ultrasonic Sensor Fault',
         className:
-          'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30',
+          'bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-200 border border-red-300 dark:border-red-800',
         icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'student_report':
       return {
         label: 'Public Issue Report',
         className:
-          'bg-rose-500/10 text-[#B5121B] dark:text-rose-300 border border-rose-500/30',
+          'bg-rose-100 text-[#B5121B] dark:bg-rose-950/50 dark:text-rose-200 border border-rose-300 dark:border-rose-800',
         icon: <Ticket className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'manual':
@@ -135,7 +186,7 @@ function getPriorityBadge(
       return {
         label: 'Standard Request',
         className:
-          'bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30',
+          'bg-slate-100 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 dark:bg-slate-800',
         icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
   }
@@ -144,19 +195,25 @@ function getPriorityBadge(
 function getStatusBadge(
   status: Task['status'],
   inspectionStatus?: Task['inspectionStatus'],
-) {
+): {
+  label: string;
+  className: string;
+  icon: React.ReactNode;
+} {
   if (status === 'rechecking') {
     return {
       label: 'Rechecking',
       className:
-        'bg-purple-500/15 text-purple-800 dark:text-purple-300 border border-purple-500/40',
+        'bg-purple-100 text-purple-950 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-200 dark:border-purple-800',
+      icon: <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />,
     };
   }
   if (status === 'flagged' || inspectionStatus === 'flagged') {
     return {
       label: 'Flagged for Re-inspection',
       className:
-        'bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-500/40',
+        'bg-rose-100 text-rose-950 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800',
+      icon: <Flag className="w-3.5 h-3.5" aria-hidden="true" />,
     };
   }
 
@@ -165,56 +222,70 @@ function getStatusBadge(
       return {
         label: 'Acknowledged',
         className:
-          'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/40',
+          'bg-sky-100 text-sky-950 border border-sky-300 dark:bg-sky-950/60 dark:text-sky-200 dark:border-sky-800',
+        icon: <Eye className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'completed':
       return {
         label: 'Completed',
         className:
-          'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40',
+          'bg-emerald-100 text-emerald-950 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800',
+        icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'reassignment_needed':
       return {
         label: 'Reassignment Needed',
         className:
-          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+          'bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800',
+        icon: <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'assigned':
       return {
         label: 'Assigned',
         className:
-          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+          'bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800',
+        icon: <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'unassigned':
       return {
         label: 'Unassigned',
         className:
-          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+          'bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'pending':
     default:
       return {
         label: 'Pending',
         className:
-          'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40',
+          'bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800',
+        icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
       };
   }
 }
 
 function formatTimestamp(value?: number | null): string {
-  if (!value) {
+  if (!value || Number.isNaN(Number(value))) {
     return 'Not recorded';
   }
 
-  return format(new Date(value), 'MMM d, yyyy HH:mm');
+  try {
+    return format(new Date(value), 'MMM d, yyyy HH:mm');
+  } catch {
+    return 'Not recorded';
+  }
 }
 
-function formatRelativeTimestamp(value: number): string {
-  if (!value) {
+function formatRelativeTimestamp(value?: number | null): string {
+  if (!value || Number.isNaN(Number(value))) {
     return 'Time unavailable';
   }
 
-  return formatDistanceToNow(new Date(value), { addSuffix: true });
+  try {
+    return formatDistanceToNow(new Date(value), { addSuffix: true });
+  } catch {
+    return 'Time unavailable';
+  }
 }
 
 function getInitials(value: string): string {
@@ -400,8 +471,8 @@ export function MaintenanceTaskPanel() {
   });
 
   const resolveDeviceLabel = useCallback(
-    (deviceId: string) =>
-      devices.find((device) => device.id === deviceId)?.name || deviceId,
+    (deviceId: string, fallbackLabel?: string) =>
+      devices.find((device) => device.id === deviceId)?.name || fallbackLabel || deviceId || 'Toilet Unit',
     [devices],
   );
 
@@ -688,10 +759,12 @@ export function MaintenanceTaskPanel() {
         ).toLowerCase();
         const flagReason = (task.flagReason || '').toLowerCase();
         const ticket = (task.referenceCode || task.issueReportReferenceCode || '').toLowerCase();
+        const category = (task.reportCategory || '').toLowerCase();
         return (
           deviceName.includes(q) ||
           msg.includes(q) ||
           ticket.includes(q) ||
+          category.includes(q) ||
           assignee.includes(q) ||
           flagReason.includes(q)
         );
@@ -1319,38 +1392,64 @@ export function MaintenanceTaskPanel() {
                 const requiresSupervisorAssignment =
                   task.status === 'unassigned' &&
                   task.requiresSupervisorAssignment === true;
+                const parsedMessage = parseTaskMessage(task.message);
+                const rawTicketCode =
+                  task.referenceCode ||
+                  task.issueReportReferenceCode ||
+                  parsedMessage.ticketCode;
+                const effectiveTicketCode = rawTicketCode
+                  ? rawTicketCode.replace(/^#+/, '').trim()
+                  : undefined;
+                const rawCategory = task.reportCategory || parsedMessage.category;
+                const formattedCategory = rawCategory
+                  ? rawCategory.replace(/_/g, ' ')
+                  : undefined;
+                const isFlagged =
+                  task.status === 'flagged' ||
+                  task.status === 'rechecking' ||
+                  task.inspectionStatus === 'flagged';
+
+                const statusBorderAccent = isFlagged
+                  ? 'border-l-4 border-l-rose-500'
+                  : requiresSupervisorAssignment
+                    ? 'border-l-4 border-l-violet-500'
+                    : task.status === 'completed'
+                      ? 'border-l-4 border-l-emerald-500'
+                      : task.status === 'acknowledged'
+                        ? 'border-l-4 border-l-sky-500'
+                        : 'border-l-4 border-l-amber-500';
 
                 return (
                   <div
                     key={task.id}
                     id={`task-${task.id}`}
-                    className={`group rounded-xl border p-4.5 transition-all duration-700 ease-out ${
+                    className={`group rounded-xl border p-4 sm:p-5 transition-all duration-700 ease-out ${statusBorderAccent} ${
                       isHighlighted
                         ? 'border-rose-400 bg-rose-50/80 shadow-lg ring-2 ring-primary/80 ring-offset-2 scale-[1.01] dark:border-rose-500 dark:bg-rose-950/40 dark:ring-offset-slate-900'
-                        : 'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:bg-slate-50/50 hover:shadow dark:border-slate-800/90 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800'
+                        : 'border-slate-200/90 bg-white shadow-xs hover:border-slate-300 hover:bg-slate-50/50 hover:shadow-sm dark:border-slate-800/90 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800'
                     }`}
                   >
-                    {/* Header Row: Location, Priority, and Status Badge */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/80">
-                      <div className="flex flex-wrap items-center gap-2 min-w-0">
-                        <span className="font-bold text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg whitespace-nowrap">
-                          {resolveDeviceLabel(task.deviceId)}
-                        </span>
+                    {/* Zone 1: Header & Identity */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                      <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+                        <div
+                          className="inline-flex items-center gap-1.5 font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg max-w-full"
+                          title={resolveDeviceLabel(task.deviceId, task.deviceLabel)}
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
+                          <span className="truncate max-w-[180px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm">
+                            {resolveDeviceLabel(task.deviceId, task.deviceLabel)}
+                          </span>
+                        </div>
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${priority.className}`}
                         >
                           {priority.icon}
                           <span>{priority.label}</span>
                         </span>
-                        {task.referenceCode || task.issueReportReferenceCode ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg border border-rose-200/80 bg-rose-50 px-2.5 py-1 font-mono text-xs font-bold text-[#B5121B] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 whitespace-nowrap">
-                            <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>Ticket #{task.referenceCode || task.issueReportReferenceCode}</span>
-                          </span>
-                        ) : null}
                         {requiresSupervisorAssignment ? (
                           <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
-                            <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                             <span>Unassigned — supervisor action required</span>
                           </span>
                         ) : null}
@@ -1358,8 +1457,9 @@ export function MaintenanceTaskPanel() {
 
                       <div className="flex items-center gap-2 shrink-0">
                         <div
-                          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold whitespace-nowrap ${statusInfo.className}`}
                         >
+                          {statusInfo.icon}
                           <span>{statusInfo.label}</span>
                           {acknowledgementSummary &&
                           task.status !== 'completed' &&
@@ -1392,110 +1492,203 @@ export function MaintenanceTaskPanel() {
                       </div>
                     </div>
 
-                    {/* Body: Message text */}
-                    <p className="my-3 break-words text-sm font-medium text-slate-900 dark:text-slate-100 leading-relaxed">
-                      {task.message || 'No message provided'}
-                    </p>
-
-                    {task.flagReason ? (
-                      <div className="my-2.5 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
-                        <div className="flex items-center gap-1.5 font-bold mb-1">
-                          <Flag className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                          <span>Flagged Reason:</span>
-                        </div>
-                        <p className="leading-relaxed">{task.flagReason}</p>
-                        {task.inspectedByName ? (
-                          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
-                            By {task.inspectedByName}
-                            {task.inspectedAt ? ` · ${formatTimestamp(task.inspectedAt)}` : ''}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {/* Footer Row: Meta details + Action Buttons */}
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2.5 border-t border-slate-100 text-xs text-slate-500 dark:border-slate-800/80 dark:text-slate-400">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="whitespace-nowrap">
-                          Assigned to{' '}
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {resolveAssignedName(
-                              task.assignedTo,
-                              task.assignedToIds,
-                            )}
-                          </span>
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="whitespace-nowrap">
-                          {formatRelativeTimestamp(task.createdAt)}
-                        </span>
-
-                        {requiresSupervisorAssignment ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="whitespace-nowrap font-semibold text-violet-700 dark:text-violet-300">
-                              Retry {task.autoAssignmentEligibleAt
-                                ? formatTimestamp(task.autoAssignmentEligibleAt)
-                                : 'pending'}
+                    {/* Zone 2: Message & Evidence Core */}
+                    <div className="py-3">
+                      {(effectiveTicketCode || formattedCategory) && (
+                        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                          {effectiveTicketCode && (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 font-mono text-xs font-bold text-[#B5121B] dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-300 whitespace-nowrap">
+                              <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>Ticket #{effectiveTicketCode}</span>
                             </span>
-                          </>
-                        ) : null}
-
-                        {task.acknowledgedAt ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="whitespace-nowrap text-sky-700 dark:text-sky-400 font-medium">
-                              Ack {formatTimestamp(task.acknowledgedAt)}
-                            </span>
-                          </>
-                        ) : null}
-
-                        {getAcknowledgementProgress(task) ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
-                              {getAcknowledgementProgress(task)}
-                            </span>
-                          </>
-                        ) : null}
-
-                        {task.completedAt ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="whitespace-nowrap text-emerald-700 dark:text-emerald-400 font-medium">
-                              Done {formatTimestamp(task.completedAt)}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-
-                      {canManageTasks ? (
-                        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                          {(task.status === 'pending' || requiresSupervisorAssignment) && (
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors focus-visible:ring-2 focus-visible:ring-primary min-h-[30px]"
-                              onClick={() => openEditTaskModal(task)}
-                              title={requiresSupervisorAssignment ? 'Assign task' : 'Edit task'}
-                              aria-label={`${requiresSupervisorAssignment ? 'Assign' : 'Edit'} task for ${resolveDeviceLabel(task.deviceId)}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                              <span>{requiresSupervisorAssignment ? 'Assign' : 'Edit'}</span>
-                            </button>
                           )}
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors focus-visible:ring-2 focus-visible:ring-rose-500 min-h-[30px]"
-                            onClick={() => openDeleteTaskModal(task)}
-                            title="Delete task"
-                            aria-label={`Delete task for ${resolveDeviceLabel(task.deviceId)}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>Delete</span>
-                          </button>
+                          {formattedCategory && (
+                            <span className="inline-flex items-center rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 capitalize whitespace-nowrap">
+                              {formattedCategory.toLowerCase().includes('issue') ||
+                              formattedCategory.toLowerCase().includes('report')
+                                ? formattedCategory
+                                : `${formattedCategory} Issue`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <p className="break-words text-sm font-medium text-slate-900 dark:text-slate-100 leading-relaxed">
+                        {parsedMessage.cleanMessage || task.message || 'No message provided'}
+                      </p>
+
+                      {(isFlagged || task.flagReason) ? (
+                        <div className="mt-3 rounded-lg border border-rose-300 bg-rose-50/90 p-3 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                          <div className="flex items-center gap-1.5 font-bold mb-1 text-rose-900 dark:text-rose-200">
+                            <Flag className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" aria-hidden="true" />
+                            <span>Flagged Reason:</span>
+                          </div>
+                          <p className="leading-relaxed font-medium">
+                            {task.flagReason || 'Flagged during quality inspection — requires maintenance re-check.'}
+                          </p>
+                          {task.inspectedByName ? (
+                            <p className="mt-1.5 text-[11px] text-rose-800 dark:text-rose-300 flex items-center gap-1">
+                              <span>
+                                Inspected by <strong className="font-semibold">{task.inspectedByName}</strong>
+                              </span>
+                              {task.inspectedAt ? <span>· {formatTimestamp(task.inspectedAt)}</span> : null}
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
+
+                    {/* Zone 3: Footer, Progressive Timeline & Actions */}
+                    {(() => {
+                      const isUnassigned =
+                        task.status === 'unassigned' ||
+                        (task.requiresSupervisorAssignment &&
+                          (!task.assignedToIds || task.assignedToIds.length === 0) &&
+                          !task.assignedTo);
+                      const assignedName = isUnassigned
+                        ? 'Unassigned (Pending supervisor dispatch)'
+                        : resolveAssignedName(task.assignedTo, task.assignedToIds);
+                      const singleAssigneeInitials =
+                        !isUnassigned &&
+                        assignedName &&
+                        assignedName !== 'All maintenance team' &&
+                        !assignedName.includes(',')
+                          ? getInitials(assignedName)
+                          : null;
+
+                      return (
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                          <div className="flex flex-col gap-2 min-w-0">
+                            {/* Assignee Details with Avatar / Initials */}
+                            <div className="flex items-center gap-2">
+                              {isUnassigned ? (
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 ring-1 ring-violet-300 dark:ring-violet-700 shrink-0">
+                                  <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                                </div>
+                              ) : singleAssigneeInitials ? (
+                                <div
+                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary dark:bg-primary/25 dark:text-rose-300 ring-1 ring-primary/30 shrink-0"
+                                  aria-hidden="true"
+                                >
+                                  {singleAssigneeInitials}
+                                </div>
+                              ) : (
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-600 shrink-0">
+                                  <User className="h-3.5 w-3.5" aria-hidden="true" />
+                                </div>
+                              )}
+                              <span className="truncate">
+                                {isUnassigned ? (
+                                  <span className="font-semibold text-violet-700 dark:text-violet-300">
+                                    {assignedName}
+                                  </span>
+                                ) : (
+                                  <>
+                                    Assigned to{' '}
+                                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                      {assignedName}
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Chronological Progressive Timeline */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span
+                                className="inline-flex items-center gap-1 whitespace-nowrap"
+                                title={formatTimestamp(task.createdAt)}
+                              >
+                                <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                                <span>Created {formatRelativeTimestamp(task.createdAt)}</span>
+                              </span>
+
+                              {task.acknowledgedAt ? (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600 font-bold" aria-hidden="true">→</span>
+                                  <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 font-medium whitespace-nowrap">
+                                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>Ack {formatTimestamp(task.acknowledgedAt)}</span>
+                                    {getAcknowledgementProgress(task) ? (
+                                      <span className="ml-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                                        ({getAcknowledgementProgress(task)})
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </>
+                              ) : getAcknowledgementProgress(task) ? (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600 font-bold" aria-hidden="true">→</span>
+                                  <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                                    <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>{getAcknowledgementProgress(task)}</span>
+                                  </span>
+                                </>
+                              ) : null}
+
+                              {requiresSupervisorAssignment ? (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600 font-bold" aria-hidden="true">→</span>
+                                  <span className="inline-flex items-center gap-1 font-semibold text-violet-700 dark:text-violet-300 whitespace-nowrap">
+                                    <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>Retry {task.autoAssignmentEligibleAt
+                                      ? formatTimestamp(task.autoAssignmentEligibleAt)
+                                      : 'pending'}</span>
+                                  </span>
+                                </>
+                              ) : null}
+
+                              {task.completedAt ? (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600 font-bold" aria-hidden="true">→</span>
+                                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium whitespace-nowrap">
+                                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>Done {formatTimestamp(task.completedAt)}</span>
+                                  </span>
+                                </>
+                              ) : null}
+
+                              {isFlagged ? (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600 font-bold" aria-hidden="true">→</span>
+                                  <span className="inline-flex items-center gap-1 text-rose-700 dark:text-rose-400 font-semibold whitespace-nowrap">
+                                    <Flag className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>Flagged {task.inspectedAt ? formatTimestamp(task.inspectedAt) : 'for review'}</span>
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {canManageTasks ? (
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {(task.status === 'pending' || requiresSupervisorAssignment) && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] min-w-[44px]"
+                                  onClick={() => openEditTaskModal(task)}
+                                  title={requiresSupervisorAssignment ? 'Assign task' : 'Edit task'}
+                                  aria-label={`${requiresSupervisorAssignment ? 'Assign' : 'Edit'} task for ${resolveDeviceLabel(task.deviceId, task.deviceLabel)}`}
+                                >
+                                  <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                  <span>{requiresSupervisorAssignment ? 'Assign' : 'Edit'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 shadow-xs hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900/60 dark:bg-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/50 dark:hover:text-rose-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 min-h-[44px] min-w-[44px]"
+                                onClick={() => openDeleteTaskModal(task)}
+                                title="Delete task"
+                                aria-label={`Delete task for ${resolveDeviceLabel(task.deviceId, task.deviceLabel)}`}
+                              >
+                                <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
