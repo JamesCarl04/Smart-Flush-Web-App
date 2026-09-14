@@ -257,7 +257,8 @@ function normalizeAssigneeSelection(
 
 export function MaintenanceTaskPanel() {
   const searchParams = useSearchParams();
-  const targetTaskId = searchParams?.get('taskId') ?? null;
+  const rawTargetTaskId = searchParams?.get('taskId');
+  const targetTaskId = rawTargetTaskId?.trim() || null;
   const { user, loading: authLoading } = useAuth();
   const {
     tasks,
@@ -278,20 +279,42 @@ export function MaintenanceTaskPanel() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const [missingTaskNotice, setMissingTaskNotice] = useState<string | null>(null);
   const scrolledTaskIdRef = useRef<string | null>(null);
+  const dismissedMissingTaskIdRef = useRef<string | null>(null);
 
-  // Auto-scroll and Messenger-style motion flash when targeted via query param
+  const handleDismissMissingTaskNotice = useCallback(() => {
+    setMissingTaskNotice(null);
+    if (targetTaskId) {
+      dismissedMissingTaskIdRef.current = targetTaskId;
+    }
+  }, [targetTaskId]);
+
+  // Auto-scroll and Messenger-style motion flash when targeted via query param, or show missing task banner
   useEffect(() => {
-    if (!targetTaskId || tasksLoading || tasks.length === 0) {
+    if (!targetTaskId) {
+      setMissingTaskNotice(null);
+      dismissedMissingTaskIdRef.current = null;
+      scrolledTaskIdRef.current = null;
       return;
     }
 
-    if (scrolledTaskIdRef.current === targetTaskId) {
+    if (tasksLoading) {
       return;
     }
 
     const targetTask = tasks.find((t) => t.id === targetTaskId);
     if (!targetTask) {
+      if (dismissedMissingTaskIdRef.current !== targetTaskId) {
+        setMissingTaskNotice(targetTaskId);
+      }
+      return;
+    }
+
+    // Found target task - clear missing notice
+    setMissingTaskNotice(null);
+
+    if (scrolledTaskIdRef.current === targetTaskId) {
       return;
     }
 
@@ -1076,6 +1099,38 @@ export function MaintenanceTaskPanel() {
               )}
             </div>
           </div>
+
+          {/* Missing Targeted Task Alert Banner */}
+          {missingTaskNotice && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900 shadow-xs dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200 animate-fade-in"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/20 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-400">
+                  <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div className="space-y-0.5 pt-0.5 text-xs sm:text-sm">
+                  <p className="font-bold text-amber-950 dark:text-amber-100">
+                    Task Not Found
+                  </p>
+                  <p className="text-amber-800 dark:text-amber-300/90">
+                    The task (ID:{' '}
+                    <span className="font-mono font-semibold">{missingTaskNotice}</span>
+                    ) could not be found. It may have been deleted or archived.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissMissingTaskNotice}
+                aria-label="Dismiss task not found notice"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 text-amber-700 hover:bg-amber-500/20 hover:text-amber-950 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/20 dark:hover:text-amber-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
 
           {/* ── FILTER & SEARCH BAR ──────────────────────────────────── */}
           {!tasksLoading && !isForbiddenError && tasks.length > 0 && (
