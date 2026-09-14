@@ -86,6 +86,7 @@ export type TaskTriggerType =
 export interface Task {
   id: string;
   deviceId: string;
+  deviceLabel?: string;
   triggerType: TaskTriggerType;
   message: string;
   assignedTo?: string | null;
@@ -113,7 +114,7 @@ export interface Task {
   completedAt?: number | null;
   acknowledgedBy?: Record<string, number>;
   completedBy?: Record<string, number>;
-  createdBy: string;
+  createdBy?: string;
   location?: string;
   restroomName?: string;
   floor?: string;
