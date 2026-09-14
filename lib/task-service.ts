@@ -110,12 +110,12 @@ export function serializeTaskData(
 
   if (data.submissions && typeof data.submissions === 'object') {
     for (const [subUid, sub] of Object.entries(
-      data.submissions as Record<string, any>,
+      data.submissions as Record<string, unknown>,
     )) {
       if (subUid && !completedByMap[subUid]) {
         const subCompletedAt =
-          sub && typeof sub === 'object'
-            ? timestampToMillis(sub.completedAt)
+          sub && typeof sub === 'object' && 'completedAt' in sub
+            ? timestampToMillis((sub as Record<string, unknown>).completedAt)
             : null;
         completedByMap[subUid] =
           subCompletedAt ?? timestampToMillis(data.completedAt) ?? Date.now();
@@ -176,6 +176,10 @@ export function serializeTaskData(
       data.taskOrigin === 'automation' || data.taskOrigin === 'manual' || data.taskOrigin === 'public_report'
         ? data.taskOrigin
         : undefined,
+    issueReportId: nullableString(data.issueReportId) ?? undefined,
+    issueReportReferenceCode: nullableString(data.issueReportReferenceCode) ?? undefined,
+    referenceCode: nullableString(data.referenceCode) ?? undefined,
+    reportCategory: nullableString(data.reportCategory) ?? undefined,
     createdAt: timestampToMillis(data.createdAt),
     assignedAt: timestampToMillis(data.assignedAt),
     acknowledgedAt: timestampToMillis(data.acknowledgedAt),

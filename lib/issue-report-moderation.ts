@@ -80,6 +80,7 @@ export function safeSerializeIssueReport(
   data: Record<string, unknown>,
   submissions: SubmissionShape[],
 ): Record<string, unknown> {
+  const referenceCode = text(data.referenceCode) ?? `IR-${id.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`;
   const device = data.device && typeof data.device === 'object'
     ? data.device as Record<string, unknown>
     : {};
@@ -104,7 +105,7 @@ export function safeSerializeIssueReport(
   }));
   return {
     id,
-    referenceCode: text(data.referenceCode),
+    referenceCode,
     deviceId: text(data.deviceId),
     device: {
       id: text(device.id),
@@ -144,13 +145,14 @@ export async function listIssueReports(status: IssueReportStatus): Promise<Recor
   return values.sort((left, right) => Number(right.lastReportedAt ?? 0) - Number(left.lastReportedAt ?? 0));
 }
 
-function taskDescription(category: string, categories: string[], descriptions: string[]): string {
+function taskDescription(category: string, categories: string[], descriptions: string[], referenceCode?: string | null): string {
   const approved = descriptions.find((value) => value.trim())?.trim();
   const allCategories = categories.length > 0 ? categories : [category];
   const formattedCategories = allCategories.map((c) => c.replaceAll('_', ' ')).join(', ');
+  const ticketPrefix = referenceCode ? `[Ticket #${referenceCode}] ` : '';
   return approved
-    ? `[${formattedCategories}] ${approved}`
-    : `Investigate administrator-confirmed report: ${formattedCategories}.`;
+    ? `${ticketPrefix}[${formattedCategories}] ${approved}`
+    : `${ticketPrefix}Investigate administrator-confirmed report: ${formattedCategories}.`;
 }
 
 function technicianFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): AvailableTechnician | null {
@@ -200,6 +202,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       : [category];
     const descriptions = submissionsSnapshot.docs.map((doc) => text(doc.data().description)).filter((value): value is string => value !== null);
     const assignedToIds = selected ? [selected.id] : [];
+    const code = text(report.referenceCode) ?? `IR-${reportId.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`;
     const task: TaskDoc = {
       id: candidateTaskRef.id,
       deviceId: text(report.deviceId) ?? 'unknown',
@@ -208,7 +211,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       floor: text(device.floor),
       location: text(device.location),
       triggerType: 'student_report',
-      message: taskDescription(category, categories, descriptions),
+      message: taskDescription(category, categories, descriptions, code),
       status: selected ? 'assigned' : 'unassigned',
       assignedTo: selected?.id ?? null,
       assignedToIds,
@@ -220,6 +223,8 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       latestOccurrenceAt: Timestamp.fromMillis(millis(report.lastReportedAt) ?? now.toMillis()),
       taskOrigin: 'public_report',
       issueReportId: reportId,
+      issueReportReferenceCode: code,
+      referenceCode: code,
       reportCategory: category,
       createdAt: now,
       assignedAt: selected ? now : null,
@@ -237,6 +242,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       reviewedBy: reviewer.uid,
       reviewerEmail: reviewer.email ?? null,
       reviewedAt: now,
+      ...(!text(report.referenceCode) ? { referenceCode: code } : {}),
     });
     const deviceId = text(report.deviceId);
     if (deviceId) transaction.delete(adminDb.collection('publicIssueReportOpenKeys').doc(createOpenKey(deviceId)));

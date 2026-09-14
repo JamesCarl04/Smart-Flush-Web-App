@@ -1,12 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ExternalLink, Ticket } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 
 type Status = 'pending_review' | 'confirmed' | 'dismissed';
 interface IssueReportView {
   id: string;
+  referenceCode: string;
   deviceId: string | null;
   device: { name: string | null; location: string | null; building: string | null; floor: string | null };
   category: string | null;
@@ -29,6 +32,7 @@ interface IssueReportView {
 const STATUS_LABELS: Record<Status, string> = {
   pending_review: 'Pending', confirmed: 'Confirmed', dismissed: 'Dismissed',
 };
+const ALL_STATUSES: Status[] = ['pending_review', 'confirmed', 'dismissed'];
 
 function formatTime(value: number | null): string {
   return value != null ? new Date(value).toLocaleString(undefined, {
@@ -43,7 +47,6 @@ function categoryLabel(value: string | null): string {
 export default function IssueReportsPage() {
   const { user, role, roleLoading, roleError } = useAuth();
   const [status, setStatus] = useState<Status>('pending_review');
-  const ALL_STATUSES: Status[] = ['pending_review', 'confirmed', 'dismissed'];
   const [reportsByStatus, setReportsByStatus] = useState<Record<Status, IssueReportView[]>>({
     pending_review: [],
     confirmed: [],
@@ -111,9 +114,13 @@ export default function IssueReportsPage() {
 
   const mutate = async (path: string, body?: Record<string, unknown>) => {
     if (!user || role !== 'admin') return;
-    await apiFetch(path, user, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
-    window.dispatchEvent(new Event('issue-reports:refresh'));
-    await load(status);
+    try {
+      await apiFetch(path, user, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
+      window.dispatchEvent(new Event('issue-reports:refresh'));
+      await load(status);
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : 'Failed to perform moderation action');
+    }
   };
 
   const viewEvidence = async (reportId: string, submissionId: string) => {
@@ -161,29 +168,59 @@ export default function IssueReportsPage() {
       {error ? <p role="alert" className="text-rose-600">{error}</p> : null}
       {isStatusLoaded && reports.length === 0 ? <p className="rounded-xl border p-8 text-center text-slate-500">No {STATUS_LABELS[status].toLowerCase()} reports.</p> : null}
       <div className="grid gap-4">
-        {reports.map((report) => (
-          <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h2 className="font-semibold">{report.device.name ?? report.deviceId}</h2><p className="text-sm text-slate-500">{report.device.location ?? [report.device.floor, report.device.building].filter(Boolean).join(', ')}</p></div>
-              <div className="flex flex-wrap gap-1.5">
-                {((report.categories && report.categories.length > 0) ? report.categories : [report.category]).map((cat) => (
-                  <span key={cat ?? 'other'} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold capitalize text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                    {categoryLabel(cat)}
-                  </span>
-                ))}
+        {reports.map((report) => {
+          const ticketCode = report.referenceCode || `IR-${report.id.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`;
+          return (
+            <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-200/80 bg-rose-50 px-2.5 py-0.5 font-mono text-xs font-bold text-[#B5121B] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+                      <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
+                      Ticket #{ticketCode}
+                    </span>
+                  </div>
+                  <h2 className="font-semibold">{report.device.name ?? report.deviceId}</h2>
+                  <p className="text-sm text-slate-500">{report.device.location ?? [report.device.floor, report.device.building].filter(Boolean).join(', ')}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {((report.categories && report.categories.length > 0) ? report.categories : [report.category]).map((cat) => (
+                    <span key={cat ?? 'other'} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold capitalize text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                      {categoryLabel(cat)}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-              <div><dt className="text-slate-500">Urgency</dt><dd className="font-medium">{report.confirmationCount >= 3 ? 'High' : report.confirmationCount === 2 ? 'Medium' : 'Normal'}</dd></div>
-              <div><dt className="text-slate-500">Confirmations</dt><dd className="font-medium">{report.confirmationCount}</dd></div>
-              <div><dt className="text-slate-500">First / last</dt><dd className="text-xs">{formatTime(report.firstReportedAt)}<br />{formatTime(report.lastReportedAt)}</dd></div>
-            </dl>
-            {report.descriptions.map((description, index) => <p key={index} className="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">{description}</p>)}
-            {report.submissions?.length ? <div className="mt-4 space-y-2">{report.submissions.map((submission) => <div key={submission.submissionId} className="rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-700"><p className="font-semibold">{submission.photoCaptureStatus === 'captured' ? 'Photo captured' : 'Submitted without photo'}</p>{submission.photoCaptureStatus === 'captured' ? <p className="mt-1 text-slate-500">Photo time: {formatTime(submission.photoCapturedAt)}</p> : null}<p className="mt-1 text-slate-500">Submitted: {formatTime(submission.submittedAt)}</p></div>)}</div> : null}
-            {report.evidence.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">{report.evidence.map((item) => <button key={item.submissionId} onClick={() => void viewEvidence(report.id, item.submissionId)} className="rounded-lg border px-3 py-2 text-xs font-medium">View Photo ({Math.ceil(item.size / 1024)} KB)</button>)}</div> : null}
-            {status === 'pending_review' ? <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => void mutate(`/api/issue-reports/${report.id}/confirm`)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Confirm and create task</button><button onClick={() => void mutate(`/api/issue-reports/${report.id}/dismiss`, { reason: 'unable_to_verify' })} className="rounded-lg border px-4 py-2 text-sm font-semibold">Dismiss</button></div> : null}
-          </article>
-        ))}
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+                <div><dt className="text-slate-500">Ticket #</dt><dd className="font-mono font-medium">{ticketCode}</dd></div>
+                <div><dt className="text-slate-500">Urgency</dt><dd className="font-medium">{report.confirmationCount >= 3 ? 'High' : report.confirmationCount === 2 ? 'Medium' : 'Normal'}</dd></div>
+                <div><dt className="text-slate-500">Confirmations</dt><dd className="font-medium">{report.confirmationCount}</dd></div>
+                <div><dt className="text-slate-500">First / last</dt><dd className="text-xs">{formatTime(report.firstReportedAt)}<br />{formatTime(report.lastReportedAt)}</dd></div>
+              </dl>
+              {report.descriptions.map((description, index) => <p key={index} className="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">{description}</p>)}
+              {report.submissions?.length ? <div className="mt-4 space-y-2">{report.submissions.map((submission) => <div key={submission.submissionId} className="rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-700"><p className="font-semibold">{submission.photoCaptureStatus === 'captured' ? 'Photo captured' : 'Submitted without photo'}</p>{submission.photoCaptureStatus === 'captured' ? <p className="mt-1 text-slate-500">Photo time: {formatTime(submission.photoCapturedAt)}</p> : null}<p className="mt-1 text-slate-500">Submitted: {formatTime(submission.submittedAt)}</p></div>)}</div> : null}
+              {report.evidence.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">{report.evidence.map((item) => <button key={item.submissionId} onClick={() => void viewEvidence(report.id, item.submissionId)} className="rounded-lg border px-3 py-2 text-xs font-medium">View Photo ({Math.ceil(item.size / 1024)} KB)</button>)}</div> : null}
+              {status === 'pending_review' ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={() => void mutate(`/api/issue-reports/${report.id}/confirm`)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Confirm and create task</button>
+                  <button onClick={() => void mutate(`/api/issue-reports/${report.id}/dismiss`, { reason: 'unable_to_verify' })} className="rounded-lg border px-4 py-2 text-sm font-semibold">Dismiss</button>
+                </div>
+              ) : null}
+              {report.linkedTaskId ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/tasks?taskId=${encodeURIComponent(report.linkedTaskId)}`}
+                    className="tactile-btn inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-xs transition-all hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-900/50"
+                    aria-label={`View task for ticket ${ticketCode}`}
+                  >
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    View Task
+                  </Link>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
     </section>
   );

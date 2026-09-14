@@ -103,4 +103,170 @@ describe('issue reports page authority gate', () => {
     // Ensure "Loading reports…" never appears
     expect(screen.queryByText(/loading reports/i)).toBeNull();
   });
+
+  it('prominently displays ticket number and dl item for reports', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockResolvedValue({
+      success: true,
+      data: [{
+        id: 'rep-456',
+        referenceCode: 'IR-CUSTOM456',
+        deviceId: 'stall-1',
+        category: 'leak',
+        confirmationCount: 1,
+        firstReportedAt: 100,
+        lastReportedAt: 200,
+        descriptions: ['Water leaking from pipe'],
+        evidence: [],
+        device: { name: 'Stall 1', location: '1F Restroom' },
+        status: 'pending_review',
+      }],
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    await waitFor(() => expect(screen.getByText('Ticket #IR-CUSTOM456')).toBeTruthy());
+    expect(screen.getByText('IR-CUSTOM456')).toBeTruthy();
+  });
+
+  it('falls back deterministically to IR-derived ticket when referenceCode is missing from API payload', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockResolvedValue({
+      success: true,
+      data: [{
+        id: 'rep_missing_code',
+        deviceId: 'stall-1',
+        category: 'leak',
+        confirmationCount: 1,
+        firstReportedAt: 100,
+        lastReportedAt: 200,
+        descriptions: ['Tap leaking'],
+        evidence: [],
+        device: { name: 'Stall 1', location: '1F Restroom' },
+        status: 'pending_review',
+      }],
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    // rep_missing_code -> REPMISSI
+    await waitFor(() => expect(screen.getByText('Ticket #IR-REPMISSI')).toBeTruthy());
+    expect(screen.getByText('IR-REPMISSI')).toBeTruthy();
+  });
+
+  it('renders View Task button with icon and link to /tasks?taskId=... when linkedTaskId is present', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('confirmed')) {
+        return Promise.resolve({
+          success: true,
+          data: [{
+            id: 'rep-confirmed-1',
+            referenceCode: 'IR-CONF1234',
+            deviceId: 'stall-5',
+            category: 'water_leak',
+            confirmationCount: 2,
+            firstReportedAt: 100,
+            lastReportedAt: 200,
+            descriptions: ['Confirmed water leak'],
+            evidence: [],
+            device: { name: 'Stall 5', location: '5F Restroom' },
+            status: 'confirmed',
+            linkedTaskId: 'task-flushing-789',
+          }],
+        });
+      }
+      return Promise.resolve({ success: true, data: [] });
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    const confirmedTab = screen.getByRole('tab', { name: /confirmed/i });
+    await act(async () => {
+      fireEvent.click(confirmedTab);
+    });
+
+    await waitFor(() => expect(screen.getByText('Ticket #IR-CONF1234')).toBeTruthy());
+
+    const viewTaskLink = screen.getByRole('link', { name: /view task/i });
+    expect(viewTaskLink).toBeTruthy();
+    expect(viewTaskLink.getAttribute('href')).toBe('/tasks?taskId=task-flushing-789');
+    expect(viewTaskLink.getAttribute('aria-label')).toBe('View task for ticket IR-CONF1234');
+    expect(viewTaskLink.className).toContain('min-h-[44px]');
+  });
+
+  it('does not render View Task button when linkedTaskId is null or undefined', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockResolvedValue({
+      success: true,
+      data: [{
+        id: 'rep-pending-only',
+        referenceCode: 'IR-PEND999',
+        deviceId: 'stall-1',
+        category: 'no_water',
+        confirmationCount: 1,
+        firstReportedAt: 100,
+        lastReportedAt: 200,
+        descriptions: ['No water'],
+        evidence: [],
+        device: { name: 'Stall 1', location: '1F Restroom' },
+        status: 'pending_review',
+      }],
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    await waitFor(() => expect(screen.getByText('Ticket #IR-PEND999')).toBeTruthy());
+    expect(screen.queryByRole('link', { name: /view task/i })).toBeNull();
+  });
+
+  it('displays error state when mutate action fails', async () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'admin-1' }, role: 'admin', roleLoading: false, roleError: null });
+    mockApiFetch.mockImplementation((url: string, _user: unknown, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        return Promise.reject(new Error('Moderation network failure'));
+      }
+      return Promise.resolve({
+        success: true,
+        data: [{
+          id: 'rep-fail',
+          referenceCode: 'IR-FAIL123',
+          deviceId: 'stall-1',
+          category: 'leak',
+          confirmationCount: 1,
+          firstReportedAt: 100,
+          lastReportedAt: 200,
+          descriptions: ['Leak'],
+          evidence: [],
+          device: { name: 'Stall 1', location: '1F' },
+          status: 'pending_review',
+        }],
+      });
+    });
+
+    await act(async () => {
+      render(<IssueReportsPage />);
+    });
+
+    await waitFor(() => expect(screen.getByText('Ticket #IR-FAIL123')).toBeTruthy());
+    const confirmBtn = screen.getByRole('button', { name: /confirm and create task/i });
+
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+      expect(screen.getByText('Moderation network failure')).toBeTruthy();
+    });
+  });
 });
+

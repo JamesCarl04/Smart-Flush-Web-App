@@ -23,10 +23,10 @@ describe('findAvailableMaintenancePersonnel', () => {
     mockGet
       .mockResolvedValueOnce({
         docs: [
-          { id: 'available', data: () => ({ displayName: 'Ava', isOnline: true }) },
-          { id: 'busy', data: () => ({ name: 'Ben', isOnline: true }) },
+          { id: 'available', data: () => ({ displayName: 'Ava', isOnline: true, lastSeen: new Date() }) },
+          { id: 'busy', data: () => ({ name: 'Ben', isOnline: true, lastSeen: new Date() }) },
           { id: 'offline', data: () => ({ name: 'Ollie', status: 'offline' }) },
-          { id: 'stale-done', data: () => ({ name: 'Stale', isOnline: true }) },
+          { id: 'stale-done', data: () => ({ name: 'Stale', isOnline: true, lastSeen: new Date() }) },
         ],
       })
       .mockResolvedValueOnce({ docs: [
@@ -53,6 +53,7 @@ describe('findAvailableMaintenancePersonnel', () => {
               isAvailable: false, // Stale doc flag
               status: 'online',
               active: true,
+              lastSeen: new Date(),
             }),
           },
         ],
@@ -69,9 +70,9 @@ describe('findAvailableMaintenancePersonnel', () => {
     mockGet
       .mockResolvedValueOnce({
         docs: [
-          { id: 'tech-email', data: () => ({ email: 'busy@example.com', isOnline: true }) },
-          { id: 'tech-ack', data: () => ({ email: 'ack@example.com', isOnline: true }) },
-          { id: 'tech-free', data: () => ({ email: 'free@example.com', isOnline: true }) },
+          { id: 'tech-email', data: () => ({ email: 'busy@example.com', isOnline: true, lastSeen: new Date() }) },
+          { id: 'tech-ack', data: () => ({ email: 'ack@example.com', isOnline: true, lastSeen: new Date() }) },
+          { id: 'tech-free', data: () => ({ email: 'free@example.com', isOnline: true, lastSeen: new Date() }) },
         ],
       })
       .mockResolvedValueOnce({

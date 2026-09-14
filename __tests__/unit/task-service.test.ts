@@ -194,4 +194,32 @@ describe('serializeTaskSnapshot', () => {
     expect(result.recheckCount).toBe(1);
     expect(result.recheckedBy).toBe('tech-1');
   });
+
+  it('preserves student_report triggerType and public issue report ticket metadata', () => {
+    const reportTaskSnapshot = {
+      id: 'task-public-report',
+      data: () => ({
+        deviceId: 'toilet-05',
+        triggerType: 'student_report',
+        message: '[Ticket #IR-TICKET123] Tap not closing',
+        status: 'assigned',
+        taskOrigin: 'public_report',
+        issueReportId: 'rep-uuid-123',
+        issueReportReferenceCode: 'IR-TICKET123',
+        referenceCode: 'IR-TICKET123',
+        reportCategory: 'water_leak',
+        createdAt: { toMillis: () => 100_000 },
+        createdBy: 'admin:admin-1',
+      }),
+    } as unknown as FirebaseFirestore.QueryDocumentSnapshot;
+
+    const result = serializeTaskSnapshot(reportTaskSnapshot);
+    expect(result.triggerType).toBe('student_report');
+    expect(result.taskOrigin).toBe('public_report');
+    expect(result.issueReportId).toBe('rep-uuid-123');
+    expect(result.issueReportReferenceCode).toBe('IR-TICKET123');
+    expect(result.referenceCode).toBe('IR-TICKET123');
+    expect(result.reportCategory).toBe('water_leak');
+    expect(result.message).toContain('[Ticket #IR-TICKET123]');
+  });
 });

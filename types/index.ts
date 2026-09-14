@@ -80,7 +80,8 @@ export type TaskTriggerType =
   | 'hardware_failure'
   | 'sensor_fault'
   | 'water_overuse'
-  | 'water_no_flow';
+  | 'water_no_flow'
+  | 'student_report';
 
 export interface Task {
   id: string;
@@ -101,6 +102,11 @@ export interface Task {
   requiresSupervisorAssignment?: boolean;
   autoAssignmentEligibleAt?: number | null;
   cycleCountAtTrigger?: number;
+  taskOrigin?: 'automation' | 'manual' | 'public_report';
+  issueReportId?: string;
+  issueReportReferenceCode?: string;
+  referenceCode?: string;
+  reportCategory?: string;
   status: TaskStatus;
   createdAt: number;
   acknowledgedAt?: number | null;

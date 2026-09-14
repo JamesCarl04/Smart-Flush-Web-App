@@ -64,6 +64,8 @@ export interface TaskDoc {
   latestOccurrenceAt?: Timestamp | null;
   taskOrigin?: TaskOrigin;
   issueReportId?: string;
+  issueReportReferenceCode?: string;
+  referenceCode?: string;
   reportCategory?: string;
   createdAt: Timestamp;
   assignedAt?: Timestamp | null;
@@ -112,6 +114,10 @@ export interface TaskApiData {
   occurrenceCount?: number;
   latestOccurrenceAt?: number | null;
   taskOrigin?: TaskOrigin;
+  issueReportId?: string;
+  issueReportReferenceCode?: string;
+  referenceCode?: string;
+  reportCategory?: string;
   createdAt: number | null;
   assignedAt?: number | null;
   acknowledgedAt: number | null;

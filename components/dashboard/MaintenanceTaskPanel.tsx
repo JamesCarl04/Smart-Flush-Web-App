@@ -19,6 +19,7 @@ import {
   Search,
   ShieldAlert,
   Sparkles,
+  Ticket,
   Trash2,
   UserCheck,
   Wrench,
@@ -121,6 +122,13 @@ function getPriorityBadge(
         className:
           'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30',
         icon: <Wrench className="w-3.5 h-3.5" aria-hidden="true" />,
+      };
+    case 'student_report':
+      return {
+        label: 'Public Issue Report',
+        className:
+          'bg-rose-500/10 text-[#B5121B] dark:text-rose-300 border border-rose-500/30',
+        icon: <Ticket className="w-3.5 h-3.5" aria-hidden="true" />,
       };
     case 'manual':
     default:
@@ -656,9 +664,11 @@ export function MaintenanceTaskPanel() {
           task.assignedToIds,
         ).toLowerCase();
         const flagReason = (task.flagReason || '').toLowerCase();
+        const ticket = (task.referenceCode || task.issueReportReferenceCode || '').toLowerCase();
         return (
           deviceName.includes(q) ||
           msg.includes(q) ||
+          ticket.includes(q) ||
           assignee.includes(q) ||
           flagReason.includes(q)
         );
@@ -1277,6 +1287,12 @@ export function MaintenanceTaskPanel() {
                           {priority.icon}
                           <span>{priority.label}</span>
                         </span>
+                        {task.referenceCode || task.issueReportReferenceCode ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-rose-200/80 bg-rose-50 px-2.5 py-1 font-mono text-xs font-bold text-[#B5121B] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 whitespace-nowrap">
+                            <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>Ticket #{task.referenceCode || task.issueReportReferenceCode}</span>
+                          </span>
+                        ) : null}
                         {requiresSupervisorAssignment ? (
                           <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
                             <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />

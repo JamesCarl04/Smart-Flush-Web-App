@@ -113,6 +113,7 @@ const TRIGGER_LABELS: Record<TaskTriggerType, string> = {
   sensor_fault: 'Sensor Issue',
   water_overuse: 'High Water Usage',
   water_no_flow: 'No Water After Flush',
+  student_report: 'Public Issue Report',
 };
 
 export function getStatusBadge(status: TaskStatus) {
