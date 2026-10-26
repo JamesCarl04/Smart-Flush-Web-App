@@ -98,7 +98,9 @@ export default function DashboardLayout({
     try {
       await logout();
     } finally {
-      window.location.href = redirectQuery ? `/portal-admin/login?${redirectQuery}` : '/portal-admin/login';
+      window.location.href = typeof redirectQuery === 'string' && redirectQuery
+        ? `/portal-admin/login?${redirectQuery}`
+        : '/portal-admin/login';
     }
   }, [logout]);
 
@@ -296,7 +298,7 @@ export default function DashboardLayout({
               </div>
             </Link>
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               title="Sign Out"
               aria-label="Sign Out"
               className="shrink-0 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-colors dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-slate-800"
@@ -408,7 +410,7 @@ export default function DashboardLayout({
                   </div>
                 </Link>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => void handleLogout()}
                   title="Sign Out"
                   aria-label="Sign Out"
                   className="shrink-0 p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white dark:hover:bg-slate-800"
