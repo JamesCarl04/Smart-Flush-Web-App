@@ -37,7 +37,7 @@ describe('AuthContext authoritative role', () => {
     await waitFor(() => expect(result.current.roleLoading).toBe(false));
     expect(result.current.role).toBe('supervisor');
     expect(result.current.roleError).toBeNull();
-    expect(mockApiFetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ uid: 'u1' }));
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/auth/me?platform=web', expect.objectContaining({ uid: 'u1' }));
   });
 
   it('dispatches presence heartbeat on 60s interval and tab visibility change', async () => {

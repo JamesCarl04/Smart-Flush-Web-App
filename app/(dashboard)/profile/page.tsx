@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ShieldCheck,
@@ -9,8 +9,7 @@ import {
   CheckCircle2,
   Wrench,
 } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import type { NotificationPrefs } from '@/types';
 import packageInfo from '@/package.json';
@@ -35,6 +34,7 @@ const NOTIF_ROWS: {
 
 // ── Page Component ───────────────────────────────────────────────────────────
 export default function ProfilePage() {
+  const { role } = useAuth();
   const {
     user,
     notifPrefs,
@@ -42,56 +42,18 @@ export default function ProfilePage() {
     updateNotifications,
   } = useProfile();
 
-  const [userRole, setUserRole] = useState<string>('Admin');
-  const [_roleLoading, _setRoleLoading] = useState(true);
+  const userRole = useMemo(() => {
+    if (role === 'supervisor') return 'Supervisor';
+    if (role === 'maintenance' || role === 'technician') {
+      return 'Maintenance Technician';
+    }
+    return 'Admin';
+  }, [role]);
 
   // ── Per-toggle "Saved" feedback ──────────────────────────────────────────
   const [savedKey, setSavedKey] = useState<keyof NotificationPrefs | null>(
     null,
   );
-
-  // Fetch user role from Firestore
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchRole = async () => {
-      if (!user) {
-        if (!cancelled) {
-          setUserRole('Admin');
-          _setRoleLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (!cancelled && snap.exists()) {
-          const rawRole = (snap.data().role as string | undefined) ?? 'admin';
-          if (rawRole === 'admin') {
-            setUserRole('Admin');
-          } else if (rawRole === 'supervisor') {
-            setUserRole('Supervisor');
-          } else if (rawRole === 'maintenance' || rawRole === 'technician') {
-            setUserRole('Maintenance Technician');
-          } else {
-            setUserRole('Admin');
-          }
-        }
-      } catch (err) {
-        console.warn('[ProfilePage] Failed to fetch role:', err);
-      } finally {
-        if (!cancelled) {
-          _setRoleLoading(false);
-        }
-      }
-    };
-
-    void fetchRole();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
 
   // ── Notification toggle handler ──────────────────────────────────────────
   const handleToggle = async (key: keyof NotificationPrefs) => {

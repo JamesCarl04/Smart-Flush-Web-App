@@ -5,6 +5,7 @@ import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import {
   normalizeAssignedToIds,
 } from '@/lib/task-assignment';
+import { scheduleLinkedReportRetention } from '@/lib/issue-report-moderation';
 import { syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
 
 interface RouteParams {
@@ -17,6 +18,7 @@ interface TaskActionDoc {
   acknowledgedBy?: Record<string, unknown>;
   completedBy?: Record<string, unknown>;
   isBroadcast?: unknown;
+  issueReportId?: unknown;
 }
 
 export async function POST(
@@ -55,6 +57,13 @@ export async function POST(
       await syncTechniciansAfterTaskRelease(transaction, [user.uid], id, now);
       if (allCompleted) {
         await syncTechniciansAfterTaskRelease(transaction, requiredUserIds, id, now);
+        scheduleLinkedReportRetention(
+          transaction,
+          adminDb,
+          task,
+          now,
+          'linked_task_completed',
+        );
       }
       transaction.update(taskRef, {
         [`acknowledgedBy.${user.uid}`]: acknowledgedBy[user.uid],

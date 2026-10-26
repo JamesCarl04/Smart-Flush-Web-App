@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
 import {
   checkRateLimit,
@@ -811,6 +811,7 @@ async function saveReportMetadata(
 export async function POST(request: Request): Promise<NextResponse | Response> {
   try {
     const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
     const rateLimitKey = `report:${user.uid}`;
     const rateLimitCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.reports);
     if (!rateLimitCheck.success) {

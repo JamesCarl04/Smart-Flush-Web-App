@@ -36,21 +36,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRoleError(null);
       
       if (user) {
-        // Set lightweight session flag for edge middleware / proxy routing
-        Cookies.set('auth-token', '1', { expires: 7, path: '/', sameSite: 'lax' });
         setRoleLoading(true);
         void apiFetch<{ success: boolean; data?: { role?: UserRole | null }; error?: string }>(
-          '/api/auth/me',
+          '/api/auth/me?platform=web',
           user,
         ).then((response) => {
           if (generation !== currentGeneration) return;
           const authoritativeRole = response.success ? response.data?.role ?? null : null;
           setRole(authoritativeRole);
           setRoleError(response.success ? null : response.error ?? 'Failed to load account role');
+          if (authoritativeRole === 'admin') {
+            Cookies.set('auth-token', '1', {
+              expires: 7,
+              path: '/',
+              sameSite: 'lax',
+              secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+            });
+          } else {
+            Cookies.remove('auth-token', { path: '/' });
+          }
         }).catch((error) => {
           if (generation !== currentGeneration) return;
           setRole(null);
           setRoleError(error instanceof Error ? error.message : 'Failed to load account role');
+          Cookies.remove('auth-token', { path: '/' });
         }).finally(() => {
           if (generation === currentGeneration) setRoleLoading(false);
         });
@@ -63,9 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  // Periodic 60s presence heartbeat while user is authenticated and browser tab is visible
+  // Periodic 60s presence heartbeat while user is authenticated as an admin and browser tab is visible
   useEffect(() => {
-    if (!user) return;
+    if (!user || role !== 'admin') return;
 
     const sendHeartbeat = async (isOnline = true, status?: 'available' | 'offline') => {
       try {
@@ -104,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
-  }, [user]);
+  }, [user, role]);
 
   const logout = async () => {
     if (user) {

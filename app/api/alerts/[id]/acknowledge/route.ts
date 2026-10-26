@@ -1,7 +1,7 @@
 // app/api/alerts/[id]/acknowledge/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
 interface RouteParams {
@@ -14,7 +14,8 @@ export async function POST(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
     const { id } = await params;
 
     const docRef = adminDb.collection('alerts').doc(id);

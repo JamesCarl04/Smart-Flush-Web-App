@@ -63,8 +63,16 @@ export default function DashboardLayout({
   const { alerts = [], unreadCount = 0 } = useAlerts();
   const recentAlerts = (alerts || []).slice(0, 5);
 
-  const { tasks = [] } = useTasks();
-  const pendingTasksCount = (tasks || []).filter((t) => t.status === 'pending').length;
+  const { tasks = [], pendingCount = 0 } = useTasks();
+  const pendingTasksCount =
+    pendingCount ||
+    (tasks || []).filter(
+      (t) =>
+        t.status === 'pending' ||
+        t.status === 'unassigned' ||
+        t.status === 'assigned' ||
+        t.status === 'reassignment_needed',
+    ).length;
 
   useEffect(() => {
     if (!user || role !== 'admin' || roleLoading) {

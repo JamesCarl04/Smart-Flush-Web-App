@@ -91,6 +91,7 @@ export interface Task {
   message: string;
   assignedTo?: string | null;
   assignedToIds?: string[];
+  assignedToNames?: Record<string, string>;
   isBroadcast?: boolean;
   assignmentType?: 'broadcast' | 'individual' | 'team';
   automationRuleId?: string;
@@ -122,8 +123,17 @@ export interface Task {
   component?: string;
   remarks?: string;
   beforePhotoUrl?: string | null;
+  beforePhotoCapturedAt?: number | null;
   afterPhotoUrl?: string | null;
+  afterPhotoCapturedAt?: number | null;
+  additionalPhotos?: string[];
+  checklist?: Record<string, unknown>;
+  submissions?: Record<string, unknown>;
   workDuration?: number;
+  responseTime?: number;
+  totalTime?: number;
+  occurrenceCount?: number;
+  latestOccurrenceAt?: number | null;
   biometricVerified?: boolean;
   inspectionStatus?: 'pending_review' | 'approved' | 'flagged' | null;
   inspectedBy?: string | null;

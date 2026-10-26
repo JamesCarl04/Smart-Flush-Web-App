@@ -8,6 +8,7 @@ jest.mock('@/lib/firebase-admin', () => ({
 
 jest.mock('@/lib/auth-helpers', () => ({
   verifyAuthToken: jest.fn().mockResolvedValue({ uid: 'test-user' }),
+  requireSupervisorOrAdmin: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { GET as getDashboard } from '@/app/api/analytics/dashboard/route';

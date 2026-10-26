@@ -21,7 +21,7 @@ function getResetContinueUrl(request: Request): string {
   const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   const origin = configuredUrl || new URL(request.url).origin;
 
-  return new URL('/auth/reset-password', origin).toString();
+  return new URL('/portal-admin/reset-password', origin).toString();
 }
 
 function mapRequestError(message: string | undefined): string {

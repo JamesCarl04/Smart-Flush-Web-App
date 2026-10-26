@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import { scheduleLinkedReportRetention } from '@/lib/issue-report-moderation';
 import { syncTechniciansAfterTaskRelease } from '@/lib/task-lifecycle';
 
 interface ApproveBody {
@@ -88,6 +89,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       if (alreadyApproved) return 'already_approved' as const;
+
+      scheduleLinkedReportRetention(
+        transaction,
+        adminDb,
+        task,
+        { toMillis: () => Date.now() },
+        'linked_task_completed',
+      );
 
       transaction.update(taskRef, {
         ...(task.completedAt != null && task.status !== 'completed' ? { status: 'completed' } : {}),

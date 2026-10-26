@@ -17,30 +17,51 @@ interface SensorReading {
   sensorType: string;
   value: number;
   unit: string;
-  timestamp: { _seconds: number };
+  timestamp:
+    | { _seconds?: number; seconds?: number }
+    | number
+    | string
+    | null
+    | undefined;
+}
+
+function toActivityDate(timestamp: SensorReading['timestamp']): Date {
+  if (typeof timestamp === 'number') {
+    return new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  }
+  if (typeof timestamp === 'string') {
+    const parsed = new Date(timestamp);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (timestamp && typeof timestamp === 'object') {
+    const sec = timestamp._seconds ?? timestamp.seconds;
+    if (typeof sec === 'number') return new Date(sec * 1000);
+  }
+  return new Date();
 }
 
 function mapReadingToActivity(reading: SensorReading): ActivityEvent {
+  const eventTime = toActivityDate(reading.timestamp);
   switch (reading.sensorType) {
     case 'waterflow':
       return {
         id: reading.id,
         type: 'flushEvent',
-        timestamp: new Date(reading.timestamp._seconds * 1000),
+        timestamp: eventTime,
         details: `Flush: ${reading.value} ${reading.unit}`,
       };
     case 'ultrasonic':
       return {
         id: reading.id,
         type: 'lidEvent',
-        timestamp: new Date(reading.timestamp._seconds * 1000),
+        timestamp: eventTime,
         details: `Distance: ${reading.value} ${reading.unit}`,
       };
     default:
       return {
         id: reading.id,
         type: 'uvCycle',
-        timestamp: new Date(reading.timestamp._seconds * 1000),
+        timestamp: eventTime,
         details: `${reading.sensorType}: ${reading.value} ${reading.unit}`,
       };
   }

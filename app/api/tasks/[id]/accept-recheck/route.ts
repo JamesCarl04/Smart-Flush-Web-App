@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getUserRole, verifyAuthToken } from '@/lib/auth-helpers';
+import { getUserRole, requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
 
 interface RouteParams {
@@ -18,6 +18,7 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
     const role = await getUserRole(user);
     const { id: taskId } = await params;
 
@@ -44,43 +45,71 @@ export async function POST(
         : user.email?.split('@')[0] || 'Technician';
 
     const taskRef = adminDb.collection('tasks').doc(taskId);
-    const taskSnap = await taskRef.get();
-
-    if (!taskSnap.exists) {
-      return NextResponse.json(
-        { success: false, error: 'Task not found' },
-        { status: 404 },
-      );
-    }
-
-    const taskData = taskSnap.data();
-    if (taskData?.status !== 'flagged' && taskData?.inspectionStatus !== 'flagged') {
-      return NextResponse.json(
-        { success: false, error: 'Task is not in flagged state for recheck' },
-        { status: 400 },
-      );
-    }
-
     const userRef = adminDb.collection('users').doc(technicianUid);
 
-    await Promise.all([
-      taskRef.update({
+    await adminDb.runTransaction(async (transaction) => {
+      const taskSnap = await transaction.get(taskRef);
+
+      if (!taskSnap.exists) {
+        throw new Response(
+          JSON.stringify({ success: false, error: 'Task not found' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const taskData = taskSnap.data() || {};
+      if (taskData.status !== 'flagged' && taskData.inspectionStatus !== 'flagged') {
+        throw new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Task is not in flagged state for recheck',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (!isPrivileged) {
+        const assignedToIds = Array.isArray(taskData.assignedToIds)
+          ? (taskData.assignedToIds as string[])
+          : [];
+        const isAssignedToCaller =
+          taskData.assignedTo === user.uid ||
+          (user.email && taskData.assignedTo === user.email) ||
+          taskData.recheckedBy === user.uid ||
+          assignedToIds.includes(user.uid) ||
+          Boolean(taskData.isBroadcast);
+
+        if (!isAssignedToCaller) {
+          throw new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Forbidden: task is not assigned to this technician',
+            }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+
+      transaction.update(taskRef, {
         status: 'rechecking',
         recheckCount: FieldValue.increment(1),
         recheckedBy: technicianUid,
         recheckedByName: technicianName,
         recheckedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      }),
-      userRef.set(
+      });
+
+      transaction.set(
+        userRef,
         {
           currentTaskId: taskId,
+          status: 'on_task',
           isAvailable: false,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
-      ),
-    ]);
+      );
+    });
 
     return NextResponse.json({
       success: true,

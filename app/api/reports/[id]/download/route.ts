@@ -26,7 +26,7 @@ interface FlushEventDoc {
   deviceId: string;
   waterVolume: number;
   duration: number;
-  timestamp: Timestamp;
+  timestamp: unknown;
 }
 
 interface UVCycleDoc {
@@ -34,7 +34,41 @@ interface UVCycleDoc {
   deviceId: string;
   duration: number;
   completed: boolean;
-  timestamp: Timestamp;
+  timestamp: unknown;
+}
+
+function escapeCsvField(value: unknown): string {
+  const str = value === null || value === undefined ? '' : String(value);
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  if (/[",\n\r]/.test(neutralized)) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
+  }
+  return neutralized;
+}
+
+function toIsoStringSafe(value: unknown): string {
+  if (!value) return new Date(0).toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'number') {
+    return new Date(value < 1e12 ? value * 1000 : value).toISOString();
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+  }
+  if (typeof value === 'object') {
+    const record = value as {
+      toDate?: () => Date;
+      toMillis?: () => number;
+      _seconds?: number;
+      seconds?: number;
+    };
+    if (typeof record.toDate === 'function') return record.toDate().toISOString();
+    if (typeof record.toMillis === 'function') return new Date(record.toMillis()).toISOString();
+    if (typeof record._seconds === 'number') return new Date(record._seconds * 1000).toISOString();
+    if (typeof record.seconds === 'number') return new Date(record.seconds * 1000).toISOString();
+  }
+  return new Date(0).toISOString();
 }
 
 export async function GET(
@@ -90,16 +124,26 @@ export async function GET(
       const lines: string[] = [
         '--- FLUSH EVENTS ---',
         'id,deviceId,waterVolume,duration,timestamp',
-        ...flushEvents.map(
-          (event) =>
-            `${event.id},${event.deviceId},${event.waterVolume},${event.duration},${event.timestamp.toDate().toISOString()}`,
+        ...flushEvents.map((event) =>
+          [
+            escapeCsvField(event.id),
+            escapeCsvField(event.deviceId),
+            escapeCsvField(event.waterVolume),
+            escapeCsvField(event.duration),
+            escapeCsvField(toIsoStringSafe(event.timestamp)),
+          ].join(','),
         ),
         '',
         '--- UV CYCLES ---',
         'id,deviceId,duration,completed,timestamp',
-        ...uvCycles.map(
-          (c) =>
-            `${c.id},${c.deviceId},${c.duration},${c.completed},${c.timestamp.toDate().toISOString()}`,
+        ...uvCycles.map((c) =>
+          [
+            escapeCsvField(c.id),
+            escapeCsvField(c.deviceId),
+            escapeCsvField(c.duration),
+            escapeCsvField(c.completed),
+            escapeCsvField(toIsoStringSafe(c.timestamp)),
+          ].join(','),
         ),
       ];
       return new Response(lines.join('\n'), {
@@ -129,11 +173,11 @@ export async function GET(
         },
         flushEvents: flushEvents.map((event) => ({
           ...event,
-          timestamp: event.timestamp.toDate().toISOString(),
+          timestamp: toIsoStringSafe(event.timestamp),
         })),
         uvCycles: uvCycles.map((c) => ({
           ...c,
-          timestamp: c.timestamp.toDate().toISOString(),
+          timestamp: toIsoStringSafe(c.timestamp),
         })),
       };
       return new Response(JSON.stringify(json, null, 2), {
@@ -152,7 +196,7 @@ export async function GET(
       deviceId: event.deviceId,
       waterVolume: event.waterVolume,
       duration: event.duration,
-      timestamp: event.timestamp.toDate().toISOString(),
+      timestamp: toIsoStringSafe(event.timestamp),
     }));
 
     const uvRows: UVCycleRow[] = uvCycles.map((c) => ({
@@ -160,7 +204,7 @@ export async function GET(
       deviceId: c.deviceId,
       duration: c.duration,
       completed: c.completed,
-      timestamp: c.timestamp.toDate().toISOString(),
+      timestamp: toIsoStringSafe(c.timestamp),
     }));
 
     const pdfBuffer = await generatePDFBuffer(

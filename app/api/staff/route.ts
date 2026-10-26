@@ -146,6 +146,20 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    if (
+      typeof body.password === 'string' &&
+      body.password.trim().length > 0 &&
+      body.password.length < 12
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Custom password must be at least 12 characters',
+        },
+        { status: 400 },
+      );
+    }
+
     // Password: use provided password or generate secure random string
     const password =
       typeof body.password === 'string' && body.password.length >= 12
@@ -190,13 +204,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     let resetLink: string | null = null;
     let emailDispatched = false;
     if (sendPasswordReset) {
+      const emailResult = await dispatchPasswordResetEmail(email);
+      emailDispatched = emailResult.success;
       try {
         resetLink = await adminAuth.generatePasswordResetLink(email);
       } catch (linkError) {
         console.warn('[Staff API] Failed to generate password reset link:', linkError);
       }
-      const emailResult = await dispatchPasswordResetEmail(email);
-      emailDispatched = emailResult.success;
     }
 
     return NextResponse.json(

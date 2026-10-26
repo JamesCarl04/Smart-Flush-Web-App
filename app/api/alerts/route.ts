@@ -60,7 +60,8 @@ function timestampToMillis(value: AlertDoc['timestamp']): number {
 // GET /api/alerts?acknowledged=false
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
 
     const { searchParams } = new URL(request.url);
     const acknowledgedParam = searchParams.get('acknowledged');

@@ -2,7 +2,7 @@
 // GET /api/sensors/:id/readings?from=YYYY-MM-DD&to=YYYY-MM-DD
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import {
   getCachedSensorReadings,
   isQuotaExceededError,
@@ -76,7 +76,8 @@ export async function GET(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
     const { id } = await params;
 
     const { searchParams } = new URL(request.url);

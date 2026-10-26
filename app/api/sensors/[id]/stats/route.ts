@@ -2,7 +2,7 @@
 // GET /api/sensors/:id/stats — min/max/avg/count from today's readings
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -32,7 +32,8 @@ export async function GET(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
     const { id } = await params;
 
     const dateKey = todayKey();

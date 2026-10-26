@@ -5,6 +5,7 @@ import {
   RATE_LIMITS,
   createRateLimitResponse,
 } from '@/lib/rate-limit';
+import { validatePassword } from '@/lib/password-validator';
 
 interface PasswordResetConfirmBody {
   oobCode?: unknown;
@@ -62,6 +63,16 @@ export async function POST(request: Request): Promise<NextResponse> {
         { success: false, error: 'password must be at least 8 characters' },
         { status: 400 },
       );
+    }
+
+    if (newPassword.length >= 12) {
+      const validation = await validatePassword(newPassword);
+      if (!validation.valid) {
+        return NextResponse.json(
+          { success: false, error: validation.errors[0] || 'Password does not meet security requirements' },
+          { status: 400 },
+        );
+      }
     }
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;

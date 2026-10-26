@@ -18,7 +18,18 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (targetSnap.exists) {
       const userData = targetSnap.data() || {};
       const isActive = userData.active !== false && userData.isActive !== false;
-      if (isActive) {
+      const url = new URL(request.url);
+      const platform = url.searchParams.get('platform');
+      const isPlatformRoleMatch =
+        platform === 'web'
+          ? profile.role === 'admin'
+          : platform === 'mobile'
+            ? profile.role === 'supervisor' ||
+              profile.role === 'maintenance' ||
+              profile.role === 'technician'
+            : profile.role !== null;
+
+      if (isActive && isPlatformRoleMatch) {
         const currentStatus = userData.status;
         const targetStatus = currentStatus === 'on_task' ? 'on_task' : 'available';
         await targetRef.set(

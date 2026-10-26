@@ -5,33 +5,41 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isValidTaskImageWrite(fileName) {
+      return isAuthenticated()
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)')
+        && fileName.matches('^(before|after|flag|extra|proof)_[A-Za-z0-9_.-]+\\.(jpg|jpeg|png|webp)$');
+    }
+
     // Server-only uploads (public issue report evidence uploaded via Admin SDK)
     match /issue-report-evidence/{allPaths=**} {
       allow read, write: if false;
     }
 
-    // Task completion before & after proof photos
+    // Task completion before, after, and supervisor flag proof photos
     match /tasks/{taskId}/{fileName} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated()
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+      allow create, update: if isValidTaskImageWrite(fileName);
+      allow delete: if false;
     }
 
     match /task-proofs/{taskId}/{fileName} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated()
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+      allow create, update: if isValidTaskImageWrite(fileName);
+      allow delete: if false;
     }
 
     // Profile avatars and user assets
     match /avatars/{userId}/{fileName} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated()
+      allow create, update: if isAuthenticated()
         && request.auth.uid == userId
+        && request.resource != null
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
     }
   }
 }

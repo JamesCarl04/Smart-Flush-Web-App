@@ -10,6 +10,7 @@ import type { TaskDoc } from '@/lib/task-types';
 
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 const RETRY_MS = 60_000;
+const PRESENCE_TIMEOUT_MS = 2 * 60 * 1_000;
 const UNFINISHED_STATUSES = [
   'pending', 'unassigned', 'assigned', 'acknowledged', 'flagged', 'rechecking', 'reassignment_needed',
 ];
@@ -157,7 +158,20 @@ function taskDescription(category: string, categories: string[], descriptions: s
 
 function technicianFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): AvailableTechnician | null {
   const data = doc.data() as Record<string, unknown>;
-  if (data.isOnline === false || data.status === 'offline' || data.status === 'inactive' || data.isActive === false || data.isAvailable === false) return null;
+  if (
+    data.active === false ||
+    data.isActive === false ||
+    data.isOnline === false ||
+    data.status === 'offline' ||
+    data.status === 'inactive' ||
+    data.isAvailable === false
+  ) {
+    return null;
+  }
+  const lastSeenMillis = millis(data.lastSeen);
+  if (lastSeenMillis !== null && Date.now() - lastSeenMillis > PRESENCE_TIMEOUT_MS) {
+    return null;
+  }
   return {
     id: doc.id,
     displayName: text(data.displayName) ?? text(data.name) ?? text(data.email) ?? doc.id,
@@ -215,6 +229,7 @@ export async function confirmIssueReport(reportId: string, reviewer: ModerationR
       status: selected ? 'assigned' : 'unassigned',
       assignedTo: selected?.id ?? null,
       assignedToIds,
+      ...(selected ? { assignedToNames: { [selected.id]: selected.displayName } } : {}),
       isBroadcast: false,
       ...(selected ? { assignmentType: 'individual' as const, assignmentSource: 'initial_auto' as const } : {}),
       requiresSupervisorAssignment: !selected,

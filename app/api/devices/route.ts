@@ -1,7 +1,7 @@
 // app/api/devices/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin, requireMaintenance } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 
 interface CreateDeviceBody {
@@ -17,7 +17,8 @@ interface CreateDeviceBody {
 // GET /api/devices — list all devices
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
 
     const snapshot = await adminDb.collection('devices').get();
     const devices = snapshot.docs.map((doc) => {

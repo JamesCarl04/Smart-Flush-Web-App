@@ -54,6 +54,15 @@ function canEditTask(
     return true;
   }
 
+  if (
+    (task.status === 'assigned' ||
+      task.status === 'unassigned' ||
+      task.status === 'reassignment_needed') &&
+    (role === 'admin' || role === 'supervisor')
+  ) {
+    return true;
+  }
+
   return (
     task.status === 'unassigned' &&
     task.requiresSupervisorAssignment === true &&

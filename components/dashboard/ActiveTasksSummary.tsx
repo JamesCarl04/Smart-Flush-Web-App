@@ -89,15 +89,33 @@ export function ActiveTasksSummary() {
   const { tasks, loading } = useTasks();
 
   const stats = useMemo(() => {
-    const pending = tasks.filter((t) => t.status === 'pending').length;
-    const acknowledged = tasks.filter((t) => t.status === 'acknowledged').length;
+    const pending = tasks.filter(
+      (t) =>
+        t.status === 'pending' ||
+        t.status === 'unassigned' ||
+        t.status === 'assigned' ||
+        t.status === 'reassignment_needed' ||
+        t.status === 'flagged',
+    ).length;
+    const acknowledged = tasks.filter(
+      (t) => t.status === 'acknowledged' || t.status === 'rechecking',
+    ).length;
     const completed = tasks.filter((t) => t.status === 'completed').length;
     return { pending, acknowledged, completed, totalActive: pending + acknowledged };
   }, [tasks]);
 
   const activeTasks = useMemo(() => {
     return tasks
-      .filter((t) => t.status === 'pending' || t.status === 'acknowledged')
+      .filter(
+        (t) =>
+          t.status === 'pending' ||
+          t.status === 'unassigned' ||
+          t.status === 'assigned' ||
+          t.status === 'reassignment_needed' ||
+          t.status === 'flagged' ||
+          t.status === 'acknowledged' ||
+          t.status === 'rechecking',
+      )
       .slice(0, 3);
   }, [tasks]);
 

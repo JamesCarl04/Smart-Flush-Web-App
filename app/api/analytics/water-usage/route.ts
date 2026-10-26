@@ -1,12 +1,35 @@
 // app/api/analytics/water-usage/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
 
 interface FlushEventDoc {
   waterVolume: number;
-  timestamp: Timestamp;
+  timestamp: unknown;
+}
+
+function toDateSafe(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value < 1e12 ? value * 1000 : value);
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === 'object') {
+    const record = value as {
+      toDate?: () => Date;
+      toMillis?: () => number;
+      _seconds?: number;
+      seconds?: number;
+    };
+    if (typeof record.toDate === 'function') return record.toDate();
+    if (typeof record.toMillis === 'function') return new Date(record.toMillis());
+    if (typeof record._seconds === 'number') return new Date(record._seconds * 1000);
+    if (typeof record.seconds === 'number') return new Date(record.seconds * 1000);
+  }
+  return null;
 }
 
 interface WaterUsageDay {
@@ -18,7 +41,8 @@ interface WaterUsageDay {
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
@@ -48,7 +72,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     const grouped = new Map<string, number[]>();
     for (const doc of snap.docs) {
       const d = doc.data() as FlushEventDoc;
-      const date = d.timestamp.toDate().toISOString().slice(0, 10);
+      const parsedDate = toDateSafe(d.timestamp);
+      if (!parsedDate) continue;
+      const date = parsedDate.toISOString().slice(0, 10);
       const existing = grouped.get(date) ?? [];
       existing.push(d.waterVolume ?? 0);
       grouped.set(date, existing);

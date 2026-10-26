@@ -222,6 +222,33 @@ describe('auth-helpers', () => {
       expect(profile.email).toBe('test@example.com')
       expect(profile.displayName).toBe('Firebase User')
     })
+
+    it('should return role: null when user is deactivated via active: false or isActive: false', async () => {
+      const mockUser = createMockAuthToken({
+        uid: 'user-deactivated',
+        email: 'deactivated@example.com',
+      })
+
+      const mockCollectionRef = {
+        doc: jest.fn(() => ({
+          get: jest.fn().mockResolvedValue({
+            exists: true,
+            id: 'user-deactivated',
+            data: jest.fn(() => ({
+              role: 'admin',
+              active: false,
+              isActive: false,
+              email: 'deactivated@example.com',
+            })),
+          }),
+        })),
+      }
+
+      ;(adminDb.collection as jest.Mock).mockReturnValue(mockCollectionRef)
+
+      const profile = await getUserProfile(mockUser as any)
+      expect(profile.role).toBeNull()
+    })
   })
 
   describe('Role guards', () => {

@@ -594,7 +594,13 @@ export default function ReportsPage() {
   };
 
   const taskSummary = useMemo(() => {
-    const pendingFiltered = filteredTasks.filter((t) => t.status === 'pending').length;
+    const pendingFiltered = filteredTasks.filter(
+      (t) =>
+        t.status === 'pending' ||
+        t.status === 'unassigned' ||
+        t.status === 'assigned' ||
+        t.status === 'reassignment_needed',
+    ).length;
     return {
       totalTasks: filteredTasks.length,
       pendingNow: pendingFiltered,
@@ -1398,7 +1404,7 @@ function UsageTelemetryReportCanvas({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
-              {Object.entries(DEVICE_FACILITY_DIRECTORY).slice(0, 9).map(([devId, info]) => {
+              {Object.entries(DEVICE_FACILITY_DIRECTORY).map(([devId, info]) => {
                 const isPilot = info.isPilot === true;
                 return (
                   <tr

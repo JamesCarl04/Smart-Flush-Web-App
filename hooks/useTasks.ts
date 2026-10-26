@@ -60,11 +60,21 @@ function mapTask(data: Record<string, unknown>): Task | null {
     return null;
   }
 
+  const validTriggers: readonly TaskTriggerType[] = [
+    'manual',
+    'uv_complete',
+    'flush_count',
+    'maintenance',
+    'hardware_failure',
+    'sensor_fault',
+    'water_overuse',
+    'water_no_flow',
+    'student_report',
+  ];
   const triggerType: TaskTriggerType =
-    data.triggerType === 'uv_complete' ||
-    data.triggerType === 'flush_count' ||
-    data.triggerType === 'maintenance'
-      ? data.triggerType
+    typeof data.triggerType === 'string' &&
+    validTriggers.includes(data.triggerType as TaskTriggerType)
+      ? (data.triggerType as TaskTriggerType)
       : 'manual';
 
   const validStatuses: readonly TaskStatus[] = [
@@ -93,6 +103,8 @@ function mapTask(data: Record<string, unknown>): Task | null {
   return {
     id,
     deviceId: typeof data.deviceId === 'string' ? data.deviceId : 'Unknown',
+    deviceLabel:
+      typeof data.deviceLabel === 'string' ? data.deviceLabel : undefined,
     triggerType,
     message: typeof data.message === 'string' ? data.message : '',
     assignedTo:
@@ -100,6 +112,71 @@ function mapTask(data: Record<string, unknown>): Task | null {
     assignedToIds: Array.isArray(data.assignedToIds)
       ? data.assignedToIds.filter((item): item is string => typeof item === 'string')
       : [],
+    assignedToNames:
+      data.assignedToNames && typeof data.assignedToNames === 'object'
+        ? (data.assignedToNames as Record<string, string>)
+        : undefined,
+    isBroadcast:
+      typeof data.isBroadcast === 'boolean' ? data.isBroadcast : undefined,
+    assignmentType:
+      data.assignmentType === 'broadcast' ||
+      data.assignmentType === 'individual' ||
+      data.assignmentType === 'team'
+        ? data.assignmentType
+        : undefined,
+    assignmentSource:
+      data.assignmentSource === 'initial_auto' ||
+      data.assignmentSource === 'supervisor' ||
+      data.assignmentSource === 'retry_auto'
+        ? data.assignmentSource
+        : undefined,
+    requiresSupervisorAssignment:
+      typeof data.requiresSupervisorAssignment === 'boolean'
+        ? data.requiresSupervisorAssignment
+        : undefined,
+    autoAssignmentEligibleAt: data.autoAssignmentEligibleAt
+      ? toMillis(data.autoAssignmentEligibleAt)
+      : null,
+    automationRuleId:
+      typeof data.automationRuleId === 'string'
+        ? data.automationRuleId
+        : undefined,
+    automationTrigger:
+      data.automationTrigger === 'ultrasonic_sensor_fault' ||
+      data.automationTrigger === 'water_overuse' ||
+      data.automationTrigger === 'no_water_after_flush' ||
+      data.automationTrigger === 'maintenance_due'
+        ? data.automationTrigger
+        : undefined,
+    cycleCountAtTrigger:
+      typeof data.cycleCountAtTrigger === 'number'
+        ? data.cycleCountAtTrigger
+        : undefined,
+    occurrenceCount:
+      typeof data.occurrenceCount === 'number'
+        ? data.occurrenceCount
+        : undefined,
+    latestOccurrenceAt: data.latestOccurrenceAt
+      ? toMillis(data.latestOccurrenceAt)
+      : null,
+    taskOrigin:
+      data.taskOrigin === 'automation' ||
+      data.taskOrigin === 'manual' ||
+      data.taskOrigin === 'public_report'
+        ? data.taskOrigin
+        : undefined,
+    issueReportId:
+      typeof data.issueReportId === 'string' ? data.issueReportId : undefined,
+    issueReportReferenceCode:
+      typeof data.issueReportReferenceCode === 'string'
+        ? data.issueReportReferenceCode
+        : undefined,
+    referenceCode:
+      typeof data.referenceCode === 'string' ? data.referenceCode : undefined,
+    reportCategory:
+      typeof data.reportCategory === 'string'
+        ? data.reportCategory
+        : undefined,
     status,
     createdAt: toMillis(data.createdAt),
     acknowledgedAt: data.acknowledgedAt ? toMillis(data.acknowledgedAt) : null,
@@ -107,6 +184,38 @@ function mapTask(data: Record<string, unknown>): Task | null {
     acknowledgedBy: timestampMapToMillis(data.acknowledgedBy),
     completedBy: timestampMapToMillis(data.completedBy),
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'unknown',
+    remarks: typeof data.remarks === 'string' ? data.remarks : undefined,
+    beforePhotoUrl:
+      typeof data.beforePhotoUrl === 'string' ? data.beforePhotoUrl : null,
+    beforePhotoCapturedAt: data.beforePhotoCapturedAt
+      ? toMillis(data.beforePhotoCapturedAt)
+      : null,
+    afterPhotoUrl:
+      typeof data.afterPhotoUrl === 'string' ? data.afterPhotoUrl : null,
+    afterPhotoCapturedAt: data.afterPhotoCapturedAt
+      ? toMillis(data.afterPhotoCapturedAt)
+      : null,
+    additionalPhotos: Array.isArray(data.additionalPhotos)
+      ? data.additionalPhotos.filter((u): u is string => typeof u === 'string')
+      : undefined,
+    checklist:
+      data.checklist && typeof data.checklist === 'object'
+        ? (data.checklist as Record<string, unknown>)
+        : undefined,
+    submissions:
+      data.submissions && typeof data.submissions === 'object'
+        ? (data.submissions as Record<string, unknown>)
+        : undefined,
+    workDuration:
+      typeof data.workDuration === 'number' ? data.workDuration : undefined,
+    responseTime:
+      typeof data.responseTime === 'number' ? data.responseTime : undefined,
+    totalTime:
+      typeof data.totalTime === 'number' ? data.totalTime : undefined,
+    biometricVerified:
+      typeof data.biometricVerified === 'boolean'
+        ? data.biometricVerified
+        : undefined,
     inspectionStatus:
       data.inspectionStatus === 'approved' ||
       data.inspectionStatus === 'flagged' ||

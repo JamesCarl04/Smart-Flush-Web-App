@@ -1,6 +1,6 @@
 // app/api/devices/[id]/status/route.ts
 import { NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import { getDeviceConnectionState } from '@/lib/device-connection';
 
 interface RouteParams {
@@ -13,7 +13,8 @@ export async function GET(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
     const { id } = await params;
 
     const data = await getDeviceConnectionState(id);

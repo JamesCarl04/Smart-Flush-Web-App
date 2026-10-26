@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
 import * as admin from 'firebase-admin';
 import { adminDb, adminStorage } from '@/lib/firebase-admin';
+import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { resolveFirebaseAdminConfig } from '@/lib/firebase-admin-config';
 import {
   issueReportEvidenceExists,
@@ -189,12 +190,10 @@ export function createPublicIssueReportPostHandler(
     } catch (error) {
       if (error instanceof PublicIssueReportError) return errorResponse(error);
       console.error('[Public Reports] Intake failed:', error);
-      const details = error instanceof Error ? error.message : String(error);
       return NextResponse.json(
         {
           success: false,
           error: 'Unable to submit report',
-          details,
         },
         { status: 500 },
       );
@@ -203,20 +202,30 @@ export function createPublicIssueReportPostHandler(
 }
 
 export const POST = createPublicIssueReportPostHandler({
-  secret:
-    process.env.PUBLIC_REPORT_FINGERPRINT_SECRET ||
-    process.env.FIREBASE_ADMIN_PROJECT_ID ||
-    'klir-public-report-default-salt',
+  secret: process.env.PUBLIC_REPORT_FINGERPRINT_SECRET,
   trustedIpHeader: process.env.PUBLIC_REPORT_TRUSTED_IP_HEADER,
   submit: submitWithFirebase,
 });
 
 /**
  * Diagnostic health check endpoint:
- * Allows administrators and developers to inspect Firebase Admin initialization,
+ * Allows administrators to inspect Firebase Admin initialization,
  * Firestore connectivity, and storage bucket configuration in production.
  */
 export async function GET(request: Request) {
+  try {
+    const user = await verifyAuthToken(request);
+    await requireAdmin(user);
+  } catch (error) {
+    if (error instanceof Response) {
+      return new NextResponse(error.body, error);
+    }
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 },
+    );
+  }
+
   const { values, missing } = resolveFirebaseAdminConfig(process.env);
   const isAppInitialized = admin.apps.length > 0;
   let firestoreStatus = 'not_checked';

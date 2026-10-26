@@ -16,8 +16,12 @@ function readPresentationModeCookie() {
     .some((cookie) => cookie === `${COOKIE_NAME}=1`);
 }
 
+function isPresentationModeAllowed() {
+  return process.env.NODE_ENV !== 'production';
+}
+
 function readPresentationModeFromBrowser() {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !isPresentationModeAllowed()) {
     return false;
   }
 

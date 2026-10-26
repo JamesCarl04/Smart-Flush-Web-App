@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { CameraCapture } from './CameraCapture';
 import type { PhotoCaptureStatus, PublicReportingDevice } from '@/lib/public-issue-reports';
 
@@ -297,6 +297,15 @@ export function PublicIssueReportForm({
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoCapturedAt, setPhotoCapturedAt] = useState<number | null>(null);
   const [receipt, setReceipt] = useState<(SuccessResponse['data'] & { previewUrl: string | null }) | null>(null);
+
+  useEffect(() => {
+    const previewUrl = receipt?.previewUrl;
+    return () => {
+      if (previewUrl && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [receipt?.previewUrl]);
 
   const formatDateTime = (value: number | null | undefined): string => {
     if (!value) return 'Unavailable';

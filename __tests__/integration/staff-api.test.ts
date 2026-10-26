@@ -18,6 +18,7 @@ jest.mock('@/lib/firebase-admin', () => ({
 jest.mock('@/lib/auth-helpers', () => ({
   verifyAuthToken: jest.fn(),
   requireAdmin: jest.fn(),
+  requireMaintenance: jest.fn(),
   getUserRole: jest.fn(),
   getUserProfile: jest.fn(),
 }));
@@ -649,8 +650,8 @@ describe('Staff Management and Registration APIs', () => {
           active: true,
           isActive: true,
           isAvailable: true,
-          isOnline: true,
-          status: 'online',
+          isOnline: false,
+          status: 'offline',
         }),
         { merge: true },
       );

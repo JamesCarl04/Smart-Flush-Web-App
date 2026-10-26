@@ -1,7 +1,7 @@
 // app/api/automation-rules/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { requireAdmin, verifyAuthToken } from '@/lib/auth-helpers';
+import { requireAdmin, requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 import {
   getRepeatIntervalMinutes,
@@ -23,7 +23,8 @@ interface CreateRuleBody {
 // GET /api/automation-rules — list all
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
     const snap = await adminDb
       .collection('automationRules')
       .orderBy('createdAt', 'desc')

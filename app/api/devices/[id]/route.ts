@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import {
   verifyAuthToken,
   requireAdmin,
+  requireMaintenance,
   requireSupervisorOrAdmin,
 } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -28,7 +29,8 @@ export async function GET(
   { params }: RouteParams,
 ): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
     const { id } = await params;
 
     const doc = await adminDb.collection('devices').doc(id).get();

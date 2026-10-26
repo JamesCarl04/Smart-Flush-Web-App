@@ -89,7 +89,18 @@ export async function getUserProfile(
 ): Promise<UserProfile> {
   const doc = await adminDb.collection('users').doc(user.uid).get();
   const uidData = doc.data();
-  const uidRole = normalizeUserRole(uidData?.role);
+  const uidIsActive =
+    uidData?.active !== false && uidData?.isActive !== false;
+  const uidRole = uidIsActive ? normalizeUserRole(uidData?.role) : null;
+
+  if (doc.exists && !uidIsActive) {
+    return {
+      id: doc.id,
+      email: stringOrNull(uidData?.email) ?? user.email ?? null,
+      displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+      role: null,
+    };
+  }
 
   if (doc.exists && uidRole !== null) {
     return {
@@ -109,7 +120,9 @@ export async function getUserProfile(
 
     const emailDoc = emailSnapshot.docs[0];
     const emailData = emailDoc?.data();
-    const emailRole = normalizeUserRole(emailData?.role);
+    const emailIsActive =
+      emailData?.active !== false && emailData?.isActive !== false;
+    const emailRole = emailIsActive ? normalizeUserRole(emailData?.role) : null;
 
     if (emailDoc && emailRole !== null) {
       return {

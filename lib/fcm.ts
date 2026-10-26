@@ -117,7 +117,7 @@ async function readAssignedToken(uid: string): Promise<TokenOwner | null> {
 async function readTaskPoolTokens(): Promise<TokenOwner[]> {
   const snapshot = await adminDb
     .collection('users')
-    .where('role', 'in', ['maintenance', 'supervisor'])
+    .where('role', 'in', ['maintenance', 'technician', 'supervisor'])
     .get();
   const owners: TokenOwner[] = [];
 

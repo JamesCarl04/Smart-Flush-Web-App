@@ -1,14 +1,37 @@
 // app/api/analytics/system-performance/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
 
 interface DeviceDoc {
   id: string;
   name: string;
   status: 'online' | 'offline';
-  lastSeen: Timestamp | null;
+  lastSeen: unknown;
+}
+
+function toMillisSafe(value: unknown): number | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value < 1e12 ? value * 1000 : value;
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (typeof value === 'object') {
+    const record = value as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      _seconds?: number;
+      seconds?: number;
+    };
+    if (typeof record.toMillis === 'function') return record.toMillis();
+    if (typeof record.toDate === 'function') return record.toDate().getTime();
+    if (typeof record._seconds === 'number') return record._seconds * 1000;
+    if (typeof record.seconds === 'number') return record.seconds * 1000;
+  }
+  return null;
 }
 
 function getDateList(fromStr: string, toStr: string): string[] {
@@ -25,20 +48,22 @@ function getDateList(fromStr: string, toStr: string): string[] {
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
 
     const snap = await adminDb.collection('devices').get();
-    const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
+    const fiveMinAgoMillis = Date.now() - 5 * 60 * 1000;
 
     const devices = snap.docs.map((d) => d.data() as DeviceDoc);
     const totalCount = devices.length;
 
     const onlineDevices = devices.filter((d) => {
-      return d.lastSeen && d.lastSeen.toMillis() >= FIVE_MIN_AGO.toMillis();
+      const lastSeenMillis = toMillisSafe(d.lastSeen);
+      return lastSeenMillis !== null && lastSeenMillis >= fiveMinAgoMillis;
     });
 
     const onlineCount = onlineDevices.length;
@@ -101,15 +126,21 @@ export async function GET(request: Request): Promise<NextResponse> {
         onlineCount,
         totalCount,
         daily: dailyList,
-        devices: devices.map((d) => ({
-          id: d.id,
-          name: d.name,
-          status:
-            d.lastSeen && d.lastSeen.toMillis() >= FIVE_MIN_AGO.toMillis()
-              ? 'online'
-              : 'offline',
-          lastSeen: d.lastSeen ? d.lastSeen.toDate().toISOString() : null,
-        })),
+        devices: devices.map((d) => {
+          const lastSeenMillis = toMillisSafe(d.lastSeen);
+          return {
+            id: d.id,
+            name: d.name,
+            status:
+              lastSeenMillis !== null && lastSeenMillis >= fiveMinAgoMillis
+                ? 'online'
+                : 'offline',
+            lastSeen:
+              lastSeenMillis !== null
+                ? new Date(lastSeenMillis).toISOString()
+                : null,
+          };
+        }),
       },
     });
   } catch (error) {

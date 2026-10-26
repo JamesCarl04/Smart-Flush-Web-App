@@ -193,6 +193,10 @@ export function ControlPanel() {
         setPumpOn(true);
         updateActuatorState('flush', 'active');
         toast.success('Manual flush cycle started');
+        window.setTimeout(() => {
+          setPumpOn(false);
+          updateActuatorState('flush', 'idle');
+        }, 6_000);
       }
     } catch {
       // Error handled in handleAction

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 
 interface PresenceBody {
   status?: 'available' | 'offline' | 'on_task';
@@ -14,6 +14,7 @@ const ALLOWED_STATUSES = ['available', 'offline', 'on_task'] as const;
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
+    await requireMaintenance(user);
 
     let body: PresenceBody;
     try {

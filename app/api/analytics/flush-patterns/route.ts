@@ -1,7 +1,7 @@
 // app/api/analytics/flush-patterns/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
 
 interface PatternBucket {
@@ -82,7 +82,8 @@ function parseTimestampToDate(raw: unknown): Date | null {
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    await verifyAuthToken(request);
+    const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');

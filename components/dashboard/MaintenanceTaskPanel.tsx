@@ -330,7 +330,7 @@ export function MaintenanceTaskPanel() {
   const searchParams = useSearchParams();
   const rawTargetTaskId = searchParams?.get('taskId');
   const targetTaskId = rawTargetTaskId?.trim() || null;
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, role: authRole, roleLoading: authRoleLoading } = useAuth();
   const {
     tasks,
     loading: tasksLoading,
@@ -492,13 +492,21 @@ export function MaintenanceTaskPanel() {
     let cancelled = false;
 
     const loadRole = async () => {
-      if (authLoading) {
+      if (authLoading || authRoleLoading) {
         return;
       }
 
       if (!user) {
         if (!cancelled) {
           setRole(null);
+          setRoleLoading(false);
+        }
+        return;
+      }
+
+      if (authRole) {
+        if (!cancelled) {
+          setRole(authRole === 'technician' ? 'maintenance' : authRole);
           setRoleLoading(false);
         }
         return;
@@ -531,7 +539,7 @@ export function MaintenanceTaskPanel() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user]);
+  }, [authLoading, authRole, authRoleLoading, user]);
 
   // Load Devices
   useEffect(() => {
@@ -1635,7 +1643,11 @@ export function MaintenanceTaskPanel() {
 
                           {canManageTasks ? (
                             <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                              {(task.status === 'pending' || requiresSupervisorAssignment) && (
+                              {(task.status === 'pending' ||
+                                task.status === 'assigned' ||
+                                task.status === 'unassigned' ||
+                                task.status === 'reassignment_needed' ||
+                                requiresSupervisorAssignment) && (
                                 <button
                                   type="button"
                                   className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] min-w-[44px]"

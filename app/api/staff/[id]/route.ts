@@ -115,10 +115,10 @@ export async function PATCH(
           console.warn('[Staff API] Could not disable Firebase Auth user:', authErr);
         }
       } else {
-        // Reactivate: restore availability and online status so technician/staff can receive tasks
+        // Reactivate: restore account active state without falsely marking an unauthenticated user online
         updates.isAvailable = true;
-        updates.isOnline = true;
-        updates.status = 'online';
+        updates.isOnline = false;
+        updates.status = 'offline';
         try {
           await adminAuth.updateUser(id, { disabled: false });
         } catch (authErr) {
@@ -191,8 +191,8 @@ export async function POST(
       );
     }
 
-    const resetLink = await adminAuth.generatePasswordResetLink(email);
     const emailResult = await dispatchPasswordResetEmail(email);
+    const resetLink = await adminAuth.generatePasswordResetLink(email);
 
     return NextResponse.json({
       success: true,
