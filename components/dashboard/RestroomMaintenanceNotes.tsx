@@ -25,7 +25,7 @@ interface MaintenanceNoteResponse {
   error?: string;
 }
 
-type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'supervisor' | 'maintenance' | 'technician' | null;
 type ToastKind = 'success' | 'error';
 
 function formatDeviceLabel(device: Device): string {
@@ -47,7 +47,7 @@ export function RestroomMaintenanceNotes() {
     message: string;
   } | null>(null);
 
-  const showComposer = role !== null && role !== 'viewer';
+  const showComposer = role !== null;
   const showAssigneeSelect = role === 'admin';
   const { personnel, loading: personnelLoading } = useMaintenancePersonnel({
     enabled: showAssigneeSelect,
@@ -85,14 +85,14 @@ export function RestroomMaintenanceNotes() {
         if (!cancelled) {
           setRole(
             userDoc.exists()
-              ? ((userDoc.data().role as UserRole | undefined) ?? 'user')
-              : 'user',
+              ? ((userDoc.data().role as UserRole | undefined) ?? null)
+              : null,
           );
         }
       } catch (error) {
         console.warn('[RestroomMaintenanceNotes] role lookup failed:', error);
         if (!cancelled) {
-          setRole('user');
+          setRole(null);
         }
       } finally {
         if (!cancelled) {

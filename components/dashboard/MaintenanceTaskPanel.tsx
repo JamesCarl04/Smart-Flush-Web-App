@@ -67,7 +67,7 @@ interface DeleteTaskResponse {
   error?: string;
 }
 
-type UserRole = 'admin' | 'maintenance' | 'viewer' | 'user' | null;
+type UserRole = 'admin' | 'supervisor' | 'maintenance' | 'technician' | null;
 type ToastKind = 'success' | 'error';
 type FilterStatus = 'all' | 'pending' | 'acknowledged' | 'completed' | 'flagged';
 const NO_ASSIGNEES_VALUE = '__none_selected__';
@@ -456,11 +456,9 @@ export function MaintenanceTaskPanel() {
       lower.includes('403') ||
       lower.includes('forbidden') ||
       lower.includes('unauthorized') ||
-      lower.includes('permission') ||
-      role === 'viewer' ||
-      role === 'user'
+      lower.includes('permission')
     );
-  }, [tasksError, role]);
+  }, [tasksError]);
 
   const {
     personnel,
@@ -512,14 +510,14 @@ export function MaintenanceTaskPanel() {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (!cancelled) {
           const nextRole = userDoc.exists()
-            ? ((userDoc.data().role as UserRole | undefined) ?? 'user')
-            : 'user';
+            ? ((userDoc.data().role as UserRole | undefined) ?? null)
+            : null;
           setRole(nextRole);
         }
       } catch (error) {
         console.warn('[MaintenanceTaskPanel] role lookup failed:', error);
         if (!cancelled) {
-          setRole('user');
+          setRole(null);
         }
       } finally {
         if (!cancelled) {
@@ -1319,7 +1317,7 @@ export function MaintenanceTaskPanel() {
                   className="inline-block h-1.5 w-1.5 rounded-full bg-primary"
                   aria-hidden="true"
                 ></span>
-                Role: {role || 'Standard Viewer'}
+                Role: {role || 'Restricted Access'}
               </div>
             </div>
           ) : tasksError ? (

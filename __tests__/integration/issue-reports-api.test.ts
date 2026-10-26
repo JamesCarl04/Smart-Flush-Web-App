@@ -36,7 +36,7 @@ describe('administrator-only issue report APIs', () => {
     mockEvidence.mockResolvedValue({ bytes: Buffer.from('png'), contentType: 'image/png', filename: 'evidence.png' });
   });
 
-  it.each(['supervisor', 'maintenance', 'viewer', 'user'])('returns no listing data to %s', async () => {
+  it.each(['supervisor', 'maintenance', 'technician'])('returns no listing data to %s', async () => {
     mockRequireAdmin.mockRejectedValueOnce(forbidden());
     const response = await listReports(new Request('http://localhost/api/issue-reports'));
     expect(response.status).toBe(403);

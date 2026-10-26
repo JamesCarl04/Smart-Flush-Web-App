@@ -91,6 +91,16 @@ const MAINTENANCE_ACCOUNTS = [
     assignedFloor: 'All Floors',
     floors: ['1F', '2F', '3F', '4F', '1st Floor', '2nd Floor', '3rd Floor', '4th Floor'],
   },
+  {
+    name: 'evaluator',
+    email: 'evaluator1@sdca.edu.ph',
+    password: 'evaluator123',
+    role: 'maintenance',
+    shift: '1st',
+    building: 'SDCA Annex Building',
+    assignedFloor: 'All Floors',
+    floors: ['1F', '2F', '3F', '4F', '1st Floor', '2nd Floor', '3rd Floor', '4th Floor'],
+  },
 ];
 
 async function createOrUpdateUser(acc) {

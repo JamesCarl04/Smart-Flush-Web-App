@@ -11,7 +11,7 @@
 [![DaisyUI](https://img.shields.io/badge/DaisyUI-4.12-5A0EF8.svg?logo=daisyui)](https://daisyui.com/)
 [![Firebase](https://img.shields.io/badge/Firebase%20Admin-v13.7-orange.svg?logo=firebase)](https://firebase.google.com/)
 [![MQTT](https://img.shields.io/badge/MQTT-HiveMQ%20Cloud%20TLS-red.svg?logo=mqtt)](https://www.hivemq.com/)
-[![Jest Tests](https://img.shields.io/badge/Jest%20Tests-377%2F377%20Passing%20(44%20Suites)-brightgreen.svg?logo=jest)](https://jestjs.io/)
+[![Jest Tests](https://img.shields.io/badge/Jest%20Tests-503%2F503%20Passing%20(53%20Suites)-brightgreen.svg?logo=jest)](https://jestjs.io/)
 [![WCAG](https://img.shields.io/badge/WCAG-2.2%20Level%20AA-green.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 
 ---
@@ -331,15 +331,16 @@ flowchart TD
 
 ### 3. Staff & Administrative Portal (`/portal-admin/*`)
 * **URL Routes**:
-  * `/portal-admin/login`: Secure staff login with password strength enforcement, brute-force rate limiting, and `@sdca.edu.ph` institutional identity authentication.
+  * `/portal-admin/login`: Secure administrator login with password strength enforcement, brute-force rate limiting, and `@sdca.edu.ph` institutional identity authentication. Field staff (`supervisor`, `maintenance`, `technician`) attempting to log into the web portal are automatically denied entry with an explicit security notice directing them to the Klir Mobile App.
   * `/portal-admin/register`: **Decommissioned Public Self-Registration** — In strict adherence to institutional security governance, public self-registration is disabled. This route renders an accessible Institutional Security Notice informing visitors that employee accounts are provisioned exclusively by Campus Administration, with a direct CTA returning to the login gate.
   * `/portal-admin/forgot-password`: Self-service password reset email request.
   * `/portal-admin/reset-password`: Secure password confirmation with token validation.
-* **Target Audience**: Custodial technicians, facility supervisors, campus administrators.
+* **Target Audience**: Campus Administrators (`role: admin` exclusively). Field supervisors and technicians execute daily operations exclusively on Klir Mobile.
 * **Security Controls**:
   * Passwords checked against **Have I Been Pwned (HIBP)** database ($>600\text{M}$ breached passwords blocked).
   * Rate-limited endpoints (10 attempts per 15 minutes).
-  * Persistent sessions via Firebase Auth with role resolution.
+  * Persistent sessions via Firebase Auth with authoritative role inspection (`/api/auth/me`).
+  * Authoritative `DashboardLayout` role gate that instantly terminates and revokes non-admin sessions (`error=admin-only`).
   * Endpoint `/api/auth/register` locked down with `verifyAuthToken` and `requireAdmin` checks with atomic compensation rollback.
 
 ---
@@ -548,22 +549,26 @@ To maintain precise, real-time situational awareness of personnel across the cam
 
 ## 🔐 Role-Based Access Control (RBAC) & Security Architecture
 
-Klir enforces strict server-side RBAC using Firebase Custom Claims and JWT Bearer verification on every protected route:
+Klir enforces strict server-side RBAC and strict platform boundary isolation:
+* **Administrators (`admin`)**: Possess exclusive access to the Web Console (`/dashboard`, staff provisioning, configuration, report exports, and remote actuator controls). Barred entirely from logging into the field mobile client.
+* **Supervisors (`supervisor`)**: Possess exclusive access to the Mobile App Supervisor Command Hub (`SupervisorStackNavigator`). Barred from logging into the Web Console and from executing technician checklist tabs on mobile.
+* **Custodial Technicians (`maintenance` / `technician`)**: Possess exclusive access to the Mobile App Technician Workspace (`Tab.Navigator`). Barred from logging into the Web Console and from supervisor management/approval screens.
+* **Zero Legacy Roles**: There are **no visitor, viewer, user, or operator roles**. All authorization policies are enforced server-side via Firebase Custom Claims and JWT Bearer verification.
 
-| Platform Resource / Capability | `admin` | `supervisor` | `maintenance` / `technician` | `viewer` | `public` |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Public Stall QR Issue Reporting** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Web Dashboard Access** | ✅ Full | ✅ Full | ⚠️ Feed Only | 👁️ Read-Only | ❌ No |
-| **Custodial Mobile App Access** | ❌ Blocked | ✅ Audit Hub | ✅ Workspace | ❌ Blocked | ❌ No |
-| **Institutional Staff Management (`/staff`)** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ No |
-| **Provision & Deactivate Staff Accounts** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ No |
-| **Create & Dispatch Tasks** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
-| **Acknowledge & Complete Tasks** | ❌ No | ❌ Audit Only | ✅ Checklist+Photo | ❌ No | ❌ No |
-| **Approve / Flag QA Inspections** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
-| **Hardware Actuator Overrides** | ✅ Full | ✅ Full | ❌ No | ❌ No | ❌ No |
-| **Moderate Public Issue Reports** | ✅ Full | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Manage Automation Rules** | ✅ Edit / Create | 👁️ View Only | ❌ No | ❌ No | ❌ No |
-| **Export Compliance Reports (PDF/CSV)** | ✅ Yes | ✅ Yes | ❌ No | 👁️ View Only | ❌ No |
+| Platform Resource / Capability | `admin` | `supervisor` | `maintenance` / `technician` | `public` |
+| :--- | :---: | :---: | :---: | :---: |
+| **Public Stall QR Issue Reporting** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Web Dashboard Access (`/dashboard`)** | ✅ Exclusive | ❌ Blocked (Mobile Only) | ❌ Blocked (Mobile Only) | ❌ No |
+| **Custodial Mobile App Access** | ❌ Blocked (Web Only) | ✅ Exclusive Command Hub | ✅ Exclusive Workspace | ❌ No |
+| **Institutional Staff Management (`/staff`)** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ No |
+| **Provision & Deactivate Staff Accounts** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ No |
+| **Hardware Actuator Overrides (`/api/actuators/*`)** | ✅ Full | ❌ Blocked | ❌ Blocked | ❌ No |
+| **Create & Dispatch Tasks** | ✅ Yes | ✅ Yes (Mobile API) | ❌ No | ❌ No |
+| **Acknowledge & Complete Tasks** | ❌ No | ❌ Audit Only | ✅ Checklist + Photo (Mobile) | ❌ No |
+| **Approve / Flag QA Inspections** | ✅ Yes | ✅ Yes (Mobile Hub) | ❌ No | ❌ No |
+| **Moderate Public Issue Reports (`/issue-reports`)** | ✅ Full | ❌ No | ❌ No | ❌ No |
+| **Manage Automation Rules (`/configuration`)** | ✅ Full | ❌ No | ❌ No | ❌ No |
+| **Export Compliance Reports (PDF/CSV)** | ✅ Full | ✅ Yes (Mobile Hub) | ❌ No | ❌ No |
 
 ### Enterprise Security & Audit Safeguards (NIST SP 800-92, ISO 27001, 21 CFR Part 11):
 * **Append-Only System Audit Trail**: All operational and security actions across web and mobile clients are logged to the immutable `/auditLogs/{logId}` collection in Cloud Firestore. Security rules enforce `allow create: if isStaff(); allow update, delete: if false;`, ensuring tamper-evident non-repudiation in full compliance with **21 CFR Part 11** and **SOC 2 Type II**.
@@ -590,26 +595,26 @@ All API endpoints are located under `/api/` and require an `Authorization: Beare
 ### 1. Actuators & Remote Overrides (5 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `POST` | `/api/actuators/pump` | `admin`, `supervisor` | Manually fire solenoid flush valve (`"ON"` / `"OFF"`) |
-| `POST` | `/api/actuators/uv` | `admin`, `supervisor` | Start / abort manual UV-C disinfection cycle |
-| `POST` | `/api/actuators/lid/open` | `admin`, `supervisor` | Move servo motor to open lid ($0^\circ$) |
-| `POST` | `/api/actuators/lid/close` | `admin`, `supervisor` | Move servo motor to close lid ($180^\circ$) |
-| `POST` | `/api/actuators/reset` | `admin`, `supervisor` | Issue hardware watchdog software reset |
+| `POST` | `/api/actuators/pump` | `admin` | Manually fire solenoid flush valve (`"ON"` / `"OFF"`) |
+| `POST` | `/api/actuators/uv` | `admin` | Start / abort manual UV-C disinfection cycle |
+| `POST` | `/api/actuators/lid/open` | `admin` | Move servo motor to open lid ($0^\circ$) |
+| `POST` | `/api/actuators/lid/close` | `admin` | Move servo motor to close lid ($180^\circ$) |
+| `POST` | `/api/actuators/reset` | `admin` | Issue hardware watchdog software reset |
 
 ### 2. Alarms & Incident Triage (3 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/alerts` | `admin`, `supervisor`, `maintenance`, `viewer` | Query active and historical threshold alarms |
+| `GET` | `/api/alerts` | `admin`, `supervisor`, `maintenance` | Query active and historical threshold alarms |
 | `POST` | `/api/alerts/[id]/acknowledge` | `admin`, `supervisor`, `maintenance` | Mark an individual alert as resolved |
 | `POST` | `/api/alerts/acknowledge-all` | `admin`, `supervisor` | Batch acknowledge all unresolved alerts |
 
 ### 3. Analytics & Telemetry (4 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/analytics/dashboard` | `admin`, `supervisor`, `maintenance`, `viewer` | Top-level KPI counts for the executive dashboard |
-| `GET` | `/api/analytics/flush-patterns` | `admin`, `supervisor`, `maintenance`, `viewer` | Hourly flush distribution across building floors |
-| `GET` | `/api/analytics/water-usage` | `admin`, `supervisor`, `maintenance`, `viewer` | Water consumption and conservation estimates |
-| `GET` | `/api/analytics/system-performance` | `admin`, `supervisor`, `maintenance`, `viewer` | MQTT latency, uptime, and controller health |
+| `GET` | `/api/analytics/dashboard` | `admin`, `supervisor`, `maintenance` | Top-level KPI counts for the executive dashboard |
+| `GET` | `/api/analytics/flush-patterns` | `admin`, `supervisor`, `maintenance` | Hourly flush distribution across building floors |
+| `GET` | `/api/analytics/water-usage` | `admin`, `supervisor`, `maintenance` | Water consumption and conservation estimates |
+| `GET` | `/api/analytics/system-performance` | `admin`, `supervisor`, `maintenance` | MQTT latency, uptime, and controller health |
 
 ### 4. Authentication & Staff Identity (6 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
@@ -633,17 +638,17 @@ All API endpoints are located under `/api/` and require an `Authorization: Beare
 ### 6. Campus Devices & Roster (6 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/devices` | `admin`, `supervisor`, `maintenance`, `viewer` | List all registered SDCA restroom devices |
+| `GET` | `/api/devices` | `admin`, `supervisor`, `maintenance` | List all registered SDCA restroom devices |
 | `POST` | `/api/devices` | `admin` | Register a new restroom device or stall |
-| `GET` | `/api/devices/[id]` | `admin`, `supervisor`, `maintenance`, `viewer` | Fetch device hardware specifications and configuration |
+| `GET` | `/api/devices/[id]` | `admin`, `supervisor`, `maintenance` | Fetch device hardware specifications and configuration |
 | `PUT` | `/api/devices/[id]` | `admin` | Update device settings (e.g. enable public QR reporting) |
-| `GET` | `/api/devices/[id]/status` | `admin`, `supervisor`, `maintenance`, `viewer` | Real-time ESP32 online/offline connectivity |
-| `GET` | `/api/maintenance-personnel` | `admin`, `supervisor`, `maintenance`, `viewer` | Real-time technician roster with live workload counts |
+| `GET` | `/api/devices/[id]/status` | `admin`, `supervisor`, `maintenance` | Real-time ESP32 online/offline connectivity |
+| `GET` | `/api/maintenance-personnel` | `admin`, `supervisor`, `maintenance` | Real-time technician roster with live workload counts |
 
 ### 7. Custodial Notes (2 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/maintenance-notes` | `admin`, `supervisor`, `maintenance`, `viewer` | Query custodial log entries for a restroom |
+| `GET` | `/api/maintenance-notes` | `admin`, `supervisor`, `maintenance` | Query custodial log entries for a restroom |
 | `POST` | `/api/maintenance-notes` | `admin`, `supervisor`, `maintenance` | Add custodial note to a restroom or work order |
 
 ### 8. Public QR Stall Issue Reporting (6 Endpoints)
@@ -660,13 +665,13 @@ All API endpoints are located under `/api/` and require an `Authorization: Beare
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
 | `POST` | `/api/reports/generate` | `admin`, `supervisor` | Compile performance audit report |
-| `GET` | `/api/reports/[id]/download` | `admin`, `supervisor`, `viewer` | Download compiled compliance PDF or CSV |
+| `GET` | `/api/reports/[id]/download` | `admin`, `supervisor` | Download compiled compliance PDF or CSV |
 
 ### 10. Sensor Telemetry & Calibration (3 Endpoints)
 | Method | Endpoint | Allowed Roles | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/sensors/[id]/readings` | `admin`, `supervisor`, `maintenance`, `viewer` | Historical time-series sensor data |
-| `GET` | `/api/sensors/[id]/stats` | `admin`, `supervisor`, `maintenance`, `viewer` | Aggregated sensor statistics and averages |
+| `GET` | `/api/sensors/[id]/readings` | `admin`, `supervisor`, `maintenance` | Historical time-series sensor data |
+| `GET` | `/api/sensors/[id]/stats` | `admin`, `supervisor`, `maintenance` | Aggregated sensor statistics and averages |
 | `POST` | `/api/sensors/[id]/config` | `admin` | Update sensor sampling rate and debounce thresholds |
 
 ### 11. Supervisor QA & Work Order Dispatch (12 Endpoints)
@@ -832,7 +837,7 @@ Because serverless environments terminate long-lived TCP connections, the produc
 ## 🧪 Testing, Diagnostics & Code Quality
 
 ```powershell
-# Run Jest unit and integration test suites (377 tests passing across 44 suites)
+# Run Jest unit and integration test suites (503 tests passing across 53 suites)
 npm test -- --watchAll=false
 npm run test:ci
 
@@ -879,6 +884,11 @@ When configuring `FIREBASE_ADMIN_PRIVATE_KEY` in `.env`, ensure newline characte
 ```env
 FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END PRIVATE KEY-----\n"
 ```
+
+### 6. Role-Based Access Control Rejection (`Access denied...`)
+* **Symptom**: Logging in at `/portal-admin/login` yields: *"Access denied. The web portal is reserved exclusively for Administrators. Supervisors and Maintenance technicians must use the Klir Mobile App."*
+* **Cause**: The authenticated account has role `supervisor`, `maintenance`, or `technician`.
+* **Fix**: By design, the Web Portal is restricted exclusively to campus Administrators (`admin`). Field Supervisors and Custodial Technicians must use the **Klir Mobile App**. To grant web administrative rights, update the user's role to `admin` using the institutional staff management portal (`/staff`) or the Firebase Admin SDK.
 
 ---
 

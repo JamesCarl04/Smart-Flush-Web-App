@@ -116,8 +116,7 @@ describe('StaffManagementPage', () => {
     it.each([
       ['supervisor', 'supervisor'],
       ['maintenance', 'maintenance'],
-      ['viewer', 'viewer'],
-      ['user', 'regular user'],
+      ['technician', 'technician'],
     ])('denies access to non-admin role: %s', (roleName) => {
       mockUseAuth.mockReturnValue({
         user: { uid: 'user-1' },

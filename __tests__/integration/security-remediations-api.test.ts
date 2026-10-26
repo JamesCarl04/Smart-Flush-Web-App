@@ -4,7 +4,6 @@ jest.mock('@/lib/auth-helpers', () => ({
   requireAdmin: jest.fn(),
   requireMaintenance: jest.fn(),
   requireSupervisorOrAdmin: jest.fn(),
-  requireNotViewer: jest.fn(),
 }));
 
 jest.mock('@/lib/firebase-admin', () => ({
@@ -25,7 +24,7 @@ jest.mock('firebase-admin/firestore', () => ({
   },
 }));
 
-import { DELETE as deleteTask } from '@/app/api/tasks/[id]/route';
+import { DELETE as deleteTask, GET as getTask } from '@/app/api/tasks/[id]/route';
 import { POST as flagTask } from '@/app/api/supervisor/flag-task/route';
 import { POST as approveTask } from '@/app/api/supervisor/approve-task/route';
 import { POST as cleanupSpam } from '@/app/api/tasks/cleanup-spam/route';
@@ -43,10 +42,10 @@ describe('Security Remediations API Tests', () => {
   });
 
   describe('DELETE /api/tasks/[id]', () => {
-    it('blocks maintenance, technician, and viewer roles from deleting tasks', async () => {
+    it('blocks maintenance and technician roles from deleting tasks', async () => {
       mockVerifyAuthToken.mockResolvedValue({ uid: 'maint-1' });
 
-      for (const role of ['maintenance', 'technician', 'viewer', 'user']) {
+      for (const role of ['maintenance', 'technician']) {
         mockGetUserRole.mockResolvedValue(role);
 
         const request = new Request('http://localhost/api/tasks/task-1', { method: 'DELETE' });
@@ -99,6 +98,53 @@ describe('Security Remediations API Tests', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+    });
+  });
+
+  describe('GET /api/tasks/[id]', () => {
+    it('allows technician role to fetch task assigned to them', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
+      mockGetUserRole.mockResolvedValue('technician');
+
+      const mockDocRef = {
+        id: 'task-1',
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          id: 'task-1',
+          data: () => ({
+            id: 'task-1',
+            assignedTo: 'tech-1',
+            status: 'assigned',
+            deviceId: 'toilet-01',
+          }),
+        }),
+      };
+      (adminDb.collection as jest.Mock).mockReturnValue({
+        doc: jest.fn(() => mockDocRef),
+        where: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue({ docs: [] }),
+        }),
+      });
+
+      const request = new Request('http://localhost/api/tasks/task-1', { method: 'GET' });
+      const response = await getTask(request, { params: Promise.resolve({ id: 'task-1' }) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.data.id).toBe('task-1');
+    });
+
+    it('rejects unknown or invalid role with 403 Forbidden', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'unknown-1' });
+      mockGetUserRole.mockResolvedValue('unknown' as any);
+
+      const request = new Request('http://localhost/api/tasks/task-1', { method: 'GET' });
+      const response = await getTask(request, { params: Promise.resolve({ id: 'task-1' }) });
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toBe('Forbidden');
     });
   });
 

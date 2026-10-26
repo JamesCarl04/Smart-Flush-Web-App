@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireNotViewer, verifyAuthToken } from '@/lib/auth-helpers';
+import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import {
   createMaintenanceNoteAndNotify,
   serializeMaintenanceNote,
@@ -19,7 +19,7 @@ function trimmedString(value: unknown): string | null {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireNotViewer(user);
+    await requireMaintenance(user);
 
     const snapshot = await adminDb
       .collection('maintenanceNotes')
@@ -47,7 +47,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireNotViewer(user);
+    await requireMaintenance(user);
 
     const body = (await request.json()) as CreateMaintenanceNoteBody;
     const restroomId = trimmedString(body.restroomId);

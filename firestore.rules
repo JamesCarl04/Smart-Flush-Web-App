@@ -97,11 +97,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isSupervisor() || (
-        isAuthenticated() &&
-        request.auth.uid == userId &&
-        request.resource.data.get('role', 'user') in ['user', 'viewer']
-      );
+      allow create: if isSupervisor();
       allow update: if isSupervisor() || (
         isAuthenticated() &&
         request.auth.uid == userId &&

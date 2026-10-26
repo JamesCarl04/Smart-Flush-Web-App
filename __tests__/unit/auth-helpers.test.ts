@@ -6,7 +6,6 @@ import {
   requireAdmin,
   requireMaintenance,
   requireSupervisorOrAdmin,
-  requireNotViewer,
 } from '@/lib/auth-helpers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { createMockAuthToken, createMockRequest } from '@/__tests__/helpers/test-utils';
@@ -244,10 +243,18 @@ describe('auth-helpers', () => {
         await expect(requireAdmin({ uid: 'admin-1' } as any)).resolves.toBeUndefined();
       });
 
-      it('should throw 403 for non-admin role', async () => {
-        mockRole('maintenance');
-        await expect(requireAdmin({ uid: 'maint-1' } as any)).rejects.toBeInstanceOf(Response);
-      });
+      it.each(['supervisor', 'maintenance', 'technician', null])(
+        'should reject %s role with 403',
+        async (role) => {
+          mockRole(role);
+          try {
+            await requireAdmin({ uid: 'u-1' } as any);
+            fail('Should have thrown');
+          } catch (error: any) {
+            expect(error.status).toBe(403);
+          }
+        },
+      );
     });
 
     describe('requireMaintenance', () => {
@@ -259,18 +266,15 @@ describe('auth-helpers', () => {
         },
       );
 
-      it.each(['user', 'viewer', null])(
-        'should reject %s with 403',
-        async (role) => {
-          mockRole(role);
-          try {
-            await requireMaintenance({ uid: 'u-2' } as any);
-            fail('Should have thrown');
-          } catch (error: any) {
-            expect(error.status).toBe(403);
-          }
-        },
-      );
+      it('should reject null role with 403', async () => {
+        mockRole(null);
+        try {
+          await requireMaintenance({ uid: 'u-2' } as any);
+          fail('Should have thrown');
+        } catch (error: any) {
+          expect(error.status).toBe(403);
+        }
+      });
     });
 
     describe('requireSupervisorOrAdmin', () => {
@@ -279,7 +283,7 @@ describe('auth-helpers', () => {
         await expect(requireSupervisorOrAdmin({ uid: 'u-1' } as any)).resolves.toBeUndefined();
       });
 
-      it.each(['maintenance', 'technician', 'user', 'viewer', null])(
+      it.each(['maintenance', 'technician', null])(
         'should reject %s with 403',
         async (role) => {
           mockRole(role);
@@ -289,26 +293,6 @@ describe('auth-helpers', () => {
           } catch (error: any) {
             expect(error.status).toBe(403);
           }
-        },
-      );
-    });
-
-    describe('requireNotViewer', () => {
-      it('should reject viewer role with 403', async () => {
-        mockRole('viewer');
-        try {
-          await requireNotViewer({ uid: 'v-1' } as any);
-          fail('Should have thrown');
-        } catch (error: any) {
-          expect(error.status).toBe(403);
-        }
-      });
-
-      it.each(['admin', 'supervisor', 'maintenance', 'technician', 'user'])(
-        'should allow %s role',
-        async (role) => {
-          mockRole(role);
-          await expect(requireNotViewer({ uid: 'u-1' } as any)).resolves.toBeUndefined();
         },
       );
     });

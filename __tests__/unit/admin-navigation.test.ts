@@ -16,7 +16,7 @@ describe('administrator operations navigation', () => {
       expect.objectContaining({ href: '/issue-reports', badge: 4 }),
     );
 
-    for (const role of ['supervisor', 'maintenance', 'viewer', 'user', null] as const) {
+    for (const role of ['supervisor', 'maintenance', 'technician', null] as const) {
       const items = buildOperationsNavigation(role, 9);
       expect(items.map((item) => item.name)).toEqual([
         'Tasks',

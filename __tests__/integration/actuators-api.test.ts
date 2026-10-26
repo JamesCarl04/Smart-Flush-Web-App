@@ -33,25 +33,16 @@ describe('Actuators API - Integration Tests', () => {
       expect(hasAuthHeader).toBe(false)
     })
 
-    it('should reject viewer role', () => {
-      const viewerUser = createMockAuthToken({ user_id: 'viewer-123' })
-      const viewerRole = 'viewer'
-      // Should return 403 Forbidden for viewer role
-      expect(viewerRole).toBe('viewer')
+    it('should reject non-admin roles', () => {
+      const nonAdminRoles = ['supervisor', 'maintenance', 'technician']
+      nonAdminRoles.forEach((role) => {
+        expect(role).not.toBe('admin')
+      })
     })
 
     it('should allow admin role', () => {
-      const adminUser = createMockAuthToken({ user_id: 'admin-123' })
       const adminRole = 'admin'
-      // Should return 200 OK for admin role
       expect(adminRole).toBe('admin')
-    })
-
-    it('should allow maintenance role', () => {
-      const maintenanceUser = createMockAuthToken({ user_id: 'maint-123' })
-      const maintenanceRole = 'maintenance'
-      // Should return 200 OK for maintenance role
-      expect(maintenanceRole).toBe('maintenance')
     })
 
     it('should validate command is ON or OFF', () => {
@@ -101,9 +92,11 @@ describe('Actuators API - Integration Tests', () => {
 
   describe('POST /api/actuators/uv', () => {
     it('should follow same authorization as pump', () => {
-      const authorizedRoles = ['admin', 'maintenance', 'user']
-      const viewerRole = 'viewer'
-      expect(authorizedRoles).not.toContain(viewerRole)
+      const authorizedRoles = ['admin']
+      const nonAdminRoles = ['supervisor', 'maintenance', 'technician']
+      nonAdminRoles.forEach((role) => {
+        expect(authorizedRoles).not.toContain(role)
+      })
     })
 
     it('should validate ON/OFF command', () => {

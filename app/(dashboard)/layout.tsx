@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAlerts } from '@/hooks/useAlerts';
@@ -93,11 +93,27 @@ export default function DashboardLayout({
     };
   }, [role, roleLoading, user]);
 
+  const handleLogout = useCallback(async (redirectQuery?: string) => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      window.location.href = redirectQuery ? `/portal-admin/login?${redirectQuery}` : '/portal-admin/login';
+    }
+  }, [logout]);
+
   useEffect(() => {
     if (!loading && !user && !presentationMode && !isLoggingOut) {
       router.replace('/portal-admin/login');
     }
   }, [loading, presentationMode, router, user, isLoggingOut]);
+
+  // Authoritative role gate: Web console is reserved exclusively for administrators
+  useEffect(() => {
+    if (!loading && !roleLoading && user && role !== 'admin' && !presentationMode && !isLoggingOut) {
+      void handleLogout('error=admin-only');
+    }
+  }, [loading, roleLoading, user, role, presentationMode, isLoggingOut, handleLogout]);
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -121,15 +137,6 @@ export default function DashboardLayout({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      window.location.href = '/portal-admin/login';
-    }
-  };
 
   const navSections: NavSection[] = [
     {
@@ -175,13 +182,19 @@ export default function DashboardLayout({
         .slice(0, 2)
     : user?.email
       ? user.email.slice(0, 2).toUpperCase()
-      : 'OP';
+      : 'AD';
 
   const userDisplayName =
     user?.displayName ||
-    (user?.email ? user.email.split('@')[0] : 'Operator');
+    (user?.email ? user.email.split('@')[0] : 'Administrator');
 
-  if (loading || (user && roleLoading) || isLoggingOut || (!user && !presentationMode)) {
+  if (
+    loading ||
+    (user && roleLoading) ||
+    isLoggingOut ||
+    (!user && !presentationMode) ||
+    (user && role !== 'admin' && !presentationMode)
+  ) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 transition-colors">
         <div className="flex flex-col items-center gap-4 animate-fade-in">
@@ -190,7 +203,9 @@ export default function DashboardLayout({
           </span>
           <div className="loading loading-spinner loading-md text-[#B5121B]"></div>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {isLoggingOut ? 'Signing out...' : 'Loading session...'}
+            {isLoggingOut || (user && role !== 'admin' && !presentationMode)
+              ? 'Signing out...'
+              : 'Loading session...'}
           </p>
         </div>
       </div>
@@ -269,7 +284,7 @@ export default function DashboardLayout({
             <Link
               href="/profile"
               className="flex items-center gap-2.5 min-w-0 flex-1 group hover:opacity-85 transition-opacity"
-              title="View Operator Profile"
+              title="View Administrator Profile"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#B5121B] text-xs font-bold text-white shadow-xs group-hover:ring-2 group-hover:ring-[#C9A227]/40 transition-all">
                 {userInitials}
@@ -381,7 +396,7 @@ export default function DashboardLayout({
                   href="/profile"
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2.5 min-w-0 flex-1 group hover:opacity-85 transition-opacity"
-                  title="View Operator Profile"
+                  title="View Administrator Profile"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#B5121B] text-xs font-bold text-white shadow-xs group-hover:ring-2 group-hover:ring-[#C9A227]/40 transition-all">
                     {userInitials}

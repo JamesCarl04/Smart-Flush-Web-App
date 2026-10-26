@@ -39,7 +39,7 @@ function canManageTask(
     return true;
   }
 
-  if (role === 'viewer' || role === null) {
+  if (role === null) {
     return false;
   }
 
@@ -64,7 +64,7 @@ function canEditTask(
 async function listMaintenanceUserIds(): Promise<string[]> {
   const snapshot = await adminDb
     .collection('users')
-    .where('role', '==', 'maintenance')
+    .where('role', 'in', ['maintenance', 'technician'])
     .get();
 
   return snapshot.docs.map((doc) => doc.id);
@@ -78,7 +78,12 @@ export async function GET(
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
 
-    if (role !== 'admin' && role !== 'supervisor' && role !== 'maintenance') {
+    if (
+      role !== 'admin' &&
+      role !== 'supervisor' &&
+      role !== 'maintenance' &&
+      role !== 'technician'
+    ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -99,8 +104,10 @@ export async function GET(
       snapshot.data() as Record<string, unknown>,
     );
 
+    const isMaintenanceRole = role === 'maintenance' || role === 'technician';
+
     if (
-      role === 'maintenance' &&
+      isMaintenanceRole &&
       !isAssignedToUser(task, user.uid) &&
       task.isBroadcast !== true
     ) {
@@ -113,7 +120,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data:
-        role === 'maintenance'
+        isMaintenanceRole
           ? withMaintenanceUserStatus(task, user.uid)
           : withDashboardTaskStatus(task, await listMaintenanceUserIds()),
     });
@@ -137,7 +144,7 @@ export async function PATCH(
   try {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
-    if (role === 'viewer' || role === null) {
+    if (role === null) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
@@ -312,10 +319,11 @@ export async function PATCH(
       updatedSnapshot.data() as Record<string, unknown>,
     );
 
+    const isMaintenanceRole = role === 'maintenance' || role === 'technician';
     return NextResponse.json({
       success: true,
       data:
-        role === 'maintenance'
+        isMaintenanceRole
           ? withMaintenanceUserStatus(task, user.uid)
           : withDashboardTaskStatus(task, await listMaintenanceUserIds()),
     });

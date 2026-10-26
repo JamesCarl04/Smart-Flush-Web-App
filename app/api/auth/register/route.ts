@@ -68,9 +68,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const assignedRole = role && ['admin', 'supervisor', 'maintenance', 'technician', 'viewer', 'user'].includes(role)
+    const assignedRole = role && ['admin', 'supervisor', 'technician', 'maintenance'].includes(role)
       ? role
-      : 'user';
+      : 'technician';
 
     // Create Firebase Auth user
     const userRecord = await adminAuth.createUser({

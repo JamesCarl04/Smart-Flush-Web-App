@@ -1,7 +1,7 @@
 // app/api/alerts/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken, requireNotViewer } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireSupervisorOrAdmin } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 import {
   checkRateLimit,
@@ -103,7 +103,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireNotViewer(user);
+    await requireSupervisorOrAdmin(user);
 
     const rateLimitKey = `alert:${user.uid}`;
     const rateLimitCheck = checkRateLimit(rateLimitKey, RATE_LIMITS.alerts);

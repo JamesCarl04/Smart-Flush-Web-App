@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { signInWithEmailAndPassword, getAuth } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, getAuth } from 'firebase/auth';
 import Cookies from 'js-cookie';
 import { app } from '@/lib/firebase';
 import { getErrorCode } from '@/lib/error-utils';
@@ -42,12 +42,50 @@ export default function LoginPage() {
     mode: 'onTouched',
   });
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error') === 'admin-only') {
+        setError(
+          'Access denied. The web portal is reserved exclusively for Administrators. Supervisors and Maintenance technicians must use the Klir Mobile App.',
+        );
+      }
+    }
+  }, []);
+
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     setError(null);
     try {
       const auth = getAuth(app);
-      await signInWithEmailAndPassword(auth, data.email, data.password);
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      const idToken = await userCredential.user.getIdToken();
+      const meRes = await fetch('/api/auth/me', {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+      const meData = await meRes.json().catch(() => null);
+
+      if (!meRes.ok || !meData?.success) {
+        await signOut(auth);
+        Cookies.remove('auth-token', { path: '/' });
+        setError(
+          meData?.error ||
+            'Unable to verify account permissions. Please check your credentials or network connection.',
+        );
+        return;
+      }
+
+      if (meData.data?.role !== 'admin') {
+        await signOut(auth);
+        Cookies.remove('auth-token', { path: '/' });
+        setError(
+          'Access denied. The web portal is reserved exclusively for Administrators. Supervisors and Maintenance technicians must use the Klir Mobile App.',
+        );
+        return;
+      }
+
       Cookies.set('auth-token', '1', { expires: 7, path: '/', sameSite: 'lax' });
       router.push('/dashboard');
       router.refresh();

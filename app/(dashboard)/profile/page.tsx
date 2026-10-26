@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ShieldCheck,
-  Shield,
   Mail,
   Bell,
   CheckCircle2,
@@ -43,7 +42,7 @@ export default function ProfilePage() {
     updateNotifications,
   } = useProfile();
 
-  const [userRole, setUserRole] = useState<string>('Operator');
+  const [userRole, setUserRole] = useState<string>('Admin');
   const [_roleLoading, _setRoleLoading] = useState(true);
 
   // ── Per-toggle "Saved" feedback ──────────────────────────────────────────
@@ -58,7 +57,7 @@ export default function ProfilePage() {
     const fetchRole = async () => {
       if (!user) {
         if (!cancelled) {
-          setUserRole('Operator');
+          setUserRole('Admin');
           _setRoleLoading(false);
         }
         return;
@@ -67,15 +66,15 @@ export default function ProfilePage() {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
         if (!cancelled && snap.exists()) {
-          const rawRole = (snap.data().role as string | undefined) ?? 'operator';
+          const rawRole = (snap.data().role as string | undefined) ?? 'admin';
           if (rawRole === 'admin') {
             setUserRole('Admin');
-          } else if (rawRole === 'maintenance') {
+          } else if (rawRole === 'supervisor') {
+            setUserRole('Supervisor');
+          } else if (rawRole === 'maintenance' || rawRole === 'technician') {
             setUserRole('Maintenance Technician');
-          } else if (rawRole === 'viewer') {
-            setUserRole('Viewer');
           } else {
-            setUserRole('Operator');
+            setUserRole('Admin');
           }
         }
       } catch (err) {
@@ -121,9 +120,9 @@ export default function ProfilePage() {
 
   const roleBadgeConfig = useMemo(() => {
     switch (userRole) {
-      case 'Admin':
+      case 'Supervisor':
         return {
-          className: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30',
+          className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30',
           icon: <ShieldCheck className="w-3.5 h-3.5" />,
         };
       case 'Maintenance Technician':
@@ -131,15 +130,10 @@ export default function ProfilePage() {
           className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30',
           icon: <Wrench className="w-3.5 h-3.5" />,
         };
-      case 'Viewer':
-        return {
-          className: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/30',
-          icon: <Shield className="w-3.5 h-3.5" />,
-        };
-      case 'Operator':
+      case 'Admin':
       default:
         return {
-          className: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30',
+          className: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30',
           icon: <ShieldCheck className="w-3.5 h-3.5" />,
         };
     }

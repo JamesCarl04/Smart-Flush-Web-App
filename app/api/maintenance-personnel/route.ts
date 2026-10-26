@@ -16,8 +16,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       role !== 'admin' &&
       role !== 'supervisor' &&
       role !== 'maintenance' &&
-      role !== 'technician' &&
-      role !== 'viewer'
+      role !== 'technician'
     ) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
@@ -73,6 +72,12 @@ export async function GET(request: Request): Promise<NextResponse> {
           shift: stringOrNull(data.shift) ?? '1st',
           building: stringOrNull(data.building) ?? null,
           supervisorUid: stringOrNull(data.supervisorUid) ?? null,
+          lastSeen:
+            typeof data.lastSeen?.toDate === 'function'
+              ? data.lastSeen.toDate().toISOString()
+              : data.lastSeen instanceof Date
+                ? data.lastSeen.toISOString()
+                : data.lastSeen ?? null,
         };
       })
       .sort((first, second) =>

@@ -1,6 +1,6 @@
 // app/api/actuators/uv/route.ts
 import { NextResponse } from 'next/server';
-import { verifyAuthToken, requireNotViewer } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { ensureDeviceConnected } from '@/lib/device-connection';
 import { publishUVCommand } from '@/lib/mqtt-publish';
@@ -13,7 +13,7 @@ interface UVBody {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
-    await requireNotViewer(user);
+    await requireAdmin(user);
 
     const body = (await request.json()) as Partial<UVBody>;
     if (body.command !== 'ON' && body.command !== 'OFF') {

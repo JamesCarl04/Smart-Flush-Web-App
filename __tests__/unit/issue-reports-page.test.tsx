@@ -15,8 +15,7 @@ describe('issue reports page authority gate', () => {
     { role: null, roleLoading: true, label: 'loading' },
     { role: 'supervisor', roleLoading: false, label: 'supervisor' },
     { role: 'maintenance', roleLoading: false, label: 'maintenance' },
-    { role: 'viewer', roleLoading: false, label: 'viewer' },
-    { role: 'user', roleLoading: false, label: 'ordinary user' },
+    { role: 'technician', roleLoading: false, label: 'technician' },
   ])('does not call report APIs for $label', ({ role, roleLoading }) => {
     mockUseAuth.mockReturnValue({ user: { uid: 'u1' }, role, roleLoading, roleError: null });
     render(<IssueReportsPage />);

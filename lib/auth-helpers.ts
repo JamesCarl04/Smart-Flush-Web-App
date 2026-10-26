@@ -8,8 +8,6 @@ const USER_ROLES = [
   'supervisor',
   'maintenance',
   'technician',
-  'viewer',
-  'user',
 ] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
@@ -189,26 +187,6 @@ export async function requireSupervisorOrAdmin(
       JSON.stringify({
         success: false,
         error: 'Forbidden: supervisor or admin only',
-      }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } },
-    );
-  }
-}
-
-/**
- * Throws a Response with HTTP 403 if the authenticated user has
- * role 'viewer' in the Firestore users collection.
- * Viewers are read-only; they cannot trigger actuators or write data.
- * Must be called AFTER verifyAuthToken().
- */
-export async function requireNotViewer(user: DecodedIdToken): Promise<void> {
-  const role = await getUserRole(user);
-
-  if (role === 'viewer') {
-    throw new Response(
-      JSON.stringify({
-        success: false,
-        error: 'Forbidden: viewer role cannot perform this action',
       }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },
     );
