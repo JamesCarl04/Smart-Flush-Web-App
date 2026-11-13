@@ -118,9 +118,19 @@ export function ControlPanel() {
         body: JSON.stringify(payload),
       });
 
-      const data: ActionResponse = await response.json();
+      const rawBody = await response.text();
+      let data: ActionResponse = {};
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody) as ActionResponse;
+        } catch {
+          data = {};
+        }
+      }
       if (!response.ok) {
-        throw new Error(data.error || 'Actuator command rejected by backend');
+        throw new Error(
+          data.error || `Actuator command rejected (${response.status})`,
+        );
       }
 
       updateActuatorState(actionKey, 'acknowledged');

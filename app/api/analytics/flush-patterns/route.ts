@@ -1,5 +1,6 @@
 // app/api/analytics/flush-patterns/route.ts
 import { NextResponse } from 'next/server';
+import { validateIsoDateRange } from '@/lib/date-utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -88,6 +89,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
+
+    if (from && to) {
+      const rangeCheck = validateIsoDateRange(from, to);
+      if (!rangeCheck.ok) {
+        return NextResponse.json(
+          { success: false, error: rangeCheck.error },
+          { status: 400 },
+        );
+      }
+    }
 
     let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
     let startTs: Timestamp | null = null;

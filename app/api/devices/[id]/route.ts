@@ -23,6 +23,22 @@ interface UpdateDeviceBody {
   config?: Record<string, string | number | boolean>;
 }
 
+function badDeviceRequest(error: string): NextResponse {
+  return NextResponse.json({ success: false, error }, { status: 400 });
+}
+
+function assignTrimmedDeviceField(
+  raw: unknown,
+  field: keyof Pick<UpdateDeviceBody, 'description' | 'building' | 'floor' | 'location'>,
+  updates: UpdateDeviceBody,
+): NextResponse | null {
+  if (typeof raw !== 'string') {
+    return badDeviceRequest(`${field} must be a string`);
+  }
+  updates[field] = raw.trim();
+  return null;
+}
+
 // GET /api/devices/:id
 export async function GET(
   request: Request,
@@ -88,7 +104,7 @@ export async function PUT(
     }
 
     if (body.name !== undefined) {
-      const trimmedName = body.name.trim();
+      if (typeof body.name !== 'string') return badDeviceRequest('Device name must be a string'); const trimmedName = body.name.trim();
       if (!trimmedName) {
         return NextResponse.json(
           { success: false, error: 'Device name is required' },
@@ -99,19 +115,19 @@ export async function PUT(
     }
 
     if (body.description !== undefined) {
-      updates.description = body.description.trim();
+      const err = assignTrimmedDeviceField(body.description, 'description', updates); if (err) return err;
     }
 
     if (body.building !== undefined) {
-      updates.building = body.building.trim();
+      const err = assignTrimmedDeviceField(body.building, 'building', updates); if (err) return err;
     }
 
     if (body.floor !== undefined) {
-      updates.floor = body.floor.trim();
+      const err = assignTrimmedDeviceField(body.floor, 'floor', updates); if (err) return err;
     }
 
     if (body.location !== undefined) {
-      updates.location = body.location.trim();
+      const err = assignTrimmedDeviceField(body.location, 'location', updates); if (err) return err;
     }
 
     if (body.config !== undefined) {

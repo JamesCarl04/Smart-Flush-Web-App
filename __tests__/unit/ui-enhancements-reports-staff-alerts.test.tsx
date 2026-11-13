@@ -89,7 +89,7 @@ jest.mock('@/lib/viewed-alerts', () => ({
   markTaskAlertsViewed: jest.fn(),
 }));
 
-const mockStaffList: StaffMember[] = [
+const _mockStaffList: StaffMember[] = [
   {
     id: 'staff-1',
     uid: 'staff-1',
@@ -221,7 +221,7 @@ describe('UI Enhancements Verification Suite', () => {
         expect(rows.length).toBe(3);
       });
 
-      rows.forEach((row, index) => {
+      rows.forEach((row) => {
         // 1. Row must have group and focus-within classes
         expect(row.className).toContain('group');
         expect(row.className).toContain('focus-within:bg-slate-50/70');
@@ -329,7 +329,7 @@ describe('UI Enhancements Verification Suite', () => {
     });
 
     it('ensures action buttons meet minimum 44px touch target requirement', () => {
-      const { container } = render(<AlertsPage />);
+      render(<AlertsPage />);
 
       const dismissButtons = screen.getAllByLabelText('Dismiss Alert');
       dismissButtons.forEach((btn) => {

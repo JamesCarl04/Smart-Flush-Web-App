@@ -81,6 +81,8 @@ export default function IssueReportsPage() {
     dismissed: false,
   });
   const [error, setError] = useState<string | null>(null);
+  const [busyReportId, setBusyReportId] = useState<string | null>(null);
+  const [busyEvidenceKey, setBusyEvidenceKey] = useState<string | null>(null);
 
   const load = useCallback(async (targetStatus: Status) => {
     if (!user || role !== 'admin' || roleLoading) return;
@@ -130,27 +132,40 @@ export default function IssueReportsPage() {
     };
   }, [load, status]);
 
-  const mutate = async (path: string, body?: Record<string, unknown>) => {
-    if (!user || role !== 'admin') return;
+  const mutate = async (reportId: string, path: string, body?: Record<string, unknown>) => {
+    if (!user || role !== 'admin' || busyReportId) return;
+    setBusyReportId(reportId);
+    setError(null);
     try {
       await apiFetch(path, user, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
       window.dispatchEvent(new Event('issue-reports:refresh'));
       await load(status);
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : 'Failed to perform moderation action');
+    } finally {
+      setBusyReportId(null);
     }
   };
 
   const viewEvidence = async (reportId: string, submissionId: string) => {
-    if (!user || role !== 'admin') return;
-    const token = await user.getIdToken();
-    const response = await fetch(`/api/issue-reports/${encodeURIComponent(reportId)}/evidence/${encodeURIComponent(submissionId)}`, {
-      headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
-    });
-    if (!response.ok) throw new Error('Evidence is unavailable');
-    const url = URL.createObjectURL(await response.blob());
-    window.open(url, '_blank', 'noopener,noreferrer');
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    const key = `${reportId}:${submissionId}`;
+    if (!user || role !== 'admin' || busyEvidenceKey) return;
+    setBusyEvidenceKey(key);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/issue-reports/${encodeURIComponent(reportId)}/evidence/${encodeURIComponent(submissionId)}`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('Evidence is unavailable');
+      const url = URL.createObjectURL(await response.blob());
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (evidenceError) {
+      setError(evidenceError instanceof Error ? evidenceError.message : 'Evidence is unavailable');
+    } finally {
+      setBusyEvidenceKey(null);
+    }
   };
 
   if (roleLoading) return <div role="status" className="p-6">Loading administrator access…</div>;
@@ -411,11 +426,14 @@ export default function IssueReportsPage() {
                           {matchingEvidence ? (
                             <button
                               type="button"
+                              disabled={busyEvidenceKey === `${report.id}:${matchingEvidence.submissionId}`}
                               onClick={() => void viewEvidence(report.id, matchingEvidence.submissionId)}
-                              className="tactile-btn inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              className="tactile-btn inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
                               <Eye className="h-4 w-4" aria-hidden="true" />
-                              View Photo ({Math.ceil(matchingEvidence.size / 1024)} KB)
+                              {busyEvidenceKey === `${report.id}:${matchingEvidence.submissionId}`
+                                ? 'Opening photo…'
+                                : `View Photo (${Math.ceil(matchingEvidence.size / 1024)} KB)`}
                             </button>
                           ) : null}
                         </div>
@@ -441,11 +459,14 @@ export default function IssueReportsPage() {
                           </div>
                           <button
                             type="button"
+                            disabled={busyEvidenceKey === `${report.id}:${item.submissionId}`}
                             onClick={() => void viewEvidence(report.id, item.submissionId)}
-                            className="tactile-btn inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            className="tactile-btn inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           >
                             <Eye className="h-4 w-4" aria-hidden="true" />
-                            View Photo ({Math.ceil(item.size / 1024)} KB)
+                            {busyEvidenceKey === `${report.id}:${item.submissionId}`
+                              ? 'Opening photo…'
+                              : `View Photo (${Math.ceil(item.size / 1024)} KB)`}
                           </button>
                         </div>
                       ))}
@@ -458,8 +479,9 @@ export default function IssueReportsPage() {
                 <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
                   <button
                     type="button"
-                    onClick={() => void mutate(`/api/issue-reports/${report.id}/dismiss`, { reason: 'unable_to_verify' })}
-                    className="tactile-btn inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    disabled={busyReportId !== null}
+                    onClick={() => void mutate(report.id, `/api/issue-reports/${report.id}/dismiss`, { reason: 'unable_to_verify' })}
+                    className="tactile-btn inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-xs transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     aria-label={`Dismiss ticket ${ticketCode}`}
                   >
                     <XCircle className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" />
@@ -467,12 +489,13 @@ export default function IssueReportsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void mutate(`/api/issue-reports/${report.id}/confirm`)}
-                    className="tactile-btn inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:bg-emerald-900 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                    disabled={busyReportId !== null}
+                    onClick={() => void mutate(report.id, `/api/issue-reports/${report.id}/confirm`)}
+                    className="tactile-btn inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
                     aria-label={`Confirm and create task for ticket ${ticketCode}`}
                   >
                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    Confirm and create task
+                    {busyReportId === report.id ? 'Processing…' : 'Confirm and create task'}
                   </button>
                 </div>
               ) : null}

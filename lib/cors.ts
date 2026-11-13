@@ -6,14 +6,48 @@
 
 import { NextResponse } from 'next/server';
 
-// Whitelist of allowed origins
-const ALLOWED_ORIGINS = [
-  process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  'http://localhost:3000', // Development
-  'http://localhost:3001', // Development alternative port
-  // Add production domains here
-  // 'https://smartflush.example.com',
-];
+// Whitelist of allowed origins (resolved dynamically to support Vercel prod/preview URLs)
+function normalizeOrigin(raw: string | undefined, httpsFallback = false): string | null {
+  const trimmed = raw?.trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return null;
+  }
+  const withScheme =
+    httpsFallback && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
+  try {
+    return new URL(withScheme).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function getAllowedOrigins(): Set<string> {
+  const candidates = [
+    normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL),
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL),
+    normalizeOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL, true),
+    normalizeOrigin(process.env.VERCEL_URL, true),
+    'https://kliradmin.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ];
+
+  const allowed = new Set<string>();
+  for (const origin of candidates) {
+    if (origin) {
+      allowed.add(origin);
+    }
+  }
+  return allowed;
+}
+
+function applyCorsHeaders(headers: Headers, origin: string): void {
+  headers.set('Access-Control-Allow-Origin', origin);
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.set('Access-Control-Max-Age', '86400'); // 24 hours
+  headers.set('Access-Control-Allow-Credentials', 'true');
+}
 
 /**
  * Add CORS headers to response if origin is allowed
@@ -29,14 +63,10 @@ export function addCorsHeaders(
     response instanceof NextResponse
       ? response
       : new NextResponse(response.body, response);
-  const origin = request.headers?.get('origin');
+  const origin = request.headers?.get('origin')?.trim();
 
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    nextResponse.headers.set('Access-Control-Allow-Origin', origin);
-    nextResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    nextResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    nextResponse.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
-    nextResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+  if (origin && getAllowedOrigins().has(origin)) {
+    applyCorsHeaders(nextResponse.headers, origin);
   }
 
   return nextResponse;
@@ -48,19 +78,12 @@ export function addCorsHeaders(
  * @returns Preflight response
  */
 export function handleCorsPreFlight(request: Request): NextResponse {
-  const origin = request.headers?.get('origin');
+  const origin = request.headers?.get('origin')?.trim();
 
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    return new NextResponse(null, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Max-Age': '86400',
-        'Access-Control-Allow-Credentials': 'true',
-      },
-    });
+  if (origin && getAllowedOrigins().has(origin)) {
+    const response = new NextResponse(null, { status: 200 });
+    applyCorsHeaders(response.headers, origin);
+    return response;
   }
 
   // Reject non-whitelisted origins

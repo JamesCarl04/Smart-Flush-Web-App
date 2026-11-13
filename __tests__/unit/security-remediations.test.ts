@@ -1,4 +1,5 @@
 import { escapeCsv } from '@/app/api/reports/generate/route';
+import { addCorsHeaders, handleCorsPreFlight } from '@/lib/cors';
 import { sensorConfigSchema, validateData } from '@/lib/schemas';
 
 describe('Security Remediations', () => {
@@ -69,6 +70,46 @@ describe('Security Remediations', () => {
       expect(validateData({ threshold: 105 }, sensorConfigSchema).success).toBe(false);
       expect(validateData({ personGoneConfirm: 0 }, sensorConfigSchema).success).toBe(false);
       expect(validateData({ personGoneConfirm: 15 }, sensorConfigSchema).success).toBe(false);
+    });
+  });
+
+  describe('CORS Deployed Origin Whitelist', () => {
+    const origEnv = { ...process.env };
+
+    afterEach(() => {
+      process.env = { ...origEnv };
+    });
+
+    it('allows normalized Vercel production and preview origins and rejects lookalike domains', () => {
+      process.env.NEXT_PUBLIC_APP_URL = 'https://custom-defense.example.com/';
+      process.env.VERCEL_URL = 'smart-flush-preview-abc.vercel.app';
+
+      const allowedReq = new Request('https://kliradmin.vercel.app/api/actuators/pump', {
+        method: 'POST',
+        headers: { origin: 'https://kliradmin.vercel.app' },
+      });
+      const allowedRes = addCorsHeaders(new Response('{}'), allowedReq);
+      expect(allowedRes.headers.get('Access-Control-Allow-Origin')).toBe(
+        'https://kliradmin.vercel.app',
+      );
+
+      const customReq = new Request('https://custom-defense.example.com/api/tasks/create', {
+        method: 'OPTIONS',
+        headers: { origin: 'https://custom-defense.example.com' },
+      });
+      expect(handleCorsPreFlight(customReq).status).toBe(200);
+
+      const previewReq = new Request('https://smart-flush-preview-abc.vercel.app/api/tasks/create', {
+        method: 'OPTIONS',
+        headers: { origin: 'https://smart-flush-preview-abc.vercel.app' },
+      });
+      expect(handleCorsPreFlight(previewReq).status).toBe(200);
+
+      const spoofingReq = new Request('https://kliradmin.vercel.app/api/actuators/pump', {
+        method: 'OPTIONS',
+        headers: { origin: 'https://kliradmin.vercel.app.evil.com' },
+      });
+      expect(handleCorsPreFlight(spoofingReq).status).toBe(403);
     });
   });
 });

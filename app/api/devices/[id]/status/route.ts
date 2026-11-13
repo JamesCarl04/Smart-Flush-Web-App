@@ -29,7 +29,7 @@ export async function GET(
       {
         success: false,
         error:
-          error instanceof Error ? error.message : 'Failed to fetch status',
+          'Failed to fetch status',
       },
       { status: 500 },
     );

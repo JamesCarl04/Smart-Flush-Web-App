@@ -72,12 +72,12 @@ export async function PUT(
     try {
       await publishConfigUpdate(mergedConfig);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown MQTT publish error';
+      console.warn('[Sensors] MQTT config sync failed:', error);
       return NextResponse.json({
         success: true,
         data: { deviceId: id, config: mergedConfig },
-        warning: `Configuration saved, but syncing to the ESP32 failed: ${message}`,
+        warning:
+          'Configuration saved, but syncing to the ESP32 failed.',
       });
     }
 
@@ -91,8 +91,7 @@ export async function PUT(
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : 'Failed to update config',
+        error: 'Failed to update config',
       },
       { status: 500 },
     );

@@ -89,6 +89,7 @@ export function chooseAvailableMaintenancePersonnel(
       const data = user.data();
       return (
         data.isOnline !== false &&
+        data.active !== false &&
         data.isActive !== false &&
         data.isAvailable !== false &&
         data.status !== 'offline' &&

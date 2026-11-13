@@ -109,6 +109,8 @@ export function CampusBatchQrModal({
   const [loadingQrs, setLoadingQrs] = useState(false);
 
   useEffect(() => {
+    // Portal target (document.body) only exists after client mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

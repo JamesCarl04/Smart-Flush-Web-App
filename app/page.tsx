@@ -4,7 +4,10 @@ import { redirect } from 'next/navigation';
 export default async function RootPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get('auth-token')?.value;
-  const presentationMode = cookieStore.get('presentation-mode')?.value;
+  const presentationMode =
+    process.env.NODE_ENV !== 'production'
+      ? cookieStore.get('presentation-mode')?.value
+      : undefined;
 
   if (token || presentationMode === '1') {
     redirect('/dashboard');

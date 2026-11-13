@@ -92,13 +92,15 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const errorCode = getErrorCode(err);
       console.warn('Login attempt failed with code:', errorCode);
+      // Use one generic message for every credential failure so the UI never
+      // reveals whether an account exists (user-enumeration resistance).
       if (
         errorCode === 'auth/user-not-found' ||
-        errorCode === 'auth/invalid-credential'
+        errorCode === 'auth/invalid-credential' ||
+        errorCode === 'auth/wrong-password' ||
+        errorCode === 'auth/invalid-email'
       ) {
         setError('Invalid email or password. Please check your credentials or contact your administrator.');
-      } else if (errorCode === 'auth/wrong-password') {
-        setError('Wrong password. Please verify your credentials.');
       } else if (errorCode === 'auth/too-many-requests') {
         setError('Too many login attempts. Please try again later.');
       } else if (errorCode === 'auth/network-request-failed') {
@@ -145,7 +147,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 flex items-start gap-2.5 animate-fade-in">
+          <div role="alert" className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 flex items-start gap-2.5 animate-fade-in">
             <div className="h-4 w-4 shrink-0 rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs mt-0.5">
               !
             </div>

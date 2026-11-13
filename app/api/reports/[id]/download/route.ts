@@ -4,7 +4,8 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { verifyAuthToken } from '@/lib/auth-helpers';
+import { verifyAuthToken, requireSupervisorOrAdmin } from '@/lib/auth-helpers';
+import { validateIsoDateRange } from '@/lib/date-utils';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { FlushEventRow, UVCycleRow } from '@/lib/pdf-report';
 
@@ -77,6 +78,7 @@ export async function GET(
 ): Promise<NextResponse | Response> {
   try {
     const user = await verifyAuthToken(request);
+    await requireSupervisorOrAdmin(user);
     const { id } = await params;
 
     const reportDoc = await adminDb.collection('reports').doc(id).get();
@@ -94,6 +96,20 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 },
+      );
+    }
+
+    if (typeof meta.from !== 'string' || typeof meta.to !== 'string') {
+      return NextResponse.json(
+        { success: false, error: 'Report has invalid date metadata' },
+        { status: 400 },
+      );
+    }
+    const dateRangeCheck = validateIsoDateRange(meta.from, meta.to);
+    if (!dateRangeCheck.ok) {
+      return NextResponse.json(
+        { success: false, error: dateRangeCheck.error },
+        { status: 400 },
       );
     }
 

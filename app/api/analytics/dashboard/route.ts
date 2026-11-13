@@ -13,6 +13,23 @@ interface UVCycleDoc {
   completed: boolean;
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Converts Firestore Timestamp, serialized {_seconds}, ISO string or epoch to millis. */
+function toMillisLoose(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+  if (typeof value === 'object') {
+    const v = value as { toMillis?: unknown; _seconds?: unknown };
+    if (typeof v.toMillis === 'function') return (v.toMillis as () => number).call(value);
+    if (typeof v._seconds === 'number') return v._seconds * 1000;
+  }
+  return null;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
@@ -21,6 +38,18 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
+
+    if (
+      (from && !ISO_DATE.test(from)) ||
+      (to && !ISO_DATE.test(to)) ||
+      (from && Number.isNaN(new Date(`${from}T00:00:00.000Z`).getTime())) ||
+      (to && Number.isNaN(new Date(`${to}T00:00:00.000Z`).getTime()))
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'from/to must be dates in YYYY-MM-DD format' },
+        { status: 400 },
+      );
+    }
 
     let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
     let uvQuery: FirebaseFirestore.Query = adminDb.collection('uvCycles');
@@ -57,17 +86,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       const d = doc.data() as FlushEventDoc;
       totalWaterLiters += d.waterVolume ?? 0;
 
-      const ts = d.timestamp as any;
-      let dateObj: Date | null = null;
-      if (ts) {
-        if (typeof ts.toDate === 'function') {
-          dateObj = ts.toDate();
-        } else if (ts._seconds) {
-          dateObj = new Date(ts._seconds * 1000);
-        } else if (typeof ts === 'string' || typeof ts === 'number') {
-          dateObj = new Date(ts);
-        }
-      }
+      const tsMillis = toMillisLoose(d.timestamp);
+      const dateObj = tsMillis === null ? null : new Date(tsMillis);
 
       if (dateObj && !isNaN(dateObj.getTime())) {
         const date = dateObj.toISOString().slice(0, 10);
@@ -91,17 +111,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
     const totalDevices = devicesSnap.size;
     const onlineDevices = devicesSnap.docs.filter((d) => {
-      const ls = d.data().lastSeen as any;
-      let lastSeenMillis = 0;
-      if (ls) {
-        if (typeof ls.toMillis === 'function') {
-          lastSeenMillis = ls.toMillis();
-        } else if (ls._seconds) {
-          lastSeenMillis = ls._seconds * 1000;
-        } else if (typeof ls === 'string' || typeof ls === 'number') {
-          lastSeenMillis = new Date(ls).getTime();
-        }
-      }
+      const lastSeenMillis = toMillisLoose(d.data().lastSeen) ?? 0;
       return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;
 
@@ -142,14 +152,13 @@ export async function GET(request: Request): Promise<NextResponse> {
         liveSnapshotPercent,
       },
     });
-  } catch (error: any) {
-    if (error instanceof Response || (error && error.status && typeof error.json === 'function')) {
+  } catch (error: unknown) {
+    if (error instanceof Response) {
       return new NextResponse(error.body, error);
     }
     console.error('[Analytics] dashboard error:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: `Failed to fetch dashboard analytics: ${errorMessage}` },
+      { success: false, error: 'Failed to fetch dashboard analytics' },
       { status: 500 },
     );
   }

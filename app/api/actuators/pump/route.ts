@@ -28,10 +28,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const body = (await request.json()) as Partial<PumpBody>;
     if (body.command !== 'ON' && body.command !== 'OFF') {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, error: 'command must be "ON" or "OFF"' },
         { status: 400 },
       );
+      return addCorsHeaders(response, request);
     }
 
     await ensureDeviceConnected(DEFAULT_DEVICE_ID);

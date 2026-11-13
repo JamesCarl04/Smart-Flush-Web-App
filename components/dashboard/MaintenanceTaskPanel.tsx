@@ -875,6 +875,7 @@ export function MaintenanceTaskPanel() {
 
   // Create Task Handler
   const handleCreateTaskFromModal = async () => {
+    if (taskAction) return;
     if (!user) {
       setTaskToast({
         kind: 'error',

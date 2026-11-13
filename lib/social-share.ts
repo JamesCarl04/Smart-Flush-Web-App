@@ -12,7 +12,6 @@ export interface ShareData {
 
 export function getShareUrls(data: ShareData) {
   const encodedUrl = encodeURIComponent(data.url);
-  const encodedTitle = encodeURIComponent(data.title);
   const encodedText = encodeURIComponent(data.text || data.title);
 
   return {

@@ -1,6 +1,7 @@
 // app/api/sensors/[id]/readings/route.ts
 // GET /api/sensors/:id/readings?from=YYYY-MM-DD&to=YYYY-MM-DD
 import { NextResponse } from 'next/server';
+import { enumerateIsoDateRange, validateIsoDateRange } from '@/lib/date-utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireMaintenance, verifyAuthToken } from '@/lib/auth-helpers';
 import {
@@ -59,16 +60,7 @@ function timestampToMillis(value: SensorReadingDoc['timestamp']): number {
 }
 
 function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(from);
-  const end = new Date(to);
-
-  while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
-    current.setDate(current.getDate() + 1);
-  }
-
-  return dates;
+  return enumerateIsoDateRange(from, to);
 }
 
 export async function GET(
@@ -83,6 +75,16 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
+
+    if (from && to) {
+      const rangeCheck = validateIsoDateRange(from, to, 366);
+      if (!rangeCheck.ok) {
+        return NextResponse.json(
+          { success: false, error: rangeCheck.error },
+          { status: 400 },
+        );
+      }
+    }
 
     if (!from) {
       return NextResponse.json(
@@ -138,7 +140,7 @@ export async function GET(
       {
         success: false,
         error:
-          error instanceof Error ? error.message : 'Failed to fetch readings',
+          'Failed to fetch readings',
       },
       { status: 500 },
     );

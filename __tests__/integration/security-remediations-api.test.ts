@@ -137,7 +137,7 @@ describe('Security Remediations API Tests', () => {
 
     it('rejects unknown or invalid role with 403 Forbidden', async () => {
       mockVerifyAuthToken.mockResolvedValue({ uid: 'unknown-1' });
-      mockGetUserRole.mockResolvedValue('unknown' as any);
+      mockGetUserRole.mockResolvedValue('unknown' as never);
 
       const request = new Request('http://localhost/api/tasks/task-1', { method: 'GET' });
       const response = await getTask(request, { params: Promise.resolve({ id: 'task-1' }) });

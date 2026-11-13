@@ -4,7 +4,7 @@
  * Tests the full auth flow including token verification and role checks
  */
 
-import { createMockAuthToken, testApiHelper } from '../helpers/test-utils'
+import { testApiHelper } from '@/__tests__/helpers/test-utils'
 
 // Mock Firebase Admin
 jest.mock('@/lib/firebase-admin', () => ({

@@ -37,7 +37,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       user.email?.split('@')[0] ||
       'Supervisor';
     const flagPhotoUrls = Array.isArray(body.flagPhotoUrls)
-      ? body.flagPhotoUrls.filter((url): url is string => typeof url === 'string')
+      ? body.flagPhotoUrls
+          .filter((url): url is string => typeof url === 'string')
+          .map((url) => url.trim())
+          .filter((url) => {
+            if (!url || url.length > 2048) return false;
+            try {
+              const parsed = new URL(url);
+              return parsed.protocol === 'https:';
+            } catch {
+              return false;
+            }
+          })
+          .slice(0, 10)
       : [];
 
     if (!taskId) {

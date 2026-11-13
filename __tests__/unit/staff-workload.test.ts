@@ -247,7 +247,10 @@ describe('resolveStaffOperationalStatus', () => {
       }),
     };
 
-    const result = resolveStaffOperationalStatus(mockDocSnapshot as any, []);
+    const result = resolveStaffOperationalStatus(
+      mockDocSnapshot as unknown as Parameters<typeof resolveStaffOperationalStatus>[0],
+      [],
+    );
     expect(result.status).toBe('available');
     expect(result.isAvailable).toBe(true);
   });

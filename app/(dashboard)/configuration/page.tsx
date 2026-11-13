@@ -508,6 +508,7 @@ export default function ConfigurationPage() {
   };
 
   const handleDeviceSave = async () => {
+    if (savingSection !== null) return;
     if (!user) {
       toast.error('You must be logged in to save device settings.');
       return;
@@ -534,6 +535,7 @@ export default function ConfigurationPage() {
   };
 
   const handleConfirmPasswordSave = async () => {
+    if (isVerifyingPassword || savingSection !== null) return;
     if (!user || !user.email) {
       toast.error('User authentication session is invalid.');
       return;
@@ -576,6 +578,7 @@ export default function ConfigurationPage() {
   };
 
   const handleCalibrationSave = async () => {
+    if (savingSection !== null) return;
     if (!user) {
       toast.error('You must be logged in to save calibration values.');
       return;
@@ -608,6 +611,7 @@ export default function ConfigurationPage() {
   };
 
   const handleTimingSave = async () => {
+    if (savingSection !== null) return;
     if (!user) {
       toast.error('You must be logged in to save timing parameters.');
       return;
@@ -687,6 +691,7 @@ export default function ConfigurationPage() {
   };
 
   const handleCreateRule = async () => {
+    if (creatingRule) return;
     if (!user) {
       toast.error('You must be logged in to create automation rules.');
       return;
@@ -738,6 +743,7 @@ export default function ConfigurationPage() {
   };
 
   const toggleRule = async (rule: Rule) => {
+    if (ruleMutationId) return;
     if (!user) {
       toast.error('You must be logged in to update automation rules.');
       return;
@@ -767,6 +773,7 @@ export default function ConfigurationPage() {
   };
 
   const deleteRuleConfirm = async (ruleId: string) => {
+    if (ruleMutationId) return;
     if (!user) {
       toast.error('You must be logged in to delete automation rules.');
       return;
@@ -796,6 +803,7 @@ export default function ConfigurationPage() {
   };
 
   const handleResetCounter = async (ruleId: string) => {
+    if (ruleMutationId) return;
     if (!user) {
       toast.error('You must be logged in to reset counters.');
       return;
@@ -806,6 +814,7 @@ export default function ConfigurationPage() {
       await apiFetch(`/api/automation-rules/${ruleId}/reset-counter`, user, {
         method: 'POST',
       });
+      await fetchRules();
       toast.success('Maintenance counter reset to 0.');
     } catch (error) {
       toast.error(getErrorMessage(error) ?? 'Failed to reset counter.');

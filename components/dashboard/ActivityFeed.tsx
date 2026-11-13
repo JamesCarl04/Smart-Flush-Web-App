@@ -2,7 +2,7 @@
 
 import { useActivityFeed, ActivityEvent } from '@/hooks/useActivityFeed';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Droplets, Sparkles, UserCheck, Activity, ShieldCheck } from 'lucide-react';
+import { Droplets, Sparkles, Activity, ShieldCheck } from 'lucide-react';
 
 function getEventDetails(event: ActivityEvent) {
   switch (event.type) {

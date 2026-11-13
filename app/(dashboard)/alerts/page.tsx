@@ -158,6 +158,8 @@ export default function AlertsPage() {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    // localStorage is client-only; hydrating here avoids SSR/client mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setViewedTaskIds(getViewedTaskAlertIds());
 
     const handleSync = (event: Event) => {
@@ -311,6 +313,7 @@ export default function AlertsPage() {
 
   const handleAcknowledge = async (id: string | 'ALL') => {
     if (id === 'ALL') {
+      if (dismissingIds.length > 0) return;
       const unacknowledgedSystemAlertIds = filteredAlerts
         .filter((alert) => alert.source === 'system' && !alert.acknowledged)
         .map((alert) => alert.id);
@@ -357,6 +360,7 @@ export default function AlertsPage() {
       return;
     }
 
+    if (dismissingIds.includes(id)) return;
     const targetAlert = dashboardAlerts.find((alert) => alert.id === id);
     if (!targetAlert) return;
 
@@ -414,6 +418,7 @@ export default function AlertsPage() {
             onClick={() => handleAcknowledge('ALL')}
             disabled={
               loading ||
+              dismissingIds.length > 0 ||
               filteredAlerts.every((alert) => alert.acknowledged)
             }
           >
@@ -594,10 +599,11 @@ export default function AlertsPage() {
                               {/* Dismiss Button */}
                               <button
                                 type="button"
-                                className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2"
+                                disabled={isDismissing}
+                                className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5121B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 title="Dismiss Alert"
                                 aria-label="Dismiss Alert"
-                                onClick={() => handleDismiss(alert.id)}
+                                onClick={() => void handleDismiss(alert.id)}
                               >
                                 <X className="h-4 w-4" aria-hidden="true" />
                               </button>

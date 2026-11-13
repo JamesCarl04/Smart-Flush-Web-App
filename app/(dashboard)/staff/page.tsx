@@ -121,6 +121,7 @@ export default function StaffManagementPage() {
 
   // Active action menu row id
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [mutatingStaffId, setMutatingStaffId] = useState<string | null>(null);
 
   // Fetch staff personnel
   const loadStaff = useCallback(async (isSilent: boolean = false) => {
@@ -281,6 +282,7 @@ export default function StaffManagementPage() {
   };
 
   const handleExecuteCreateStaff = async () => {
+    if (isSubmitting) return;
     if (!validateForm() || !user) return;
 
     setIsSubmitting(true);
@@ -336,6 +338,7 @@ export default function StaffManagementPage() {
   // Submit Edit Assignment (Role is locked and omitted from payload)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isEditSubmitting) return;
     if (!editingStaff || !user) return;
 
     setIsEditSubmitting(true);
@@ -394,6 +397,7 @@ export default function StaffManagementPage() {
 
   const handleConfirmDeactivate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDeactivating) return;
     if (!deactivatingStaff || !user) return;
 
     if (!adminPasswordConfirm.trim()) {
@@ -460,8 +464,9 @@ export default function StaffManagementPage() {
 
   // Safe Direct Reactivation
   const handleReactivateStaff = async (staff: StaffMember) => {
-    if (!user) return;
+    if (!user || mutatingStaffId) return;
     setActiveMenuId(null);
+    setMutatingStaffId(staff.id);
     try {
       const res = await apiFetch<{ success: boolean; error?: string }>(
         `/api/staff/${staff.id}`,
@@ -480,13 +485,16 @@ export default function StaffManagementPage() {
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to reactivate staff member');
+    } finally {
+      setMutatingStaffId(null);
     }
   };
 
   // Send Password Reset
   const handleSendPasswordReset = async (staff: StaffMember) => {
-    if (!user) return;
+    if (!user || mutatingStaffId) return;
     setActiveMenuId(null);
+    setMutatingStaffId(staff.id);
     try {
       const res = await apiFetch<{
         success: boolean;
@@ -506,6 +514,8 @@ export default function StaffManagementPage() {
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error generating password link');
+    } finally {
+      setMutatingStaffId(null);
     }
   };
 

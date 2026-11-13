@@ -1,159 +1,159 @@
-// e2e/auth.spec.ts
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test';
 
-test.describe('Authentication Flow', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+test.describe('Public Landing & QR Intake Gate', () => {
+  test('renders public landing without auto-redirect or auth cookies', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto('/');
 
-  test('should display login page', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    await expect(page.locator('h1')).toContainText('Login')
-    await expect(page.locator('input[type="email"]')).toBeVisible()
-    await expect(page.locator('input[type="password"]')).toBeVisible()
-  })
+    await expect(
+      page.getByRole('heading', { name: 'Restroom Intelligence System' }),
+    ).toBeVisible();
+    await expect(page.getByText('Reporting a Restroom Issue?')).toBeVisible();
 
-  test('should navigate to registration from login', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    const registerLink = page.locator('a:has-text("Register")')
-    await registerLink.click()
-    await expect(page).toHaveURL(/\/auth\/register/)
-  })
+    const cookies = await page.context().cookies();
+    expect(cookies.find((c) => c.name === 'auth-token')).toBeUndefined();
+  });
 
-  test('should show validation errors for empty fields', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    const submitButton = page.locator('button:has-text("Login")')
-    await submitButton.click()
-    
-    // Should show validation errors
-    const errors = page.locator('.error-message, [role="alert"]')
-    await expect(errors.first()).toBeVisible()
-  })
+  test('renders unavailable state cleanly for nonexistent device QR route', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto('/report/nonexistent-device-id');
 
-  test('should show validation errors for invalid email', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    await page.fill('input[type="email"]', 'invalid-email')
-    await page.fill('input[type="password"]', 'password123')
-    const submitButton = page.locator('button:has-text("Login")')
-    await submitButton.click()
-    
-    // Should show email validation error
-    const emailError = page.locator('text=Valid email required')
-    await expect(emailError).toBeVisible()
-  })
+    await expect(
+      page.getByRole('heading', { name: 'Reporting unavailable' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('This restroom is not accepting public reports.'),
+    ).toBeVisible();
+  });
+});
 
-  test('should show validation errors for weak password', async ({ page }) => {
-    await page.goto('/portal-admin/register')
-    await page.fill('input[type="email"]', 'newuser@test.com')
-    await page.fill('input[type="password"]', 'weak')
-    const submitButton = page.locator('button:has-text("Register")')
-    await submitButton.click()
-    
-    // Should show password validation error (currently says 8 chars)
-    const passwordError = page.locator('text=password must be at least')
-    await expect(passwordError).toBeVisible()
-  })
+test.describe('Admin Portal Authentication Flow', () => {
+  test.beforeEach(() => {
+    test.setTimeout(60_000);
+  });
 
-  test('should have no auth token in accessible cookies (security check)', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    
-    // Get all cookies
-    const cookies = await page.context().cookies()
-    const authCookie = cookies.find(c => c.name === 'auth-token')
-    
-    // SECURITY CHECK: Should NOT have auth-token in regular cookies
-    // After fix, this test should pass (no auth-token cookie)
-    expect(authCookie).toBeUndefined()
-  })
+  test('renders login controls and interactive password/theme toggles', async ({
+    page,
+  }) => {
+    await page.goto('/portal-admin/login');
 
-  test('should require HTTPS for production (security check)', async ({ page, context }) => {
-    // This test verifies HTTPS requirement
-    // In production, HTTP should redirect to HTTPS
-    const protocol = page.url().startsWith('https') || page.url().includes('localhost')
-    expect(protocol).toBeTruthy()
-  })
-})
+    await expect(
+      page.getByRole('heading', { name: 'Welcome to Klir' }),
+    ).toBeVisible();
 
-test.describe('Registration Security', () => {
-  test('should reject duplicate email', async ({ page }) => {
-    await page.goto('/portal-admin/register')
-    
-    // Fill in registration form
-    await page.fill('input[name="email"]', 'duplicate@test.com')
-    await page.fill('input[name="password"]', 'SecurePassword123!')
-    await page.fill('input[name="displayName"]', 'Test User')
-    
-    const submitButton = page.locator('button:has-text("Register")')
-    await submitButton.click()
-    
-    // Would show error for duplicate email
-    // (Only if email already exists in test data)
-  })
+    const emailInput = page.locator('#login-email');
+    const passwordInput = page.locator('#login-password');
+    await expect(emailInput).toBeVisible();
+    await expect(passwordInput).toBeVisible();
+    await expect(passwordInput).toHaveAttribute('type', 'password');
 
-  test('should sanitize display name input', async ({ page }) => {
-    await page.goto('/portal-admin/register')
-    
-    // Try to inject XSS
-    const xssPayload = '<script>alert("xss")</script>'
-    await page.fill('input[name="displayName"]', xssPayload)
-    
-    // Should sanitize or reject
-    const displayNameInput = page.locator('input[name="displayName"]')
-    const value = await displayNameInput.inputValue()
-    
-    // Should not contain actual script tags
-    expect(value).not.toContain('<script>')
-  })
+    await page.getByRole('button', { name: 'Show password' }).click();
+    await expect(passwordInput).toHaveAttribute('type', 'text');
+    await page.getByRole('button', { name: 'Hide password' }).click();
+    await expect(passwordInput).toHaveAttribute('type', 'password');
 
-  test('should not have rate limiting bypass (security check)', async ({ page }) => {
-    // SECURITY FINDING: No rate limiting implemented
-    // This test documents the vulnerability
-    
-    const registrationPromises = []
-    
-    // Try to register multiple accounts rapidly
-    for (let i = 0; i < 5; i++) {
-      const registerPage = page.context().newPage()
-      registrationPromises.push(registerPage)
-    }
-    
-    // FAIL: Should be rate limited
-    // Currently allows unlimited registration attempts from same IP
-    expect(registrationPromises.length).toBeGreaterThan(0)
-  })
-})
+    const beforeTheme = await page.evaluate(() => ({
+      className: document.documentElement.className,
+      dataTheme: document.documentElement.getAttribute('data-theme'),
+    }));
+    await page.getByRole('button', { name: 'Toggle theme' }).click();
+    const afterTheme = await page.evaluate(() => ({
+      className: document.documentElement.className,
+      dataTheme: document.documentElement.getAttribute('data-theme'),
+    }));
+    expect(afterTheme).not.toEqual(beforeTheme);
+  });
 
-test.describe('Login Security', () => {
-  test('should reject invalid credentials', async ({ page }) => {
-    await page.goto('/portal-admin/login')
-    
-    await page.fill('input[type="email"]', 'test@test.com')
-    await page.fill('input[type="password"]', 'wrongpassword')
-    
-    const submitButton = page.locator('button:has-text("Login")')
-    await submitButton.click()
-    
-    // Should show error message
-    const errorMessage = page.locator('[role="alert"]')
-    await expect(errorMessage).toContainText(/incorrect|invalid|failed/i)
-  })
+  test('shows client validation feedback for empty and short passwords', async ({
+    page,
+  }) => {
+    await page.goto('/portal-admin/login');
 
-  test('should not reveal if email exists (prevent user enumeration)', async ({ page }) => {
-    // RECOMMENDATION: Error messages should not reveal if email exists
-    // Currently might say "User not found" vs "Password incorrect"
-    
-    await page.goto('/portal-admin/login')
-    await page.fill('input[type="email"]', 'nonexistent@test.com')
-    await page.fill('input[type="password"]', 'anypassword')
-    
-    const submitButton = page.locator('button:has-text("Login")')
-    await submitButton.click()
-    
-    const errorMessage = page.locator('[role="alert"]')
-    const text = await errorMessage.textContent()
-    
-    // Should use generic error message
-    expect(text).toMatch(/credentials|login failed/i)
-    expect(text).not.toMatch(/user not found/i)
-  })
-})
+    await page.getByRole('button', { name: /Login to Dashboard/i }).click();
+    await expect(page.getByText('Email is required')).toBeVisible();
+    await expect(page.getByText('Password is required')).toBeVisible();
+
+    await page.fill('#login-email', 'admin@sdca.edu.ph');
+    await page.fill('#login-password', 'short');
+    await page.getByRole('button', { name: /Login to Dashboard/i }).click();
+    await expect(
+      page.getByText('Password must be at least 8 characters'),
+    ).toBeVisible();
+  });
+
+  test('shows admin-only notice when redirected from non-admin session', async ({
+    page,
+  }) => {
+    await page.goto('/portal-admin/login?error=admin-only');
+
+    const alert = page.locator('[role="alert"]:not(#__next-route-announcer__)');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText('reserved exclusively for Administrators');
+  });
+
+  test('prevents user enumeration on invalid credentials', async ({
+    page,
+  }) => {
+    await page.route('**/identitytoolkit.googleapis.com/**', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 400,
+            message: 'INVALID_LOGIN_CREDENTIALS',
+          },
+        }),
+      });
+    });
+
+    await page.goto('/portal-admin/login');
+    await page.fill('#login-email', 'nonexistent@sdca.edu.ph');
+    await page.fill('#login-password', 'WrongPassword123!');
+    await page.getByRole('button', { name: /Login to Dashboard/i }).click();
+
+    const alert = page.locator('[role="alert"]:not(#__next-route-announcer__)');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/invalid email or password/i);
+    const text = (await alert.textContent()) || '';
+    expect(text).not.toMatch(/user not found/i);
+  });
+
+  test('navigates to forgot-password and validates reset links cleanly', async ({
+    page,
+  }) => {
+    await page.goto('/portal-admin/login');
+    const forgotLink = page.getByRole('link', { name: 'Forgot password?' });
+    await expect(forgotLink).toHaveAttribute('href', '/portal-admin/forgot-password');
+    await Promise.all([
+      page.waitForURL(/\/portal-admin\/forgot-password/, { timeout: 25_000 }),
+      forgotLink.click(),
+    ]);
+
+    await page.locator('button[type="submit"]').click();
+    await expect(page.getByText('Email address is required')).toBeVisible();
+
+    await page.goto('/portal-admin/reset-password');
+    const resetAlert = page.locator('[role="alert"]:not(#__next-route-announcer__)');
+    await expect(resetAlert).toBeVisible();
+    await expect(resetAlert).toContainText('missing a security token');
+  });
+
+  test('blocks unauthenticated self-registration on portal-admin/register', async ({
+    page,
+  }) => {
+    await page.goto('/portal-admin/register');
+    await expect(
+      page.getByRole('heading', { name: 'Registration Restricted' }),
+    ).toBeVisible();
+    await expect(
+      page.locator('form, input[type="email"], input[type="password"]'),
+    ).toHaveCount(0);
+    await page.getByRole('link', { name: 'Return to Login' }).click();
+    await expect(page).toHaveURL(/\/portal-admin\/login/);
+  });
+});

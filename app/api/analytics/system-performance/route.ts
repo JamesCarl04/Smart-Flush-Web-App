@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
-import { Timestamp } from 'firebase-admin/firestore';
+import { enumerateIsoDateRange, validateIsoDateRange } from '@/lib/date-utils';
 
 interface DeviceDoc {
   id: string;
@@ -34,18 +34,6 @@ function toMillisSafe(value: unknown): number | null {
   return null;
 }
 
-function getDateList(fromStr: string, toStr: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(`${fromStr}T00:00:00.000Z`);
-  const end = new Date(`${toStr}T00:00:00.000Z`);
-
-  while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}
-
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
@@ -54,6 +42,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
+
+    if (from && to) {
+      const rangeCheck = validateIsoDateRange(from, to, 366);
+      if (!rangeCheck.ok) {
+        return NextResponse.json(
+          { success: false, error: rangeCheck.error },
+          { status: 400 },
+        );
+      }
+    }
 
     const snap = await adminDb.collection('devices').get();
     const fiveMinAgoMillis = Date.now() - 5 * 60 * 1000;
@@ -76,7 +74,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     let dailyList: Array<{ date: string; uptimePercent: number }> = [];
 
     if (from && to) {
-      const allDates = getDateList(from, to);
+      const allDates = enumerateIsoDateRange(from, to);
       const uptimeSnap = await adminDb
         .collection('deviceUptimeDaily')
         .where('date', '>=', from)

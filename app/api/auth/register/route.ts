@@ -68,9 +68,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const assignedRole = role && ['admin', 'supervisor', 'technician', 'maintenance'].includes(role)
-      ? role
-      : 'technician';
+    const ALLOWED_REGISTER_ROLES = ['admin', 'supervisor', 'technician', 'maintenance'] as const;
+    let assignedRole = 'technician';
+    if (role !== undefined) {
+      const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+      if (!(ALLOWED_REGISTER_ROLES as readonly string[]).includes(normalizedRole)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `role must be one of: ${ALLOWED_REGISTER_ROLES.join(', ')}`,
+          },
+          { status: 400 },
+        );
+      }
+      assignedRole = normalizedRole;
+    }
 
     // Create Firebase Auth user
     const userRecord = await adminAuth.createUser({
@@ -123,11 +135,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : 'Registration failed';
     console.error('[Auth] register error:', error);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: 'Registration failed' },
       { status: 500 },
     );
   }

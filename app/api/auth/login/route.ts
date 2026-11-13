@@ -62,8 +62,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     };
 
     if (!firebaseResp.ok || !data.idToken) {
-      const msg = data.error?.message ?? 'Invalid email or password';
-      return NextResponse.json({ success: false, error: msg }, { status: 401 });
+      // Normalize provider errors so responses never reveal whether an account exists.
+      const providerCode = data.error?.message ?? '';
+      if (providerCode.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+        return NextResponse.json(
+          { success: false, error: 'Too many attempts. Please try again later.' },
+          { status: 429 },
+        );
+      }
+      return NextResponse.json(
+        { success: false, error: 'Invalid email or password' },
+        { status: 401 },
+      );
     }
 
     return NextResponse.json({

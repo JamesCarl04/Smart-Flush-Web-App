@@ -10,15 +10,19 @@ export async function POST(request?: Request): Promise<NextResponse> {
     try {
       const user = await verifyAuthToken(request);
       if (user?.uid) {
-        await adminDb.collection('users').doc(user.uid).set(
-          {
-            isOnline: false,
-            status: 'offline',
-            lastSeen: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+        const userRef = adminDb.collection('users').doc(user.uid);
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+          await userRef.set(
+            {
+              isOnline: false,
+              status: 'offline',
+              lastSeen: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
       }
     } catch (authError) {
       console.warn('[AuthLogout] Token verification failed on logout:', authError);
@@ -30,8 +34,9 @@ export async function POST(request?: Request): Promise<NextResponse> {
   // This endpoint clears any session cookies if they are set.
   const response = NextResponse.json({ success: true });
 
-  // Clear session cookie if used
+  // Clear session cookies if used
   response.cookies.delete('session');
+  response.cookies.delete('auth-token');
 
   return response;
 }

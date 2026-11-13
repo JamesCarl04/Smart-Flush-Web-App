@@ -224,7 +224,11 @@ async function evaluateRule(
     case 'water_overuse': {
       if (topic === 'toilet/sensors/waterflow') {
         const p = payload as WaterflowPayload;
-        if (p.volume > rule.threshold) {
+        if (
+          typeof p.volume === 'number' &&
+          Number.isFinite(p.volume) &&
+          p.volume > rule.threshold
+        ) {
           triggered = true;
           message = `Water overuse detected: ${p.volume}L exceeds threshold of ${rule.threshold}L.`;
           severity = 'medium';

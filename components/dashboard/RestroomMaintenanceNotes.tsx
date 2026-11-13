@@ -162,6 +162,7 @@ export function RestroomMaintenanceNotes() {
   }, [authLoading, role, roleLoading, showComposer, user]);
 
   const handleSendNote = async () => {
+    if (isSubmitting) return;
     if (!user) {
       setToast({ kind: 'error', message: 'You must be logged in.' });
       return;

@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { verifyAuthToken, requireAdmin } from '@/lib/auth-helpers';
+import { validatePassword } from '@/lib/password-validator';
 import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
 import { dispatchPasswordResetEmail } from '@/lib/password-reset-email';
 
@@ -166,6 +167,21 @@ export async function POST(request: Request): Promise<NextResponse> {
         ? body.password
         : crypto.randomBytes(16).toString('base64') + '!A9';
 
+    if (typeof body.password === 'string' && body.password.trim().length > 0) {
+      const passwordValidation = await validatePassword(body.password);
+      if (!passwordValidation.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              passwordValidation.errors[0] ||
+              'Custom password does not meet security requirements',
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // 1. Create user in Firebase Authentication
     const userRecord = await adminAuth.createUser({
       email,
@@ -240,10 +256,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to provision staff member';
     console.error('[Staff API] POST error:', error);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: 'Failed to provision staff member' },
       { status: 500 },
     );
   }

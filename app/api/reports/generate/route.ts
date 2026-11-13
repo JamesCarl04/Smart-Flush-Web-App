@@ -998,8 +998,7 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : 'Failed to generate report',
+        error: 'Failed to generate report',
       },
       { status: 500 },
     );

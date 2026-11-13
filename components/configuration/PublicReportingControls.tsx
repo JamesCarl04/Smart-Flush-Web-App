@@ -30,6 +30,8 @@ export function PublicReportingControls({
 }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const reportUrl = useMemo(() => buildPublicReportUrl(siteUrl, device.id), [device.id, siteUrl]);
 
@@ -45,51 +47,75 @@ export function PublicReportingControls({
   if (role !== 'admin') return null;
 
   const toggle = async () => {
+    if (saving) return;
     const enabled = !device.publicReportingEnabled;
     setSaving(true);
+    setError(null);
     try {
       await apiFetch(`/api/devices/${encodeURIComponent(device.id)}`, user, {
         method: 'PUT', body: JSON.stringify({ publicReportingEnabled: enabled }),
       });
       onUpdated(enabled);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to update public reporting setting.',
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const downloadLabel = async () => {
-    const qr = qrDataUrl || await QRCode.toDataURL(reportUrl, { width: 600, margin: 2, errorCorrectionLevel: 'H' });
-    const canvas = document.createElement('canvas');
-    canvas.width = 900;
-    canvas.height = 1150;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = '#111827';
-    context.textAlign = 'center';
-    context.font = 'bold 52px sans-serif';
-    context.fillText('Report a restroom issue', 450, 85);
-    context.font = 'bold 38px sans-serif';
-    context.fillText(device.name, 450, 150);
-    context.fillStyle = '#475569';
-    context.font = '30px sans-serif';
-    context.fillText(device.location, 450, 200);
-    const image = new Image();
-    await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('QR image failed')); image.src = qr; });
-    context.drawImage(image, 150, 240, 600, 600);
-    context.fillStyle = '#111827';
-    context.font = 'bold 32px sans-serif';
-    context.fillText('Scan with your phone camera', 450, 900);
-    context.fillStyle = '#475569';
-    context.font = '22px sans-serif';
-    context.fillText(reportUrl, 450, 955, 800);
-    context.font = '24px sans-serif';
-    context.fillText('No sign-in required. Photo is optional.', 450, 1030);
-    const link = document.createElement('a');
-    link.download = sanitizeQrLabelFilename(device.name);
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    if (downloading) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const qr = qrDataUrl || await QRCode.toDataURL(reportUrl, { width: 600, margin: 2, errorCorrectionLevel: 'H' });
+      const canvas = document.createElement('canvas');
+      canvas.width = 900;
+      canvas.height = 1150;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        setError('Unable to initialize canvas for QR label.');
+        return;
+      }
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#111827';
+      context.textAlign = 'center';
+      context.font = 'bold 52px sans-serif';
+      context.fillText('Report a restroom issue', 450, 85);
+      context.font = 'bold 38px sans-serif';
+      context.fillText(device.name, 450, 150);
+      context.fillStyle = '#475569';
+      context.font = '30px sans-serif';
+      context.fillText(device.location, 450, 200);
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('QR image failed')); image.src = qr; });
+      context.drawImage(image, 150, 240, 600, 600);
+      context.fillStyle = '#111827';
+      context.font = 'bold 32px sans-serif';
+      context.fillText('Scan with your phone camera', 450, 900);
+      context.fillStyle = '#475569';
+      context.font = '22px sans-serif';
+      context.fillText(reportUrl, 450, 955, 800);
+      context.font = '24px sans-serif';
+      context.fillText('No sign-in required. Photo is optional.', 450, 1030);
+      const link = document.createElement('a');
+      link.download = sanitizeQrLabelFilename(device.name);
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to generate printable QR label.',
+      );
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -107,10 +133,11 @@ export function PublicReportingControls({
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               type="button"
+              disabled={downloading}
               onClick={() => void downloadLabel()}
-              className="rounded-lg bg-[#B5121B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8F0D16]"
+              className="rounded-lg bg-[#B5121B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8F0D16] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Download printable PNG label
+              {downloading ? 'Preparing label…' : 'Download printable PNG label'}
             </button>
             <button
               type="button"
@@ -120,6 +147,11 @@ export function PublicReportingControls({
               Campus Batch Print (All Stalls)
             </button>
           </div>
+          {error ? (
+            <p role="alert" className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          ) : null}
         </div>
       </div>
 

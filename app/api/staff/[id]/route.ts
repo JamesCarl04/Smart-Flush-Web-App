@@ -139,10 +139,9 @@ export async function PATCH(
       return new NextResponse(error.body, error);
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to update staff member';
     console.error('[Staff API] PATCH error:', error);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: 'Failed to update staff member' },
       { status: 500 },
     );
   }
@@ -207,10 +206,9 @@ export async function POST(
       return new NextResponse(error.body, error);
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to generate password reset link';
     console.error('[Staff API] Reset POST error:', error);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: 'Failed to generate password reset link' },
       { status: 500 },
     );
   }

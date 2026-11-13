@@ -39,19 +39,31 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const primaryAssigneeUid = targetUids[0] ?? null;
     const reason =
-      typeof body.reason === 'string' ? body.reason.trim() : 'Manual reassignment';
-    const supervisorUid =
-      typeof body.supervisorUid === 'string'
-        ? body.supervisorUid.trim()
-        : user.uid;
+      typeof body.reason === 'string' && body.reason.trim()
+        ? body.reason.trim().slice(0, 500)
+        : 'Manual reassignment';
+    // Identity of the acting supervisor always comes from the verified token,
+    // never from the request body (prevents audit-trail spoofing).
+    const supervisorUid = user.uid;
+    const tokenName = (user as { name?: unknown }).name;
     const supervisorName =
-      typeof body.supervisorName === 'string' && body.supervisorName.trim()
-        ? body.supervisorName.trim()
-        : (user as any).name || (user as any).displayName || 'Supervisor';
+      typeof tokenName === 'string' && tokenName.trim()
+        ? tokenName.trim()
+        : typeof body.supervisorName === 'string' && body.supervisorName.trim()
+          ? body.supervisorName.trim().slice(0, 100)
+          : 'Supervisor';
 
     if (!taskId || targetUids.length === 0) {
       return NextResponse.json(
         { success: false, error: 'taskId and newAssigneeUid or newAssigneeUids are required' },
+        { status: 400 },
+      );
+    }
+
+    targetUids = Array.from(new Set(targetUids));
+    if (targetUids.length > 10) {
+      return NextResponse.json(
+        { success: false, error: 'A task can be assigned to at most 10 technicians' },
         { status: 400 },
       );
     }
@@ -63,26 +75,33 @@ export async function POST(request: Request): Promise<NextResponse> {
       !Array.isArray(body.assigneeNames)
     ) {
       for (const [k, v] of Object.entries(body.assigneeNames)) {
-        if (typeof v === 'string' && v.trim()) {
-          assignedToNames[k] = v.trim();
+        if (targetUids.includes(k) && typeof v === 'string' && v.trim()) {
+          assignedToNames[k] = v.trim().slice(0, 100);
         }
       }
     }
 
+    // Every assignee must be an existing, active maintenance/technician account.
     for (const uid of targetUids) {
+      const userDoc = await adminDb.collection('users').doc(uid).get();
+      const uData = userDoc.exists ? userDoc.data() : undefined;
+      const assigneeRole =
+        typeof uData?.role === 'string' ? uData.role.trim().toLowerCase() : '';
+      const assigneeActive = uData?.active !== false && uData?.isActive !== false;
+      if (
+        !uData ||
+        !assigneeActive ||
+        (assigneeRole !== 'maintenance' && assigneeRole !== 'technician')
+      ) {
+        return NextResponse.json(
+          { success: false, error: 'One or more assignees are not active maintenance staff' },
+          { status: 400 },
+        );
+      }
       if (!assignedToNames[uid]) {
-        try {
-          const userDoc = await adminDb.collection('users').doc(uid).get();
-          if (userDoc.exists) {
-            const uData = userDoc.data();
-            const name =
-              uData?.displayName || uData?.name || uData?.fullName;
-            if (name && typeof name === 'string' && name.trim()) {
-              assignedToNames[uid] = name.trim();
-            }
-          }
-        } catch {
-          // ignore lookup error
+        const name = uData.displayName || uData.name || uData.fullName;
+        if (name && typeof name === 'string' && name.trim()) {
+          assignedToNames[uid] = name.trim();
         }
       }
     }
@@ -197,7 +216,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             acknowledgedAt: null,
             completedAt: null,
             createdBy: supervisorUid,
-          } as any,
+          } as unknown as Parameters<typeof sendTaskNotification>[0],
           uid,
         );
       }

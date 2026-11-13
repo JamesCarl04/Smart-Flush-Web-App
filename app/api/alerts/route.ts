@@ -92,8 +92,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : 'Failed to fetch alerts',
+        error: 'Failed to fetch alerts',
       },
       { status: 500 },
     );
@@ -113,7 +112,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const body = (await request.json()) as Partial<CreateAlertBody>;
-    const { type, message, severity, deviceId } = body;
+    const type = typeof body.type === 'string' ? body.type.trim() : '';
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    const severity = typeof body.severity === 'string' ? body.severity.trim() : '';
+    const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : '';
 
     if (!type || !message || !severity || !deviceId) {
       return NextResponse.json(
@@ -121,6 +123,13 @@ export async function POST(request: Request): Promise<NextResponse> {
           success: false,
           error: 'type, message, severity, and deviceId are required',
         },
+        { status: 400 },
+      );
+    }
+
+    if (message.length > 1000) {
+      return NextResponse.json(
+        { success: false, error: 'message must not exceed 1000 characters' },
         { status: 400 },
       );
     }

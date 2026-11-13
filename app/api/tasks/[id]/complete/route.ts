@@ -49,9 +49,9 @@ export async function POST(
         : assignment.assignedTo ? [assignment.assignedTo] : [];
       if (requiredUserIds.length === 0 || !requiredUserIds.includes(user.uid)) return 'forbidden' as const;
 
+      // Completing a task implicitly records the submitter's acknowledgement.
       const acknowledgedBy = { ...(task.acknowledgedBy ?? {}), [user.uid]: now };
       const completedBy = { ...(task.completedBy ?? {}), [user.uid]: now };
-      const allAcknowledged = requiredUserIds.every((uid) => acknowledgedBy[uid]);
       const allCompleted = requiredUserIds.every((uid) => completedBy[uid]);
       // Immediately release submitting technician's availability upon submission
       await syncTechniciansAfterTaskRelease(transaction, [user.uid], id, now);

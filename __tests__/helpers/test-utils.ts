@@ -1,5 +1,5 @@
 // __tests__/helpers/test-utils.ts
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import type { DecodedIdToken } from 'firebase-admin/auth'
 
 /**
@@ -61,15 +61,28 @@ export const testApiHelper = {
   /**
    * Extract error message from error response
    */
-  getErrorMessage(body: any): string | null {
-    return body?.error || null
+  getErrorMessage(body: unknown): string | null {
+    if (
+      body &&
+      typeof body === 'object' &&
+      'error' in body &&
+      typeof (body as { error?: unknown }).error === 'string'
+    ) {
+      return (body as { error: string }).error
+    }
+    return null
   },
 
   /**
    * Check if response indicates success
    */
-  isSuccessResponse(body: any): boolean {
-    return body?.success === true
+  isSuccessResponse(body: unknown): boolean {
+    return Boolean(
+      body &&
+        typeof body === 'object' &&
+        'success' in body &&
+        (body as { success?: unknown }).success === true,
+    )
   },
 
   /**
@@ -110,7 +123,7 @@ export const mockFirestoreHelper = {
   /**
    * Create a mock user document
    */
-  createMockUserDoc(overrides?: Partial<any>) {
+  createMockUserDoc(overrides?: Record<string, unknown>) {
     return {
       id: 'test-user-123',
       email: 'test@example.com',
@@ -124,7 +137,7 @@ export const mockFirestoreHelper = {
   /**
    * Create a mock device document
    */
-  createMockDeviceDoc(overrides?: Partial<any>) {
+  createMockDeviceDoc(overrides?: Record<string, unknown>) {
     return {
       id: 'toilet-01',
       name: 'Main Restroom',
@@ -143,7 +156,7 @@ export const mockFirestoreHelper = {
   /**
    * Create a mock task document
    */
-  createMockTaskDoc(overrides?: Partial<any>) {
+  createMockTaskDoc(overrides?: Record<string, unknown>) {
     return {
       id: 'task-123',
       deviceId: 'toilet-01',
@@ -159,7 +172,7 @@ export const mockFirestoreHelper = {
   /**
    * Create a mock alert document
    */
-  createMockAlertDoc(overrides?: Partial<any>) {
+  createMockAlertDoc(overrides?: Record<string, unknown>) {
     return {
       id: 'alert-123',
       type: 'low_water',

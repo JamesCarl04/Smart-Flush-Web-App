@@ -117,7 +117,7 @@ export async function incrementCounters(
 
     switch (eventType) {
       case 'uv_cycle': {
-        const p = payload as UVPayload;
+        const p = payload as UVPayload; if (typeof p.duration !== 'number' || !Number.isFinite(p.duration) || p.duration < 0) return;
         await ref.set(
           { uvOnTimeSeconds: FieldValue.increment(p.duration) },
           { merge: true },
@@ -137,7 +137,7 @@ export async function incrementCounters(
       }
 
       case 'flush': {
-        const p = payload as FlushPayload;
+        const p = payload as FlushPayload; if (typeof p.volume !== 'number' || !Number.isFinite(p.volume) || p.volume < 0) return;
         await ref.set(
           {
             flowSensorTotalLiters: FieldValue.increment(p.volume),

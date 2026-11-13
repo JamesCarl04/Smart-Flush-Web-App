@@ -4,7 +4,7 @@
  * Tests authorization, rate limiting, and command validation
  */
 
-import { createMockAuthToken, createMockRequest, mockFirestoreHelper } from '../helpers/test-utils'
+import { createMockRequest } from '@/__tests__/helpers/test-utils'
 
 jest.mock('@/lib/firebase-admin', () => ({
   adminAuth: {
@@ -60,7 +60,7 @@ describe('Actuators API - Integration Tests', () => {
 
     it('should return 400 for invalid command', () => {
       const invalidBody = { command: 'INVALID' }
-      const isValid = ['ON', 'OFF'].includes(invalidBody.command as any)
+      const isValid = ['ON', 'OFF'].includes(String(invalidBody.command ?? ''))
       expect(isValid).toBe(false)
     })
 

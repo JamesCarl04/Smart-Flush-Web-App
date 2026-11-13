@@ -11,18 +11,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
     if (role !== 'admin' && role !== 'supervisor') {
-      let response = NextResponse.json(
+      const response = NextResponse.json(
         { success: false, error: 'Forbidden: admin or supervisor only' },
         { status: 403 },
       );
-      return addCorsHeaders(response, request as any);
+      return addCorsHeaders(response, request);
     }
 
     // HIGH FIX: Rate limiting on task creation (prevents DOS)
     const rateLimitCheck = checkRateLimit(user.uid, RATE_LIMITS.tasks);
     if (!rateLimitCheck.success) {
-      let response = createRateLimitResponse(rateLimitCheck.retryAfter || 60);
-      return addCorsHeaders(response, request as any);
+      const response = createRateLimitResponse(rateLimitCheck.retryAfter || 60);
+      return addCorsHeaders(response, request);
     }
 
     // HIGH FIX: Input validation with Zod schemas
@@ -30,11 +30,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     const validation = validateData(body, taskCreateSchema);
     
     if (!validation.success) {
-      let response = NextResponse.json(
+      const response = NextResponse.json(
         { success: false, error: validation.error },
         { status: 400 },
       );
-      return addCorsHeaders(response, request as any);
+      return addCorsHeaders(response, request);
     }
 
     const { toiletId, note } = validation.data;
@@ -68,24 +68,24 @@ export async function POST(request: Request): Promise<NextResponse> {
       assignmentType,
     });
 
-    let response = NextResponse.json(
+    const response = NextResponse.json(
       { success: true, data: { taskId: task.id, id: task.id } },
       { status: 201 },
     );
-    return addCorsHeaders(response, request as any);
+    return addCorsHeaders(response, request);
   } catch (error) {
     if (error instanceof Response) {
       return new NextResponse(error.body, error);
     }
 
     console.error('[Tasks] create error:', error);
-    let response = NextResponse.json(
+    const response = NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create task',
+        error: 'Failed to create task',
       },
       { status: 500 },
     );
-    return addCorsHeaders(response, request as any);
+    return addCorsHeaders(response, request);
   }
 }

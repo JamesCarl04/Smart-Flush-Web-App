@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { getSiteUrl } from '@/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'Authentication | Klir',

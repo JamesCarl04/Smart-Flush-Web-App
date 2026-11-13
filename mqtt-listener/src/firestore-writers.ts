@@ -163,6 +163,11 @@ export async function writeSensorReading(
     unit = payload.unit;
   }
 
+  if (typeof value !== 'number' || !Number.isFinite(value) || typeof unit !== 'string') {
+    console.warn(`[Firestore] Ignoring malformed sensor reading on ${topic}`);
+    return;
+  }
+
   await recordSensorReading({
     deviceId,
     sensorType,

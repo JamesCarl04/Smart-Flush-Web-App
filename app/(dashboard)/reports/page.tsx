@@ -188,8 +188,11 @@ function taskTimestampToCsv(value?: number | null): string {
 }
 
 function escapeCsvValue(value: string | number | null | undefined): string {
-  const text = value === null || value === undefined ? '' : String(value);
-  const escaped = text.replaceAll('"', '""');
+  const raw = value === null || value === undefined ? '' : String(value);
+  const trimmed = raw.trimStart();
+  const neutralized =
+    /^[=+\-@\t\r]/.test(raw) || /^[=+\-@\t\r]/.test(trimmed) ? `'${raw}` : raw;
+  const escaped = neutralized.replaceAll('"', '""');
   return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
 }
 
@@ -730,6 +733,7 @@ export default function ReportsPage() {
   };
 
   const handleGenerate = async () => {
+    if (isGenerating) return;
     if (!user) {
       toast.error('You must be logged in to generate reports.');
       return;
@@ -844,8 +848,7 @@ export default function ReportsPage() {
       toast.success(`Downloaded ${report.name}.csv`);
       return;
     }
-    toast.success(`Re-downloading ${report.name}.${report.format.toLowerCase()}`);
-    handleGenerate();
+    void handleGenerate();
   };
 
   return (

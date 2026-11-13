@@ -104,7 +104,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 flex items-start gap-2.5 animate-fade-in">
+          <div role="alert" className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 flex items-start gap-2.5 animate-fade-in">
             <div className="h-4 w-4 shrink-0 rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs mt-0.5">
               !
             </div>
@@ -113,7 +113,7 @@ export default function ForgotPasswordPage() {
         )}
 
         {success && (
-          <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs sm:text-sm font-medium text-emerald-700 dark:text-emerald-300 flex items-start gap-2.5 animate-fade-in">
+          <div role="status" className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs sm:text-sm font-medium text-emerald-700 dark:text-emerald-300 flex items-start gap-2.5 animate-fade-in">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
             <span>{success}</span>
           </div>

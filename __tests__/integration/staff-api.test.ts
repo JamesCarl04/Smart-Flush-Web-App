@@ -98,12 +98,12 @@ describe('Staff Management and Registration APIs', () => {
     it('allows admin users to provision a new user account', async () => {
       mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
       mockRequireAdmin.mockResolvedValue(undefined);
-      mockAdminAuth.createUser.mockResolvedValue({ uid: 'new-user-uid' } as any);
+      mockAdminAuth.createUser.mockResolvedValue({ uid: 'new-user-uid' } as never);
 
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/auth/register', {
         method: 'POST',
@@ -194,16 +194,16 @@ describe('Staff Management and Registration APIs', () => {
 
       mockAdminDb.collection.mockImplementation((col: string) => {
         if (col === 'users') {
-          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as never;
         }
         if (col === 'tasks') {
           return {
             where: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({ docs: mockTasks }),
             }),
-          } as any;
+          } as never;
         }
-        return {} as any;
+        return {} as never;
       });
 
       const req = new Request('http://localhost/api/staff', { method: 'GET' });
@@ -214,12 +214,12 @@ describe('Staff Management and Registration APIs', () => {
       expect(json.success).toBe(true);
       expect(json.data.length).toBe(2);
 
-      const maria = json.data.find((s: any) => s.id === 'u1');
+      const maria = json.data.find((s: { id: string }) => s.id === 'u1');
       expect(maria.currentTaskId).toBe('task-999');
       expect(maria.active).toBe(true);
       expect(maria.isAvailable).toBe(false); // because she has an active task
 
-      const juan = json.data.find((s: any) => s.id === 'u2');
+      const juan = json.data.find((s: { id: string }) => s.id === 'u2');
       expect(juan.active).toBe(false);
       expect(juan.isAvailable).toBe(false); // because deactivated
     });
@@ -255,22 +255,22 @@ describe('Staff Management and Registration APIs', () => {
 
       mockAdminDb.collection.mockImplementation((col: string) => {
         if (col === 'users') {
-          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as never;
         }
         if (col === 'tasks') {
           return {
             where: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({ docs: mockTasks }),
             }),
-          } as any;
+          } as never;
         }
-        return {} as any;
+        return {} as never;
       });
 
       const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
       expect(res.status).toBe(200);
       const json = await res.json();
-      const tech = json.data.find((s: any) => s.id === 'u-email');
+      const tech = json.data.find((s: { id: string }) => s.id === 'u-email');
       expect(tech.currentTaskId).toBe('task-email-assign');
       expect(tech.isAvailable).toBe(false);
       expect(tech.activeTask).toEqual(
@@ -303,22 +303,22 @@ describe('Staff Management and Registration APIs', () => {
 
       mockAdminDb.collection.mockImplementation((col: string) => {
         if (col === 'users') {
-          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as never;
         }
         if (col === 'tasks') {
           return {
             where: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({ docs: [] }), // Task was deleted
             }),
-          } as any;
+          } as never;
         }
-        return {} as any;
+        return {} as never;
       });
 
       const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
       expect(res.status).toBe(200);
       const json = await res.json();
-      const tech = json.data.find((s: any) => s.id === 'u-stale');
+      const tech = json.data.find((s: { id: string }) => s.id === 'u-stale');
       expect(tech.currentTaskId).toBeNull();
       expect(tech.activeTask).toBeNull();
       expect(tech.isAvailable).toBe(true);
@@ -370,26 +370,26 @@ describe('Staff Management and Registration APIs', () => {
 
       mockAdminDb.collection.mockImplementation((col: string) => {
         if (col === 'users') {
-          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as never;
         }
         if (col === 'tasks') {
           return {
             where: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({ docs: mockTasks }),
             }),
-          } as any;
+          } as never;
         }
-        return {} as any;
+        return {} as never;
       });
 
       const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
       expect(res.status).toBe(200);
       const json = await res.json();
-      const ackTech = json.data.find((s: any) => s.id === 'u-ack');
+      const ackTech = json.data.find((s: { id: string }) => s.id === 'u-ack');
       expect(ackTech.currentTaskId).toBe('task-ack');
       expect(ackTech.isAvailable).toBe(false);
 
-      const recheckTech = json.data.find((s: any) => s.id === 'u-recheck');
+      const recheckTech = json.data.find((s: { id: string }) => s.id === 'u-recheck');
       expect(recheckTech.currentTaskId).toBe('task-recheck');
       expect(recheckTech.isAvailable).toBe(false);
     });
@@ -427,22 +427,22 @@ describe('Staff Management and Registration APIs', () => {
 
       mockAdminDb.collection.mockImplementation((col: string) => {
         if (col === 'users') {
-          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as any;
+          return { get: jest.fn().mockResolvedValue({ docs: mockUsers }) } as never;
         }
         if (col === 'tasks') {
           return {
             where: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({ docs: mockTasks }),
             }),
-          } as any;
+          } as never;
         }
-        return {} as any;
+        return {} as never;
       });
 
       const res = await getStaff(new Request('http://localhost/api/staff', { method: 'GET' }));
       expect(res.status).toBe(200);
       const json = await res.json();
-      const tech = json.data.find((s: any) => s.id === 'u-free');
+      const tech = json.data.find((s: { id: string }) => s.id === 'u-free');
       expect(tech.currentTaskId).toBeNull();
       expect(tech.isAvailable).toBe(true);
     });
@@ -452,13 +452,13 @@ describe('Staff Management and Registration APIs', () => {
     it('validates input and provisions new staff member', async () => {
       mockVerifyAuthToken.mockResolvedValue({ uid: 'admin-1' });
       mockRequireAdmin.mockResolvedValue(undefined);
-      mockAdminAuth.createUser.mockResolvedValue({ uid: 'new-staff-123' } as any);
+      mockAdminAuth.createUser.mockResolvedValue({ uid: 'new-staff-123' } as never);
       mockAdminAuth.generatePasswordResetLink.mockResolvedValue('https://auth.klir.local/reset?oobCode=xyz');
 
       const mockSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ set: mockSet }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff', {
         method: 'POST',
@@ -538,7 +538,7 @@ describe('Staff Management and Registration APIs', () => {
           get: jest.fn().mockResolvedValue(mockDoc),
           set: mockSet,
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/staff-1', {
         method: 'PATCH',
@@ -581,7 +581,7 @@ describe('Staff Management and Registration APIs', () => {
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc),
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/admin-1', {
         method: 'PATCH',
@@ -607,7 +607,7 @@ describe('Staff Management and Registration APIs', () => {
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc),
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/admin-1', {
         method: 'PATCH',
@@ -635,7 +635,7 @@ describe('Staff Management and Registration APIs', () => {
           get: jest.fn().mockResolvedValue(mockDoc),
           set: mockSet,
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/staff-1', {
         method: 'PATCH',
@@ -673,7 +673,7 @@ describe('Staff Management and Registration APIs', () => {
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc),
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/staff-1', {
         method: 'POST',
@@ -735,7 +735,7 @@ describe('Staff Management and Registration APIs', () => {
           get: mockDocGet,
           set: mockDocSet,
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/auth/me', {
         headers: { Authorization: 'Bearer valid-token' },
@@ -781,7 +781,7 @@ describe('Staff Management and Registration APIs', () => {
           get: mockDocGet,
           set: mockDocSet,
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/auth/me', {
         headers: { Authorization: 'Bearer valid-token' },
@@ -824,7 +824,7 @@ describe('Staff Management and Registration APIs', () => {
           get: mockDocGet,
           set: mockDocSet,
         }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/auth/me', {
         headers: { Authorization: 'Bearer valid-token' },
@@ -837,13 +837,14 @@ describe('Staff Management and Registration APIs', () => {
   });
 
   describe('POST /api/auth/logout (Presence Synchronization)', () => {
-    it('sets user to offline and isOnline: false when Authorization header is provided', async () => {
+    it('sets user to offline and isOnline: false when Authorization header is provided and profile exists', async () => {
       mockVerifyAuthToken.mockResolvedValue({ uid: 'tech-1' });
 
+      const mockDocGet = jest.fn().mockResolvedValue({ exists: true });
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+        doc: jest.fn().mockReturnValue({ get: mockDocGet, set: mockDocSet }),
+      } as never);
 
       const req = new Request('http://localhost/api/auth/logout', {
         method: 'POST',
@@ -864,11 +865,31 @@ describe('Staff Management and Registration APIs', () => {
       );
     });
 
-    it('succeeds without Authorization header without error', async () => {
+    it('does not recreate missing user document on logout', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ uid: 'deleted-user' });
+
+      const mockDocGet = jest.fn().mockResolvedValue({ exists: false });
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+        doc: jest.fn().mockReturnValue({ get: mockDocGet, set: mockDocSet }),
+      } as never);
+
+      const req = new Request('http://localhost/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+
+      const res = await authLogout(req);
+      expect(res.status).toBe(200);
+      expect(mockDocSet).not.toHaveBeenCalled();
+    });
+
+    it('succeeds without Authorization header without error', async () => {
+      const mockDocGet = jest.fn().mockResolvedValue({ exists: true });
+      const mockDocSet = jest.fn().mockResolvedValue(undefined);
+      mockAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: mockDocGet, set: mockDocSet }),
+      } as never);
 
       const req = new Request('http://localhost/api/auth/logout', {
         method: 'POST',
@@ -911,7 +932,7 @@ describe('Staff Management and Registration APIs', () => {
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/presence', {
         method: 'POST',
@@ -959,7 +980,7 @@ describe('Staff Management and Registration APIs', () => {
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/presence', {
         method: 'POST',
@@ -991,7 +1012,7 @@ describe('Staff Management and Registration APIs', () => {
       const mockDocSet = jest.fn().mockResolvedValue(undefined);
       mockAdminDb.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ set: mockDocSet }),
-      } as any);
+      } as never);
 
       const req = new Request('http://localhost/api/staff/presence', {
         method: 'POST',
