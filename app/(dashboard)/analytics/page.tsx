@@ -8,7 +8,6 @@ import type {
   ComponentRulPrediction,
   PredictiveHealthStatus,
   PredictiveMaintenanceSummary,
-  RestroomRiskScore,
   SensorDriftIndicator,
 } from '@/types';
 import { subDays, startOfDay, endOfDay } from 'date-fns';
@@ -865,28 +864,6 @@ const HEALTH_BADGE_CLASSES: Record<
   },
 };
 
-const RISK_LEVEL_BADGE: Record<
-  RestroomRiskScore['riskLevel'],
-  { pill: string; label: string }
-> = {
-  low: {
-    pill: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    label: 'Low',
-  },
-  moderate: {
-    pill: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    label: 'Moderate',
-  },
-  high: {
-    pill: 'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
-    label: 'High',
-  },
-  critical: {
-    pill: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300',
-    label: 'Critical',
-  },
-};
-
 function ForecastTooltip({
   active,
   payload,
@@ -954,18 +931,9 @@ function PredictiveMaintenanceSection({
     triggerType?: 'maintenance' | 'sensor_fault',
   ) => Promise<void>;
 }) {
-  const [selectedRiskFloor, setSelectedRiskFloor] = useState<
-    'ALL' | '1F' | '2F' | '3F' | '4F'
-  >('ALL');
-  const [showAllRooms, setShowAllRooms] = useState(false);
-
   const pumpDrift = predictive?.driftIndicators.find(
     (d) => d.sensorKey === 'pump_flow_efficiency',
   );
-  const filteredRooms = (predictive?.campusRisk ?? []).filter(
-    (r) => selectedRiskFloor === 'ALL' || r.floor === selectedRiskFloor,
-  );
-  const visibleRooms = showAllRooms ? filteredRooms : filteredRooms.slice(0, 8);
 
   return (
     <section
@@ -985,13 +953,13 @@ function PredictiveMaintenanceSection({
                   Predictive Maintenance & RUL Forecasting
                 </h2>
                 <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                  Statistical Wear & MTBI Engine
+                  Statistical Wear & Drift Engine
                 </span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400">
                 Remaining Useful Life (RUL) projections, early telemetry drift
-                diagnostics, 7-day demand smoothing, and 22-room MTBI risk
-                scoring.
+                diagnostics, and 7-day demand smoothing for the installed
+                prototype unit ({predictive?.deviceId ?? 'toilet-01'}).
               </p>
             </div>
           </div>
@@ -1274,137 +1242,6 @@ function PredictiveMaintenanceSection({
           )}
         </ChartCard>
       </div>
-
-      {/* Sub-panel C: Campus-Wide 22-Room MTBI Risk & Proactive Dispatch Table */}
-      <ChartCard
-        title="Campus Restroom Predictive Risk & MTBI Ranking"
-        subtitle="Mean Time Between Issues (MTBI) and incident velocity across all 22 SDCA Annex restrooms"
-        icon={ShieldCheck}
-        rightSlot={
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-slate-200/80 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-800/80">
-            {(['ALL', '1F', '2F', '3F', '4F'] as const).map((floor) => (
-              <button
-                key={floor}
-                type="button"
-                onClick={() => setSelectedRiskFloor(floor)}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
-                  selectedRiskFloor === floor
-                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
-                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                }`}
-              >
-                {floor === 'ALL' ? 'All Floors' : floor}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {loading && !predictive ? (
-          <ChartSkeleton />
-        ) : !visibleRooms.length ? (
-          <EmptyChartState
-            title="No Restrooms Matched"
-            description="Select another floor filter to view MTBI risk rankings."
-            icon={ShieldCheck}
-          />
-        ) : (
-          <div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    <th className="py-2.5 pr-4">Restroom Location</th>
-                    <th className="py-2.5 pr-4">Incidents (7d / Total)</th>
-                    <th className="py-2.5 pr-4">MTBI</th>
-                    <th className="py-2.5 pr-4">Next Issue Window</th>
-                    <th className="py-2.5 pr-4">Risk Score</th>
-                    <th className="py-2.5 text-right">Proactive Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-                  {visibleRooms.map((room) => {
-                    const riskStyle = RISK_LEVEL_BADGE[room.riskLevel];
-                    const buttonKey = `room-${room.roomId}`;
-                    const isBusy = dispatchingId === buttonKey;
-                    return (
-                      <tr
-                        key={room.roomId}
-                        className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/30"
-                      >
-                        <td className="py-3 pr-4">
-                          <p className="font-semibold text-slate-900 dark:text-slate-100">
-                            {room.roomName}
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {room.floor} · {room.stallCount}{' '}
-                            {room.stallCount === 1 ? 'stall' : 'stalls'} ·{' '}
-                            {room.roomId}
-                          </p>
-                        </td>
-                        <td className="py-3 pr-4 font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                          {room.recent7dIncidents} / {room.totalIncidents}
-                        </td>
-                        <td className="py-3 pr-4 font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                          {room.mtbiHours !== null
-                            ? `${room.mtbiHours.toFixed(1)} hrs`
-                            : 'No repeat cycle'}
-                        </td>
-                        <td className="py-3 pr-4 text-slate-700 dark:text-slate-300">
-                          {room.predictedNextIssueWindow}
-                        </td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${riskStyle.pill}`}
-                          >
-                            <span className="font-mono tabular-nums">
-                              {room.riskScore}/100
-                            </span>
-                            <span>{riskStyle.label}</span>
-                          </span>
-                        </td>
-                        <td className="py-3 text-right">
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() =>
-                              onDispatchTask(
-                                room.roomId,
-                                room.recommendedTaskMessage,
-                                buttonKey,
-                                'maintenance',
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-600 hover:text-white disabled:opacity-50 dark:text-sky-300 dark:hover:bg-sky-500 dark:hover:text-white"
-                          >
-                            <Send className="h-3 w-3" />
-                            {isBusy
-                              ? 'Dispatching...'
-                              : 'Dispatch Proactive Check'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredRooms.length > 8 && (
-              <div className="mt-4 flex justify-center border-t border-slate-100 pt-3 dark:border-slate-800/60">
-                <button
-                  type="button"
-                  onClick={() => setShowAllRooms((prev) => !prev)}
-                  className="text-xs font-semibold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
-                >
-                  {showAllRooms
-                    ? 'Show top 8 highest-risk rooms'
-                    : `View all ${filteredRooms.length} rooms`}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </ChartCard>
     </section>
   );
 }
