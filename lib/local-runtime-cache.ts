@@ -94,6 +94,11 @@ const KNOWN_MAINTENANCE_ACCOUNTS: Record<string, KnownMaintenanceAccountInfo> = 
     displayName: 'Evaluator 1',
     role: 'maintenance',
   },
+  'justine@gmail.com': {
+    email: 'justine@gmail.com',
+    displayName: 'Justine Lopez',
+    role: 'maintenance',
+  },
 };
 
 function isTestEnvironment(): boolean {
