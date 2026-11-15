@@ -101,6 +101,24 @@ export function selectLeastRecentlyAssignedTechnician(
 }
 
 /**
+ * Picks one available technician by workload first, then alphabetically by displayName.
+ * Used for proactive predictive dispatch so tasks never spam every staff member at once.
+ */
+export function selectAvailableTechnicianAlphabetically(
+  technicians: AvailableTechnician[],
+): AvailableTechnician | null {
+  return (
+    [...technicians].sort(
+      (left, right) =>
+        left.workload - right.workload ||
+        left.displayName.localeCompare(right.displayName, undefined, {
+          sensitivity: 'base',
+        }),
+    )[0] ?? null
+  );
+}
+
+/**
  * Finds all on-duty, active maintenance personnel who do NOT have an active uncompleted work order.
  */
 export async function findAvailableMaintenancePersonnel(): Promise<AvailableTechnician[]> {

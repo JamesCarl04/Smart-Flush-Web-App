@@ -131,19 +131,30 @@ export default function AnalyticsPage() {
     setDispatchingId(keyId);
     setDispatchFeedback(null);
     try {
-      await apiFetch('/api/tasks', user, {
+      const res = await apiFetch<{
+        success: boolean;
+        data?: {
+          taskId?: string;
+          status?: string;
+          assignedTo?: string | null;
+          assignedToName?: string | null;
+        };
+      }>('/api/tasks', user, {
         method: 'POST',
         body: JSON.stringify({
           deviceId: targetDeviceId,
           triggerType,
           message,
-          isBroadcast: true,
-          assignmentType: 'broadcast',
+          isBroadcast: false,
+          autoAssign: true,
         }),
       });
+      const assignedName = res?.data?.assignedToName;
       setDispatchFeedback({
         type: 'success',
-        text: `Proactive maintenance task dispatched to mobile technicians (${targetDeviceId}).`,
+        text: assignedName
+          ? `Proactive maintenance check assigned to ${assignedName} (${targetDeviceId}).`
+          : `All maintenance staff are currently busy; proactive check queued as unassigned (${targetDeviceId}).`,
       });
     } catch (err: unknown) {
       const errMsg =

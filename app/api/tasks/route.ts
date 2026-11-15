@@ -9,8 +9,10 @@ import {
   serializeTaskSnapshot,
 } from '@/lib/task-service';
 import {
+  findAvailableMaintenancePersonnel,
   isAssignedToUser,
   normalizeTaskAssignment,
+  selectAvailableTechnicianAlphabetically,
 } from '@/lib/task-assignment';
 import {
   withDashboardTaskStatus,
@@ -30,6 +32,7 @@ interface CreateTaskBody {
   assignedToIds?: unknown;
   isBroadcast?: unknown;
   assignmentType?: unknown;
+  autoAssign?: unknown;
 }
 
 function trimmedString(value: unknown): string | null {
@@ -187,13 +190,32 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const isBroadcast =
       body.isBroadcast === true || body.assignmentType === 'broadcast';
+    const shouldAutoAssign =
+      body.autoAssign === true &&
+      !isBroadcast &&
+      assignment.assignedToIds.length === 0;
+
+    let resolvedAssignedTo = isBroadcast ? null : assignment.assignedTo;
+    let resolvedAssignedToIds = isBroadcast ? [] : assignment.assignedToIds;
+    let assignedToName: string | null = null;
+
+    if (shouldAutoAssign) {
+      const available = await findAvailableMaintenancePersonnel();
+      const selectedTech = selectAvailableTechnicianAlphabetically(available);
+      if (selectedTech) {
+        resolvedAssignedTo = selectedTech.id;
+        resolvedAssignedToIds = [selectedTech.id];
+        assignedToName = selectedTech.displayName;
+      }
+    }
 
     const assignmentType: 'broadcast' | 'individual' | 'team' | undefined =
       isBroadcast
         ? 'broadcast'
-        : body.assignmentType === 'team' || assignment.assignedToIds.length > 1
+        : body.assignmentType === 'team' || resolvedAssignedToIds.length > 1
           ? 'team'
-          : body.assignmentType === 'individual' || assignment.assignedToIds.length === 1
+          : body.assignmentType === 'individual' ||
+              resolvedAssignedToIds.length === 1
             ? 'individual'
             : undefined;
 
@@ -201,8 +223,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       deviceId,
       triggerType: body.triggerType,
       message,
-      assignedTo: isBroadcast ? null : assignment.assignedTo,
-      assignedToIds: isBroadcast ? [] : assignment.assignedToIds,
+      assignedTo: resolvedAssignedTo,
+      assignedToIds: resolvedAssignedToIds,
       createdBy: user.uid,
       isBroadcast,
       assignmentType,
@@ -211,7 +233,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json(
       {
         success: true,
-        data: { taskId: task.id },
+        data: {
+          taskId: task.id,
+          status: task.status,
+          assignedTo: task.assignedTo ?? null,
+          assignedToName,
+        },
         taskId: task.id,
       },
       { status: 201 },

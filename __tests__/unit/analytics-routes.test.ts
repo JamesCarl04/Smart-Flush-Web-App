@@ -126,6 +126,30 @@ describe('Analytics API Routes', () => {
         failed: 1,
       });
     });
+
+    it('degrades gracefully to 200 OK with safe fallback metrics when Firestore throws RESOURCE_EXHAUSTED', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        mockCollection.mockImplementation(() => ({
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockRejectedValue(new Error('8 RESOURCE_EXHAUSTED: Quota exceeded.')),
+        }));
+
+        const request = new Request(
+          'http://localhost:3000/api/analytics/dashboard?from=2026-08-20&to=2026-08-27',
+        );
+        const res = await getDashboard(request);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+
+        expect(json.success).toBe(true);
+        expect(json.data.uvCompletionRate).toBeNull();
+        expect(json.data.totalFlushes).toBe(0);
+        expect(json.data.totalWaterLiters).toBe(0);
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
   });
 
   describe('GET /api/analytics/system-performance', () => {
@@ -312,6 +336,32 @@ describe('Analytics API Routes', () => {
       );
       expect(canteenMale.totalIncidents).toBe(2);
       expect(canteenMale.mtbiHours).toBe(12);
+    });
+
+    it('returns 200 OK with baseline predictiveMaintenance when Firestore throws RESOURCE_EXHAUSTED', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        mockCollection.mockImplementation(() => ({
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockRejectedValue(new Error('8 RESOURCE_EXHAUSTED: Quota exceeded.')),
+        }));
+
+        const request = new Request(
+          'http://localhost:3000/api/analytics/system-performance?from=2026-08-20&to=2026-08-27',
+        );
+        const res = await getSystemPerformance(request);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+
+        expect(json.success).toBe(true);
+        expect(json.data.totalCount).toBe(0);
+        expect(json.data.predictiveMaintenance).toBeDefined();
+        expect(json.data.predictiveMaintenance.componentRul).toHaveLength(6);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 

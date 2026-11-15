@@ -15,6 +15,29 @@ interface UVCycleDoc {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+interface SafeQueryResult {
+  size: number;
+  empty: boolean;
+  docs: Array<{ data: () => Record<string, unknown> }>;
+}
+
+async function safeQueryGet(
+  label: string,
+  promise: Promise<{
+    size: number;
+    empty: boolean;
+    docs: Array<{ data: () => Record<string, unknown> }>;
+  }> | null,
+): Promise<SafeQueryResult | null> {
+  if (!promise) return null;
+  try {
+    return await promise;
+  } catch (err) {
+    console.warn(`[Analytics] dashboard ${label} query degraded:`, err);
+    return { size: 0, empty: true, docs: [] };
+  }
+}
+
 /** Converts Firestore Timestamp, serialized {_seconds}, ISO string or epoch to millis. */
 function toMillisLoose(value: unknown): number | null {
   if (value == null) return null;
@@ -67,23 +90,27 @@ export async function GET(request: Request): Promise<NextResponse> {
           .where('date', '>=', from)
           .where('date', '<=', to)
           .get()
-      : Promise.resolve(null);
+      : null;
 
-    // Fetch all collections in parallel
+    // Fetch all collections in parallel with fault-tolerant wrappers
     const [flushSnap, uvSnap, devicesSnap, uptimeDailySnap] = await Promise.all([
-      flushQuery.get(),
-      uvQuery.get(),
-      adminDb.collection('devices').get(),
-      uptimeDailyPromise,
+      safeQueryGet('flushEvents', flushQuery.get() as Promise<SafeQueryResult>),
+      safeQueryGet('uvCycles', uvQuery.get() as Promise<SafeQueryResult>),
+      safeQueryGet('devices', adminDb.collection('devices').get() as Promise<SafeQueryResult>),
+      safeQueryGet('deviceUptimeDaily', uptimeDailyPromise as Promise<SafeQueryResult> | null),
     ]);
 
+    const safeFlushDocs = flushSnap?.docs ?? [];
+    const safeUvDocs = uvSnap?.docs ?? [];
+    const safeDevicesDocs = devicesSnap?.docs ?? [];
+
     // Total flushes and water usage
-    const totalFlushes = flushSnap.size;
+    const totalFlushes = flushSnap?.size ?? safeFlushDocs.length;
     let totalWaterLiters = 0;
     const dateSet = new Set<string>();
 
-    for (const doc of flushSnap.docs) {
-      const d = doc.data() as FlushEventDoc;
+    for (const doc of safeFlushDocs) {
+      const d = doc.data() as unknown as FlushEventDoc;
       totalWaterLiters += d.waterVolume ?? 0;
 
       const tsMillis = toMillisLoose(d.timestamp);
@@ -100,7 +127,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       Math.round((totalFlushes / distinctDays) * 100) / 100;
 
     // UV completion rate
-    const uvDocs = uvSnap.docs.map((d) => d.data() as UVCycleDoc);
+    const uvDocs = safeUvDocs.map((d) => d.data() as unknown as UVCycleDoc);
     const totalUV = uvDocs.length;
     const completedUV = uvDocs.filter((d) => d.completed).length;
     const failedUV = totalUV - completedUV;
@@ -109,8 +136,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     // Live Snapshot: devices with lastSeen within the last 5 minutes
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
-    const totalDevices = devicesSnap.size;
-    const onlineDevices = devicesSnap.docs.filter((d) => {
+    const totalDevices = devicesSnap?.size ?? safeDevicesDocs.length;
+    const onlineDevices = safeDevicesDocs.filter((d) => {
       const lastSeenMillis = toMillisLoose(d.data().lastSeen) ?? 0;
       return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;

@@ -42,9 +42,35 @@ function toMillisSafe(value: unknown): number | null {
 }
 
 const PHT_OFFSET_MS = 8 * 3_600_000;
+const PERF_CACHE_TTL_MS = 30_000;
+
+interface CachedPerfEntry {
+  expiresAt: number;
+  payload: Record<string, unknown>;
+}
+
+const perfResponseCache = new Map<string, CachedPerfEntry>();
 
 function toPhtIsoDate(ms: number): string {
   return new Date(ms + PHT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+interface SafeSnapshot {
+  empty?: boolean;
+  docs: Array<{ id?: string; data: () => Record<string, unknown> }>;
+}
+
+async function safeQueryGet(
+  label: string,
+  promise: Promise<SafeSnapshot> | null,
+): Promise<SafeSnapshot | null> {
+  if (!promise) return null;
+  try {
+    return await promise;
+  } catch (err) {
+    console.warn(`[Analytics] system-performance ${label} query degraded:`, err);
+    return { empty: true, docs: [] };
+  }
 }
 
 interface QueryLikeCollection {
@@ -133,7 +159,7 @@ async function safeGetRecentUltrasonicSamples(
   dates: string[],
 ): Promise<UltrasonicSample[]> {
   try {
-    const recentDates = dates.slice(-3);
+    const recentDates = dates.slice(-1);
     const colRef = adminDb.collection('sensorReadings') as unknown as {
       doc?: (date: string) => {
         collection?: (sub: string) => {
@@ -162,7 +188,7 @@ async function safeGetRecentUltrasonicSamples(
         const filtered = sub?.where?.('deviceId', '==', deviceId);
         if (!filtered) return [];
         const limited =
-          typeof filtered.limit === 'function' ? filtered.limit(150) : filtered;
+          typeof filtered.limit === 'function' ? filtered.limit(40) : filtered;
         const snap = await limited?.get?.();
         return (snap?.docs ?? []).map((d) => d.data());
       }),
@@ -202,21 +228,34 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const nowMs = Date.now();
+    const useCache = process.env.NODE_ENV !== 'test';
+    const cacheKey = `${from ?? ''}:${to ?? ''}:${requestedDeviceId ?? ''}`;
+    if (useCache) {
+      const cached = perfResponseCache.get(cacheKey);
+      if (cached && cached.expiresAt > nowMs) {
+        return NextResponse.json(cached.payload);
+      }
+    }
+
     const todayPht = toPhtIsoDate(nowMs);
     const sevenDaysAgoPht = toPhtIsoDate(nowMs - 6 * 86_400_000);
     const windowFrom = from ?? sevenDaysAgoPht;
     const windowTo = to ?? todayPht;
     const windowDates = enumerateIsoDateRange(windowFrom, windowTo);
 
-    const snap = await adminDb.collection('devices').get();
+    const snap = await safeQueryGet(
+      'devices',
+      adminDb.collection('devices').get() as Promise<SafeSnapshot>,
+    );
     const fiveMinAgoMillis = nowMs - 5 * 60 * 1000;
 
-    const devices = snap.docs.map((d) => {
+    const devices = (snap?.docs ?? []).map((d) => {
       const data = d.data() as Partial<DeviceDoc>;
+      const docId = d.id || 'unknown-device';
       return {
         ...data,
-        id: data.id || d.id,
-        name: data.name || data.id || d.id,
+        id: data.id || docId,
+        name: data.name || data.id || docId,
       } as DeviceDoc;
     });
     const totalCount = devices.length;
@@ -239,11 +278,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const uptimePromise =
       from && to
-        ? adminDb
-            .collection('deviceUptimeDaily')
-            .where('date', '>=', from)
-            .where('date', '<=', to)
-            .get()
+        ? safeQueryGet(
+            'deviceUptimeDaily',
+            adminDb
+              .collection('deviceUptimeDaily')
+              .where('date', '>=', from)
+              .where('date', '<=', to)
+              .get() as Promise<SafeSnapshot>,
+          )
         : Promise.resolve(null);
 
     const [
@@ -258,11 +300,11 @@ export async function GET(request: Request): Promise<NextResponse> {
     ] = await Promise.all([
       uptimePromise,
       safeGetWearCounters(primaryDeviceId),
-      safeGetCollectionDocs('flushEvents', 'timestamp', 400),
-      safeGetCollectionDocs('uvCycles', 'timestamp', 300),
-      safeGetCollectionDocs('lidEvents', 'timestamp', 400),
-      safeGetCollectionDocs('tasks', 'createdAt', 300),
-      safeGetCollectionDocs('issueReports', 'lastReportedAt', 200),
+      safeGetCollectionDocs('flushEvents', 'timestamp', 60),
+      safeGetCollectionDocs('uvCycles', 'timestamp', 40),
+      safeGetCollectionDocs('lidEvents', 'timestamp', 60),
+      safeGetCollectionDocs('tasks', 'createdAt', 60),
+      safeGetCollectionDocs('issueReports', 'lastReportedAt', 50),
       safeGetRecentUltrasonicSamples(primaryDeviceId, windowDates),
     ]);
 
@@ -431,7 +473,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       nowMs,
     });
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       data: {
         uptimePercent: periodUptimePercent,
@@ -456,7 +498,16 @@ export async function GET(request: Request): Promise<NextResponse> {
         }),
         predictiveMaintenance,
       },
-    });
+    };
+
+    if (useCache) {
+      perfResponseCache.set(cacheKey, {
+        expiresAt: nowMs + PERF_CACHE_TTL_MS,
+        payload,
+      });
+    }
+
+    return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
     console.error('[Analytics] system-performance error:', error);

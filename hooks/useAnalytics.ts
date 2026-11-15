@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api-client';
+import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
+import { buildPredictiveMaintenanceSummary } from '@/lib/predictive-maintenance';
 import type { PredictiveMaintenanceSummary } from '@/types';
 import { format } from 'date-fns';
 
@@ -42,7 +44,8 @@ export type AnalyticsData = {
 // API response interfaces
 interface DashboardResponse {
   success: boolean;
-  data: {
+  error?: string;
+  data?: {
     totalFlushes: number;
     totalWaterLiters: number;
     uvCompletionRate: number | null;
@@ -66,7 +69,8 @@ interface WaterUsageDay {
 
 interface WaterUsageResponse {
   success: boolean;
-  data: WaterUsageDay[];
+  error?: string;
+  data?: WaterUsageDay[];
 }
 
 interface PatternBucket {
@@ -76,12 +80,14 @@ interface PatternBucket {
 
 interface FlushPatternsResponse {
   success: boolean;
-  data: { byDay: PatternBucket[]; byHour: PatternBucket[] };
+  error?: string;
+  data?: { byDay: PatternBucket[]; byHour: PatternBucket[] };
 }
 
 interface SystemPerformanceResponse {
   success: boolean;
-  data: {
+  error?: string;
+  data?: {
     uptimePercent: number;
     liveSnapshotPercent?: number;
     onlineCount: number;
@@ -139,28 +145,43 @@ export function useAnalytics(range: DateRange) {
         ),
       ]);
 
+      const dashData = dashboardRes?.data;
+      const waterDays = waterRes?.data ?? [];
+      const patternsData = patternsRes?.data;
+      const perfData = perfRes?.data;
+
+      if (!dashData && !perfData && !waterRes?.data && !patternsData) {
+        throw new Error(
+          dashboardRes?.error ||
+            perfRes?.error ||
+            waterRes?.error ||
+            patternsRes?.error ||
+            'Failed to load analytics data',
+        );
+      }
+
       // Map water-usage response to chart data
-      const flushCounts: FlushCountData[] = (waterRes.data ?? []).map((d) => ({
+      const flushCounts: FlushCountData[] = waterDays.map((d) => ({
         date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
         count: d.flushCount,
       }));
 
-      const waterVolume: VolumeData[] = (waterRes.data ?? []).map((d) => ({
+      const waterVolume: VolumeData[] = waterDays.map((d) => ({
         date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
         liters: d.totalVolume,
       }));
 
       // Map flush-patterns → hourly usage
-      const hourlyUsage: HourlyData[] = (patternsRes.data?.byHour ?? []).map(
+      const hourlyUsage: HourlyData[] = (patternsData?.byHour ?? []).map(
         (b) => ({
           hour: b.label,
           count: b.count,
         }),
       );
 
-      // UV stats from dashboard
-      const completedUV = dashboardRes.data.uvCompletionRate;
-      const rawUvStats = dashboardRes.data.uvStats;
+      // UV stats from dashboard (null-safe if dashboard query degraded)
+      const completedUV = dashData?.uvCompletionRate ?? null;
+      const rawUvStats = dashData?.uvStats;
       const uvStats: UvData[] =
         typeof completedUV === 'number' && rawUvStats && rawUvStats.total > 0
           ? [
@@ -170,7 +191,9 @@ export function useAnalytics(range: DateRange) {
           : [];
 
       // Uptime stats from system-performance daily breakdown
-      const dailyPerf = perfRes.data.daily ?? [];
+      const dailyPerf = perfData?.daily ?? [];
+      const fallbackUptime =
+        perfData?.uptimePercent ?? dashData?.uptimePercent ?? 100;
       const uptimeStats: UptimeData[] =
         dailyPerf.length > 0
           ? dailyPerf.map((d) => ({
@@ -179,20 +202,48 @@ export function useAnalytics(range: DateRange) {
             }))
           : flushCounts.map((f) => ({
               date: f.date,
-              uptime: perfRes.data.uptimePercent,
+              uptime: fallbackUptime,
             }));
+
+      const waterTotalFlushes = waterDays.reduce(
+        (sum, d) => sum + d.flushCount,
+        0,
+      );
+      const waterTotalLiters = waterDays.reduce(
+        (sum, d) => sum + d.totalVolume,
+        0,
+      );
+
+      const predictiveFallback = buildPredictiveMaintenanceSummary({
+        deviceId: DEFAULT_DEVICE_ID,
+        rawCounters: null,
+        windowDays: Math.max(1, waterDays.length || 7),
+        observedWindowTotals: {
+          flushes: waterTotalFlushes,
+          waterLiters: waterTotalLiters,
+        },
+        flushSamples: [],
+        ultrasonicSamples: [],
+        historicalDaily: waterDays.map((d) => ({
+          date: d.date,
+          flushCount: d.flushCount,
+          waterLiters: d.totalVolume,
+        })),
+        incidents: [],
+      });
 
       setData({
         summary: {
-          totalFlushes: dashboardRes.data.totalFlushes,
-          totalWater: dashboardRes.data.totalWaterLiters,
-          uvCompletion: dashboardRes.data.uvCompletionRate,
+          totalFlushes: dashData?.totalFlushes ?? waterTotalFlushes,
+          totalWater: dashData?.totalWaterLiters ?? waterTotalLiters,
+          uvCompletion: completedUV,
           uvTotal: rawUvStats?.total ?? 0,
           uvCompleted: rawUvStats?.completed ?? 0,
           uvFailed: rawUvStats?.failed ?? 0,
-          avgFlushesPerDay: dashboardRes.data.avgFlushesPerDay,
-          systemUptime: perfRes.data.uptimePercent,
-          liveSnapshotUptime: perfRes.data.liveSnapshotPercent,
+          avgFlushesPerDay: dashData?.avgFlushesPerDay ?? 0,
+          systemUptime: fallbackUptime,
+          liveSnapshotUptime:
+            perfData?.liveSnapshotPercent ?? dashData?.liveSnapshotPercent ?? 0,
         },
         charts: {
           flushCounts,
@@ -201,7 +252,7 @@ export function useAnalytics(range: DateRange) {
           hourlyUsage,
           uptimeStats,
         },
-        predictive: perfRes.data.predictiveMaintenance ?? null,
+        predictive: perfData?.predictiveMaintenance ?? predictiveFallback,
       });
     } catch (err: unknown) {
       const message =

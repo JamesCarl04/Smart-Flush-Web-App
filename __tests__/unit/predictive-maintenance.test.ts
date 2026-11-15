@@ -1,3 +1,9 @@
+jest.mock('@/lib/firebase-admin', () => ({
+  adminDb: {
+    collection: jest.fn(),
+  },
+}));
+
 import {
   buildPredictiveMaintenanceSummary,
   computeCampusRestroomRiskScores,
@@ -8,6 +14,7 @@ import {
   resolveRoomIdFromDeviceId,
 } from '@/lib/predictive-maintenance';
 import { SDCA_RESTROOM_ROOMS } from '@/lib/restrooms';
+import { selectAvailableTechnicianAlphabetically } from '@/lib/task-assignment';
 
 describe('Predictive Maintenance Statistical Engine', () => {
   const FIXED_NOW_MS = Date.parse('2026-11-15T12:00:00.000Z');
@@ -277,6 +284,41 @@ describe('Predictive Maintenance Statistical Engine', () => {
       expect(summary.driftIndicators).toHaveLength(2);
       expect(summary.forecasts.series).toHaveLength(7);
       expect(summary.campusRisk).toHaveLength(22);
+    });
+  });
+
+  describe('selectAvailableTechnicianAlphabetically', () => {
+    it('selects the alphabetically first available technician with lowest workload', () => {
+      const selected = selectAvailableTechnicianAlphabetically([
+        {
+          id: 'tech-z',
+          displayName: 'Zara Santos',
+          email: 'zara@example.com',
+          workload: 0,
+          lastAutoAssignedAt: 9999,
+        },
+        {
+          id: 'tech-a',
+          displayName: 'alice Cruz',
+          email: 'alice@example.com',
+          workload: 0,
+          lastAutoAssignedAt: 50000,
+        },
+        {
+          id: 'tech-b',
+          displayName: 'Ben Reyes',
+          email: 'ben@example.com',
+          workload: 0,
+          lastAutoAssignedAt: 100,
+        },
+      ]);
+
+      expect(selected?.id).toBe('tech-a');
+      expect(selected?.displayName).toBe('alice Cruz');
+    });
+
+    it('returns null when no technicians are available', () => {
+      expect(selectAvailableTechnicianAlphabetically([])).toBeNull();
     });
   });
 });
