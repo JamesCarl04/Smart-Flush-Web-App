@@ -133,20 +133,22 @@ function componentRecommendation(
   actionPrefix: string,
   daysRemaining: number,
 ): string {
+  const lowerFirst =
+    actionPrefix.charAt(0).toLowerCase() + actionPrefix.slice(1);
   if (status === 'critical') {
-    return `${actionPrefix} immediately (projected RUL <= ${daysRemaining}d).`;
+    return `${actionPrefix} immediately (about ${daysRemaining} days of life left).`;
   }
   if (status === 'warning') {
-    return `Schedule preventative ${actionPrefix.toLowerCase()} within ${daysRemaining} days.`;
+    return `Schedule maintenance to ${lowerFirst} within ${daysRemaining} days.`;
   }
   if (status === 'watch') {
-    return `Monitor wear progression; routine check recommended in ~${daysRemaining} days.`;
+    return `Routine check recommended in about ${daysRemaining} days.`;
   }
-  return `Operating within nominal wear envelope (~${daysRemaining}d remaining).`;
+  return `Working normally (about ${daysRemaining} days before service).`;
 }
 
 /**
- * Computes Remaining Useful Life (RUL), daily burn rate, and predicted service dates
+ * Computes estimated equipment lifespan (RUL), daily use rate, and predicted service dates
  * for all 6 hardware components tracked by KLIR wear counters.
  */
 export function computeComponentRulPredictions(params: {
@@ -179,69 +181,69 @@ export function computeComponentRulPredictions(params: {
   const specs: RulSpec[] = [
     {
       key: 'uvOnTimeSeconds',
-      label: 'UV-C Germicidal Lamp',
-      partNumber: '254nm UV-C Strip',
+      label: 'UV Cleaning Lamp',
+      partNumber: 'Disinfection Light',
       unit: 'hrs',
       currentValue: roundTo(params.counters.uvOnTimeSeconds / 3600, 1),
       ratedLimit: 300,
       observedBurnPerDay: obsUvSec / 3600 / safeWindowDays,
       fallbackBurnPerDay: 0.25,
-      actionPrefix: 'Replace 254nm UV-C lamp strip',
+      actionPrefix: 'Replace UV cleaning lamp',
     },
     {
       key: 'lidCycleCount',
-      label: 'Automated Lid Servo',
-      partNumber: 'MG996R Servo Actuator',
+      label: 'Automatic Seat Lid Motor',
+      partNumber: 'Lid Opening Mechanism',
       unit: 'cycles',
       currentValue: roundTo(params.counters.lidCycleCount, 0),
       ratedLimit: 10_000,
       observedBurnPerDay: obsLidCycles / safeWindowDays,
       fallbackBurnPerDay: 25,
-      actionPrefix: 'Inspect servo gear backlash and horn',
+      actionPrefix: 'Check lid motor and hinge alignment',
     },
     {
       key: 'flowSensorTotalLiters',
-      label: 'Water Flow Sensor',
-      partNumber: 'YF-S201 Hall-Effect',
+      label: 'Water Flow Meter',
+      partNumber: 'Water Usage Sensor',
       unit: 'L',
       currentValue: roundTo(params.counters.flowSensorTotalLiters, 1),
       ratedLimit: 500,
       observedBurnPerDay: obsLiters / safeWindowDays,
       fallbackBurnPerDay: 10,
-      actionPrefix: 'Recalibrate YF-S201 turbine rotor',
+      actionPrefix: 'Clean and check water flow meter',
     },
     {
       key: 'pumpTotalLiters',
-      label: 'Submersible Flush Pump',
-      partNumber: '12V DC Impeller Pump',
+      label: 'Water Flush Pump',
+      partNumber: 'Main Water Pump',
       unit: 'L',
       currentValue: roundTo(params.counters.pumpTotalLiters, 1),
       ratedLimit: 500,
       observedBurnPerDay: obsLiters / safeWindowDays,
       fallbackBurnPerDay: 10,
-      actionPrefix: 'Inspect pump seals and intake strainer',
+      actionPrefix: 'Clean pump filter and check seals',
     },
     {
       key: 'relayTotalTriggers',
-      label: '4-Channel Relay Module',
-      partNumber: 'Opto-Isolated 5V Relay',
-      unit: 'triggers',
+      label: 'Power Switch Relay',
+      partNumber: 'Automatic Power Switch',
+      unit: 'switches',
       currentValue: roundTo(params.counters.relayTotalTriggers, 0),
       ratedLimit: 10_000,
       observedBurnPerDay: (obsFlushes + obsLidCycles) / safeWindowDays,
       fallbackBurnPerDay: 50,
-      actionPrefix: 'Inspect relay contact pitting',
+      actionPrefix: 'Check power switch connections',
     },
     {
       key: 'flushCycleCount',
-      label: 'Flush Valve Assembly',
-      partNumber: 'Primary Hydraulic Loop',
+      label: 'Flush Valve & Pipe',
+      partNumber: 'Main Water Line',
       unit: 'flushes',
       currentValue: roundTo(effectiveFlushCycles, 0),
       ratedLimit: 1_000,
       observedBurnPerDay: obsFlushes / safeWindowDays,
       fallbackBurnPerDay: 20,
-      actionPrefix: 'Descale check valve and flush manifold',
+      actionPrefix: 'Clean flush valve and check for mineral buildup',
     },
   ];
 
@@ -350,10 +352,10 @@ export function detectTelemetryDrift(params: {
 
   const pumpSummary =
     flowRates.length === 0
-      ? 'Awaiting recent flush duration telemetry; baseline nominal at 0.25 L/s.'
+      ? 'Waiting for recent flush records; normal flow speed is 0.25 L/s.'
       : pumpStatus === 'healthy'
-        ? `Pump output stable (${roundTo(pumpRecent, 3)} L/s vs ${roundTo(pumpBaseline, 3)} L/s baseline).`
-        : `Early flow decay detected (${pumpDriftPct}% shift; slope ${roundTo(pumpSlope, 4)} L/s/flush). Clean strainer before < 0.80 L fault.`;
+        ? `Water flow speed is steady (${roundTo(pumpRecent, 2)} L/s vs ${roundTo(pumpBaseline, 2)} L/s normal).`
+        : `Water flow is slowing down (${pumpDriftPct}% change from normal). Clean the pump filter before a low-water problem occurs.`;
 
   const orderedUltrasonic = [...params.ultrasonicSamples].sort(
     (a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0),
@@ -391,31 +393,31 @@ export function detectTelemetryDrift(params: {
 
   const ultrasonicSummary =
     ultrasonicStatus === 'healthy'
-      ? `HC-SR04 echo stability ${recentStability}% (${consecutiveFails}/10 consecutive timeouts).`
-      : `Intermittent echo dropouts (${timeoutCount} timeouts, ${consecutiveFails}/10 consecutive). Inspect transducer face for moisture.`;
+      ? `User sensor is reading reliably (${recentStability}% accuracy, ${consecutiveFails}/10 missed readings).`
+      : `Sensor missed ${timeoutCount} recent readings (${consecutiveFails}/10 in a row). Wipe the sensor lens to clear moisture or dust.`;
 
   return [
     {
       sensorKey: 'pump_flow_efficiency',
-      label: 'Pump Flow-Rate Efficiency',
+      label: 'Water Pump Flow Speed',
       metricUnit: 'L/s',
       baselineValue: roundTo(pumpBaseline, 3),
       recentValue: roundTo(pumpRecent, 3),
       driftPercent: pumpDriftPct,
       slopePerEvent: roundTo(pumpSlope, 4),
-      reactiveThresholdLabel: 'Reactive Low-Flow Fault < 0.80 L / No-Flow < 0.30 L',
+      reactiveThresholdLabel: 'Alert triggers if water per flush drops below 0.80 L',
       status: pumpStatus,
       diagnosticSummary: pumpSummary,
     },
     {
       sensorKey: 'ultrasonic_echo_stability',
-      label: 'Ultrasonic Echo Stability',
+      label: 'User Detection Sensor Reliability',
       metricUnit: '%',
       baselineValue: baselineStability,
       recentValue: recentStability,
       driftPercent: ultrasonicDriftPct,
       slopePerEvent: roundTo(ultrasonicSlope, 3),
-      reactiveThresholdLabel: 'Reactive Transducer Fault = 10 Consecutive Timeouts (-1 cm)',
+      reactiveThresholdLabel: 'Alert triggers after 10 missed readings in a row',
       status: ultrasonicStatus,
       diagnosticSummary: ultrasonicSummary,
     },

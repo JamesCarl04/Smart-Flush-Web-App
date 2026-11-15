@@ -152,14 +152,14 @@ export default function AnalyticsPage() {
       setDispatchFeedback({
         type: 'success',
         text: assignedName
-          ? `Proactive maintenance check assigned to ${assignedName} (${targetDeviceId}).`
-          : `All maintenance staff are currently busy; proactive check queued as unassigned (${targetDeviceId}).`,
+          ? `Maintenance task assigned to ${assignedName} (${targetDeviceId}).`
+          : `All maintenance staff are currently busy; task queued as unassigned (${targetDeviceId}).`,
       });
     } catch (err: unknown) {
       const errMsg =
         err instanceof Error
           ? err.message
-          : 'Failed to dispatch proactive task';
+          : 'Failed to schedule maintenance task';
       setDispatchFeedback({ type: 'error', text: errMsg });
     } finally {
       setDispatchingId(null);
@@ -227,7 +227,7 @@ export default function AnalyticsPage() {
                 key={preset.days}
                 type="button"
                 onClick={() => setPresetRange(preset.days)}
-                className={`tactile-btn relative rounded-lg px-4 py-1.5 text-xs font-semibold select-none ${
+                className={`tactile-btn relative min-h-[44px] rounded-lg px-4 py-2 text-xs font-semibold select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 ${
                   isActive
                     ? 'border border-slate-200/80 bg-white font-bold text-slate-900 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-white'
                     : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-white'
@@ -834,35 +834,70 @@ function formatUptime(value: number | undefined | null) {
   return `${value.toFixed(1)}%`;
 }
 
-const HEALTH_BADGE_CLASSES: Record<
+const HEALTH_STATUS_META: Record<
   PredictiveHealthStatus,
-  { badge: string; bar: string; label: string }
+  {
+    badge: string;
+    bar: string;
+    iconColor: string;
+    label: string;
+    Icon: React.ComponentType<{ className?: string }>;
+  }
 > = {
   healthy: {
     badge:
-      'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    bar: 'bg-emerald-500',
-    label: 'Healthy',
+      'border-emerald-300/80 bg-emerald-50 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200',
+    bar: 'bg-emerald-600 dark:bg-emerald-500',
+    iconColor: 'text-emerald-700 dark:text-emerald-400',
+    label: 'Good',
+    Icon: CheckCircle2,
   },
   watch: {
     badge:
-      'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    bar: 'bg-amber-500',
-    label: 'Watch',
+      'border-amber-300/80 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/50 dark:text-amber-200',
+    bar: 'bg-amber-600 dark:bg-amber-500',
+    iconColor: 'text-amber-700 dark:text-amber-400',
+    label: 'Monitor',
+    Icon: Clock,
   },
   warning: {
     badge:
-      'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
-    bar: 'bg-orange-500',
-    label: 'Warning',
+      'border-orange-300/80 bg-orange-50 text-orange-900 dark:border-orange-700/60 dark:bg-orange-950/50 dark:text-orange-200',
+    bar: 'bg-orange-600 dark:bg-orange-500',
+    iconColor: 'text-orange-700 dark:text-orange-400',
+    label: 'Needs Check',
+    Icon: AlertCircle,
   },
   critical: {
     badge:
-      'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300',
-    bar: 'bg-rose-500',
-    label: 'Critical',
+      'border-rose-300/80 bg-rose-50 text-rose-900 dark:border-rose-700/60 dark:bg-rose-950/50 dark:text-rose-200',
+    bar: 'bg-rose-600 dark:bg-rose-500',
+    iconColor: 'text-rose-700 dark:text-rose-400',
+    label: 'Action Needed',
+    Icon: AlertTriangle,
   },
 };
+
+function HealthStatusBadge({
+  status,
+  suffix = '',
+}: {
+  status: PredictiveHealthStatus;
+  suffix?: string;
+}) {
+  const { badge, iconColor, label, Icon } = HEALTH_STATUS_META[status];
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badge}`}
+    >
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden="true" />
+      <span>
+        {label}
+        {suffix}
+      </span>
+    </span>
+  );
+}
 
 function ForecastTooltip({
   active,
@@ -881,8 +916,8 @@ function ForecastTooltip({
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="min-w-[160px] rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/95">
-      <p className="mb-1.5 border-b border-slate-100 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
-        {label} (Projected)
+      <p className="mb-1.5 border-b border-slate-100 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:border-slate-800 dark:text-slate-400">
+        {label} (Expected)
       </p>
       <div className="space-y-1">
         {payload.map((entry) => (
@@ -931,115 +966,82 @@ function PredictiveMaintenanceSection({
     triggerType?: 'maintenance' | 'sensor_fault',
   ) => Promise<void>;
 }) {
-  const pumpDrift = predictive?.driftIndicators.find(
-    (d) => d.sensorKey === 'pump_flow_efficiency',
-  );
+  const unitId = predictive?.deviceId ?? 'toilet-01';
 
   return (
     <section
-      aria-label="Predictive Maintenance and Forecasting"
+      aria-label="Equipment Health and Maintenance Forecast"
       className="mb-8 space-y-6"
     >
-      {/* Section Header */}
-      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-sky-500/20 bg-gradient-to-r from-sky-500/10 via-cyan-500/5 to-transparent p-5 dark:border-sky-500/25 dark:from-sky-500/15 dark:via-slate-900/60">
+      {/* Section Header & 3-Metric Summary Triad */}
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-md dark:border-slate-800/90 dark:bg-slate-900/80 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm shadow-sky-600/30">
-              <Wrench className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400">
+              <Wrench className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                  Predictive Maintenance & RUL Forecasting
+                  Equipment Health &amp; Maintenance Forecast
                 </h2>
-                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                  Statistical Wear & Drift Engine
+                <span className="rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-900 dark:border-sky-700/60 dark:bg-sky-950/50 dark:text-sky-200">
+                  Unit: {unitId}
                 </span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Remaining Useful Life (RUL) projections, early telemetry drift
-                diagnostics, and 7-day demand smoothing for the installed
-                prototype unit ({predictive?.deviceId ?? 'toilet-01'}).
-              </p>
+              <span className="sr-only">
+                Estimated equipment lifespan, sensor and pump performance checks, and 7-day usage forecast for {unitId}.
+              </span>
             </div>
           </div>
-
-          {predictive?.shortestRulComponent && (
-            <div className="rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-right dark:border-slate-700/80 dark:bg-slate-900/70">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Next Projected Service
-              </p>
-              <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                {predictive.shortestRulComponent.label} ·{' '}
-                <span className="text-sky-600 dark:text-sky-400">
-                  {predictive.shortestRulComponent.estimatedDaysRemaining}d (
-                  {predictive.shortestRulComponent.predictedServiceDate})
-                </span>
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Predictive KPI Strip */}
-        <div className="grid grid-cols-2 gap-3 pt-1 lg:grid-cols-4">
-          <div className="rounded-xl border border-slate-200/70 bg-white/85 p-3 dark:border-slate-800 dark:bg-slate-900/75">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Hardware Health Index
-            </p>
-            <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+        {/* 3 Balanced Summary Metric Cards (Design 3's Triad) */}
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex flex-col justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Overall Equipment Health
+            </dt>
+            <dd className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {predictive ? `${predictive.overallHealthIndex}%` : '--'}
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Unit: {predictive?.deviceId ?? 'toilet-01'}
-            </p>
+            </dd>
+            <dd className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              All 6 monitored parts
+            </dd>
           </div>
 
-          <div className="rounded-xl border border-slate-200/70 bg-white/85 p-3 dark:border-slate-800 dark:bg-slate-900/75">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Shortest Component RUL
-            </p>
-            <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+          <div className="flex flex-col justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Next Part Due for Service
+            </dt>
+            <dd className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {predictive?.shortestRulComponent
-                ? `${predictive.shortestRulComponent.estimatedDaysRemaining}d`
+                ? `${predictive.shortestRulComponent.estimatedDaysRemaining} days`
                 : '--'}
-            </p>
-            <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+            </dd>
+            <dd className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-400">
               {predictive?.shortestRulComponent
-                ? `${predictive.shortestRulComponent.label} (${predictive.shortestRulComponent.wearPercent}% worn)`
-                : 'Calculating wear'}
-            </p>
+                ? `${predictive.shortestRulComponent.label} · ${predictive.shortestRulComponent.predictedServiceDate}`
+                : 'Checking part wear'}
+            </dd>
           </div>
 
-          <div className="rounded-xl border border-slate-200/70 bg-white/85 p-3 dark:border-slate-800 dark:bg-slate-900/75">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Pump Flow Efficiency
-            </p>
-            <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {pumpDrift ? `${pumpDrift.recentValue.toFixed(2)} L/s` : '--'}
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {pumpDrift
-                ? `${pumpDrift.driftPercent >= 0 ? '+' : ''}${pumpDrift.driftPercent}% vs baseline`
-                : 'Measuring flow slope'}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200/70 bg-white/85 p-3 dark:border-slate-800 dark:bg-slate-900/75">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              7-Day Projected Demand
-            </p>
-            <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+          <div className="flex flex-col justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Next 7 Days Forecast
+            </dt>
+            <dd className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {predictive
-                ? `${predictive.forecasts.next7DaysFlushes.toLocaleString()}`
+                ? `${predictive.forecasts.next7DaysFlushes.toLocaleString()} flushes`
                 : '--'}
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            </dd>
+            <dd className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
               {predictive
-                ? `~${predictive.forecasts.next7DaysWaterLiters.toFixed(1)} L expected next week`
-                : 'Holt smoothing forecast'}
-            </p>
+                ? `~${predictive.forecasts.next7DaysWaterLiters.toFixed(1)} L expected water use`
+                : 'Estimating upcoming week'}
+            </dd>
           </div>
-        </div>
+        </dl>
       </div>
 
       {/* Dispatch Feedback Toast/Banner */}
@@ -1048,40 +1050,40 @@ function PredictiveMaintenanceSection({
           role="status"
           className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 text-xs font-medium ${
             dispatchFeedback.type === 'success'
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
-              : 'border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-200'
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200'
+              : 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-700/60 dark:bg-rose-950/50 dark:text-rose-200'
           }`}
         >
           <div className="flex items-center gap-2">
             {dispatchFeedback.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
             ) : (
-              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-700 dark:text-rose-400" aria-hidden="true" />
             )}
             <span>{dispatchFeedback.text}</span>
           </div>
           <button
             type="button"
             onClick={onDismissFeedback}
-            className="rounded-md px-2 py-0.5 text-[11px] font-semibold hover:bg-black/5 dark:hover:bg-white/10"
+            className="min-h-[44px] rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 dark:hover:bg-white/10"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Sub-panel A: Hardware Component RUL Grid */}
+      {/* Sub-panel A: Equipment Lifespan & Wear Grid */}
       <ChartCard
-        title="Hardware Component Remaining Useful Life (RUL)"
-        subtitle="Cumulative ESP32 wear counters paired with observed daily burn rates"
+        title="Equipment Lifespan & Wear"
+        subtitle="Estimated time left before each part needs routine service"
         icon={Cpu}
       >
         {loading && !predictive ? (
           <ChartSkeleton />
         ) : !predictive?.componentRul.length ? (
           <EmptyChartState
-            title="No Wear Counter Data"
-            description="Hardware wear predictions appear once telemetry counters initialize."
+            title="No Usage Records Yet"
+            description="Equipment lifespan estimates will appear once device counters start recording."
             icon={Cpu}
           />
         ) : (
@@ -1106,19 +1108,19 @@ function PredictiveMaintenanceSection({
         )}
       </ChartCard>
 
-      {/* Sub-panel B: Telemetry Drift Diagnostics & 7-Day Forecast Chart */}
+      {/* Sub-panel B: Pump & Sensor Performance Check & Next 7 Days Usage Forecast */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ChartCard
-          title="Early Sensor & Pump Degradation (Drift)"
-          subtitle="OLS slope & baseline deviation warnings prior to reactive fault trip"
+          title="Pump & Sensor Performance Check"
+          subtitle="Early warning if water flow slows down or the user sensor misses readings"
           icon={Gauge}
         >
           {loading && !predictive ? (
             <ChartSkeleton />
           ) : !predictive?.driftIndicators.length ? (
             <EmptyChartState
-              title="No Drift Telemetry"
-              description="Flow rate and ultrasonic echo stability metrics will populate from flush and sensor streams."
+              title="No Performance Data Yet"
+              description="Flow speed and user detection reliability will appear from recent flushes and sensor checks."
               icon={Gauge}
             />
           ) : (
@@ -1133,7 +1135,7 @@ function PredictiveMaintenanceSection({
                       indicator.sensorKey === 'ultrasonic_echo_stability'
                         ? 'sensor_fault'
                         : 'maintenance';
-                    const message = `[PREDICTIVE] Early drift calibration requested for ${indicator.label}: recent ${indicator.recentValue}${indicator.metricUnit} (${indicator.driftPercent}% vs baseline). ${indicator.diagnosticSummary}`;
+                    const message = `Performance check requested for ${indicator.label} on ${predictive.deviceId}: current ${indicator.recentValue} ${indicator.metricUnit} (${indicator.driftPercent >= 0 ? '+' : ''}${indicator.driftPercent}% vs normal). ${indicator.diagnosticSummary}`;
                     return onDispatchTask(
                       predictive.deviceId,
                       message,
@@ -1148,13 +1150,13 @@ function PredictiveMaintenanceSection({
         </ChartCard>
 
         <ChartCard
-          title="7-Day Usage & Water Demand Forecast"
-          subtitle="Holt exponential smoothing projection for upcoming week"
+          title="Next 7 Days Usage Forecast"
+          subtitle="Expected daily flushes and water use for the coming week"
           icon={TrendingUp}
           rightSlot={
             predictive ? (
-              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                Trend:{' '}
+              <span className="rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-900 dark:border-sky-700/60 dark:bg-sky-950/50 dark:text-sky-200">
+                Daily Change:{' '}
                 {predictive.forecasts.dailyFlushTrendSlope >= 0 ? '+' : ''}
                 {predictive.forecasts.dailyFlushTrendSlope.toFixed(1)}/day
               </span>
@@ -1165,8 +1167,8 @@ function PredictiveMaintenanceSection({
             <ChartSkeleton />
           ) : !predictive?.forecasts.series.length ? (
             <EmptyChartState
-              title="No Forecast Series"
-              description="Forecast points will render from historical flush trends."
+              title="No Forecast Available"
+              description="Next week's usage estimate will appear from recent flush records."
               icon={TrendingUp}
             />
           ) : (
@@ -1205,7 +1207,7 @@ function PredictiveMaintenanceSection({
                   <Bar
                     yAxisId="left"
                     dataKey="predictedFlushes"
-                    name="Projected Flushes"
+                    name="Expected Flushes"
                     fill={HYDRO_CYAN}
                     radius={[6, 6, 0, 0]}
                     barSize={24}
@@ -1214,7 +1216,7 @@ function PredictiveMaintenanceSection({
                     yAxisId="right"
                     type="monotone"
                     dataKey="predictedWaterLiters"
-                    name="Projected Water (L)"
+                    name="Expected Water (L)"
                     stroke={TEAL_CYAN}
                     strokeWidth={2.5}
                     strokeDasharray="5 5"
@@ -1226,14 +1228,14 @@ function PredictiveMaintenanceSection({
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-sm bg-sky-600" />
                   <span>
-                    Projected Flushes (
+                    Expected Flushes (
                     {predictive.forecasts.next7DaysFlushes.toLocaleString()} total)
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-0.5 w-4 border-t-2 border-dashed border-cyan-500" />
                   <span>
-                    Projected Water (
+                    Expected Water (
                     {predictive.forecasts.next7DaysWaterLiters.toFixed(1)} L total)
                   </span>
                 </div>
@@ -1257,37 +1259,34 @@ function ComponentRulCard({
   dispatching: boolean;
   onDispatch: (message: string) => Promise<void>;
 }) {
-  const style = HEALTH_BADGE_CLASSES[component.status];
-  const dispatchMsg = `[PREDICTIVE] Preventative maintenance for ${component.label} (${component.partNumber}) on ${deviceId}: ${component.wearPercent}% wear (${component.currentValue}/${component.ratedLimit} ${component.unit}), est. RUL ${component.estimatedDaysRemaining} days (target ${component.predictedServiceDate}). ${component.recommendation}`;
+  const style = HEALTH_STATUS_META[component.status];
+  const dispatchMsg = `Scheduled maintenance for ${component.label} on ${deviceId}: ${component.wearPercent}% used (${component.currentValue}/${component.ratedLimit} ${component.unit}), about ${component.estimatedDaysRemaining} days left (service by ${component.predictedServiceDate}). ${component.recommendation}`;
 
   return (
-    <div className="flex flex-col justify-between rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+    <article className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+      {/* Zone 1: Identity & Status Pill */}
       <div>
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2 border-b border-slate-200/70 pb-3 dark:border-slate-800">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
               {component.label}
             </h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               {component.partNumber}
             </p>
           </div>
-          <span
-            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${style.badge}`}
-          >
-            {style.label}
-          </span>
+          <HealthStatusBadge status={component.status} />
         </div>
 
-        {/* Wear Progress Bar */}
+        {/* Zone 2: Usage Progress + 3-Metric Triad */}
         <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-[11px]">
-            <span className="font-mono text-slate-600 dark:text-slate-300">
+          <div className="mb-1.5 flex items-center justify-between text-xs">
+            <span className="font-mono text-slate-700 dark:text-slate-300">
               {component.currentValue.toLocaleString()} /{' '}
-              {component.ratedLimit.toLocaleString()} {component.unit}
+              {component.ratedLimit.toLocaleString()} {component.unit} used
             </span>
             <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-              {component.wearPercent}%
+              {component.wearPercent}% used
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
@@ -1298,29 +1297,35 @@ function ComponentRulCard({
           </div>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-slate-200/70 bg-white/80 p-2 text-[11px] dark:border-slate-800 dark:bg-slate-900/60">
+        <dl className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-slate-200/80 bg-white p-2.5 text-xs dark:border-slate-800 dark:bg-slate-900/60">
           <div>
-            <p className="text-[10px] text-slate-400">Burn Rate</p>
-            <p className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-              {component.dailyBurnRate} {component.unit}/d
-            </p>
+            <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Daily Use
+            </dt>
+            <dd className="mt-0.5 font-mono font-semibold text-slate-900 dark:text-slate-100">
+              {component.dailyBurnRate} {component.unit}/day
+            </dd>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400">Est. RUL</p>
-            <p className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+            <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Time Left
+            </dt>
+            <dd className="mt-0.5 font-mono font-semibold text-slate-900 dark:text-slate-100">
               {component.estimatedDaysRemaining} days
-            </p>
+            </dd>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400">Target Date</p>
-            <p className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+            <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Service By
+            </dt>
+            <dd className="mt-0.5 font-mono font-semibold text-slate-900 dark:text-slate-100">
               {component.predictedServiceDate}
-            </p>
+            </dd>
           </div>
-        </div>
+        </dl>
 
-        <p className="mt-2.5 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+        {/* Zone 3: Guidance & Action */}
+        <p className="mt-3 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
           {component.recommendation}
         </p>
       </div>
@@ -1328,13 +1333,14 @@ function ComponentRulCard({
       <button
         type="button"
         disabled={dispatching}
+        aria-label={`Schedule maintenance for ${component.label}`}
         onClick={() => onDispatch(dispatchMsg)}
-        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-sky-500/40 hover:bg-sky-500/10 hover:text-sky-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:text-sky-300"
+        className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-xs transition hover:border-sky-500/50 hover:bg-sky-50 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-sky-950/40 dark:hover:text-sky-200"
       >
-        <Send className="h-3 w-3" />
-        {dispatching ? 'Scheduling...' : 'Schedule Proactive Check'}
+        <Send className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>{dispatching ? 'Scheduling...' : 'Schedule Maintenance'}</span>
       </button>
-    </div>
+    </article>
   );
 }
 
@@ -1347,62 +1353,67 @@ function DriftDiagnosticCard({
   dispatching: boolean;
   onDispatch: () => Promise<void>;
 }) {
-  const style = HEALTH_BADGE_CLASSES[indicator.status];
+  const driftLabel = `${indicator.driftPercent >= 0 ? '+' : ''}${indicator.driftPercent}%`;
+
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <article className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+      {/* Zone 1: Identity & Status Pill */}
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200/70 pb-3 dark:border-slate-800">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
             {indicator.label}
           </h3>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             {indicator.reactiveThresholdLabel}
           </p>
         </div>
-        <span
-          className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${style.badge}`}
-        >
-          {style.label} ({indicator.driftPercent >= 0 ? '+' : ''}
-          {indicator.driftPercent}%)
-        </span>
+        <HealthStatusBadge status={indicator.status} suffix={` (${driftLabel})`} />
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-slate-200/70 bg-white/80 p-2.5 text-xs dark:border-slate-800 dark:bg-slate-900/60">
+      {/* Zone 2: 3-Metric Triad */}
+      <dl className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-slate-200/80 bg-white p-2.5 text-xs dark:border-slate-800 dark:bg-slate-900/60">
         <div>
-          <p className="text-[10px] text-slate-400">Baseline</p>
-          <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
+          <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            Normal
+          </dt>
+          <dd className="mt-0.5 font-mono font-bold text-slate-900 dark:text-slate-100">
             {indicator.baselineValue} {indicator.metricUnit}
-          </p>
+          </dd>
         </div>
         <div>
-          <p className="text-[10px] text-slate-400">Recent Window</p>
-          <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
+          <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            Current
+          </dt>
+          <dd className="mt-0.5 font-mono font-bold text-slate-900 dark:text-slate-100">
             {indicator.recentValue} {indicator.metricUnit}
-          </p>
+          </dd>
         </div>
         <div>
-          <p className="text-[10px] text-slate-400">OLS Slope</p>
-          <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
-            {indicator.slopePerEvent >= 0 ? '+' : ''}
-            {indicator.slopePerEvent}/evt
-          </p>
+          <dt className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            Change
+          </dt>
+          <dd className="mt-0.5 font-mono font-bold text-slate-900 dark:text-slate-100">
+            {driftLabel}
+          </dd>
         </div>
-      </div>
+      </dl>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-md text-[11px] text-slate-600 dark:text-slate-400">
+      {/* Zone 3: Guidance & Action */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-md text-xs leading-relaxed text-slate-700 dark:text-slate-300">
           {indicator.diagnosticSummary}
         </p>
         <button
           type="button"
           disabled={dispatching}
+          aria-label={`Schedule checkup for ${indicator.label}`}
           onClick={() => onDispatch()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-sky-500/40 hover:bg-sky-500/10 hover:text-sky-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:text-sky-300"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-xs transition hover:border-sky-500/50 hover:bg-sky-50 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-sky-950/40 dark:hover:text-sky-200"
         >
-          <Send className="h-3 w-3" />
-          {dispatching ? 'Dispatching...' : 'Schedule Calibration'}
+          <Send className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{dispatching ? 'Scheduling...' : 'Schedule Checkup'}</span>
         </button>
       </div>
-    </div>
+    </article>
   );
 }
