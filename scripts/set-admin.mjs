@@ -48,6 +48,22 @@ initializeApp({
 const db = getFirestore();
 const auth = getAuth();
 
+function isQuotaError(error) {
+  if (!error || typeof error !== 'object') {
+    const text = String(error);
+    return text.includes('RESOURCE_EXHAUSTED') || text.includes('Quota exceeded');
+  }
+
+  const code = error.code;
+  const message = typeof error.message === 'string' ? error.message : '';
+  return (
+    code === 8 ||
+    code === 'resource-exhausted' ||
+    message.includes('RESOURCE_EXHAUSTED') ||
+    message.includes('Quota exceeded')
+  );
+}
+
 async function run() {
   console.log('\nListing all users in Firebase Auth...\n');
 
@@ -60,12 +76,28 @@ async function run() {
   }
 
   console.log('Found users:');
+  let firestoreReadsUnavailable = false;
   for (const user of allUsers) {
-    const doc = await db.collection('users').doc(user.uid).get();
-    const role = doc.exists
-      ? (doc.data()?.role ?? 'no role set')
-      : 'no Firestore doc';
-    console.log(`  - ${user.email} (uid: ${user.uid}) role: ${role}`);
+    let firestoreRole = 'skipped (Firestore quota exhausted)';
+    if (!firestoreReadsUnavailable) {
+      try {
+        const doc = await db.collection('users').doc(user.uid).get();
+        firestoreRole = doc.exists
+          ? (doc.data()?.role ?? 'no role set')
+          : 'no Firestore doc';
+      } catch (error) {
+        if (isQuotaError(error)) {
+          firestoreReadsUnavailable = true;
+          firestoreRole = 'skipped (Firestore quota exhausted)';
+        } else {
+          throw error;
+        }
+      }
+    }
+    const claimRole = user.customClaims?.role ?? 'none';
+    console.log(
+      `  - ${user.email} (uid: ${user.uid}) claimRole: ${claimRole}, firestoreRole: ${firestoreRole}`,
+    );
   }
 
   const target = allUsers.find(
@@ -78,9 +110,24 @@ async function run() {
   }
 
   console.log(`\nFound target user: ${target.email} (${target.uid})`);
-  console.log('Setting role to "admin" in Firestore...');
+  console.log('Setting custom claim { role: "admin" } in Firebase Auth...');
+  await auth.setCustomUserClaims(target.uid, {
+    ...(target.customClaims ?? {}),
+    role: 'admin',
+  });
 
-  await db.collection('users').doc(target.uid).set({ role: 'admin' }, { merge: true });
+  console.log('Setting role to "admin" in Firestore...');
+  try {
+    await db.collection('users').doc(target.uid).set({ role: 'admin' }, { merge: true });
+  } catch (error) {
+    if (isQuotaError(error)) {
+      console.warn(
+        `Warning: Firestore quota exhausted while writing users/${target.uid}; Firebase Auth custom claim { role: "admin" } was still set.`,
+      );
+    } else {
+      throw error;
+    }
+  }
 
   console.log(`\nDone. ${target.email} is now an admin.\n`);
   process.exit(0);

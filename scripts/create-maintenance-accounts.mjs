@@ -128,6 +128,12 @@ async function createOrUpdateUser(acc) {
     }
   }
 
+  await auth.setCustomUserClaims(userRecord.uid, {
+    ...(userRecord.customClaims ?? {}),
+    role: acc.role,
+  });
+  console.log(`[Auth] Set custom claim { role: "${acc.role}" } for ${acc.email} (${userRecord.uid}).`);
+
   const userDocRef = db.collection('users').doc(userRecord.uid);
   const existingDoc = await userDocRef.get();
 

@@ -59,7 +59,7 @@ export default function LoginPage() {
     try {
       const auth = getAuth(app);
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      const idToken = await userCredential.user.getIdToken();
+      const idToken = await userCredential.user.getIdToken(true);
       const meRes = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${idToken}`,
@@ -80,9 +80,16 @@ export default function LoginPage() {
       if (meData.data?.role !== 'admin') {
         await signOut(auth);
         Cookies.remove('auth-token', { path: '/' });
-        setError(
-          'Access denied. The web portal is reserved exclusively for Administrators. Supervisors and Maintenance technicians must use the Klir Mobile App.',
-        );
+        const reportedRole = meData.data?.role;
+        if (!reportedRole) {
+          setError(
+            'Unable to verify administrator role for this account. Please try again or contact your system administrator.',
+          );
+        } else {
+          setError(
+            'Access denied. The web portal is reserved exclusively for Administrators. Supervisors and Maintenance technicians must use the Klir Mobile App.',
+          );
+        }
         return;
       }
 
