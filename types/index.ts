@@ -156,3 +156,83 @@ export interface AutomationRule {
   enabled: boolean;
   createdAt: number;
 }
+
+export type PredictiveHealthStatus = 'healthy' | 'watch' | 'warning' | 'critical';
+
+export interface ComponentRulPrediction {
+  key:
+    | 'uvOnTimeSeconds'
+    | 'lidCycleCount'
+    | 'flowSensorTotalLiters'
+    | 'pumpTotalLiters'
+    | 'relayTotalTriggers'
+    | 'flushCycleCount';
+  label: string;
+  partNumber: string;
+  unit: string;
+  currentValue: number;
+  ratedLimit: number;
+  wearPercent: number;
+  dailyBurnRate: number;
+  estimatedDaysRemaining: number;
+  predictedServiceDate: string;
+  status: PredictiveHealthStatus;
+  recommendation: string;
+}
+
+export interface SensorDriftIndicator {
+  sensorKey: 'pump_flow_efficiency' | 'ultrasonic_echo_stability';
+  label: string;
+  metricUnit: string;
+  baselineValue: number;
+  recentValue: number;
+  driftPercent: number;
+  slopePerEvent: number;
+  reactiveThresholdLabel: string;
+  status: PredictiveHealthStatus;
+  diagnosticSummary: string;
+}
+
+export interface DailyForecastPoint {
+  date: string;
+  label: string;
+  predictedFlushes: number;
+  predictedWaterLiters: number;
+}
+
+export interface RestroomRiskScore {
+  roomId: string;
+  roomName: string;
+  floor: string;
+  gender: string;
+  stallCount: number;
+  totalIncidents: number;
+  recent7dIncidents: number;
+  mtbiHours: number | null;
+  hoursSinceLastIncident: number | null;
+  riskScore: number;
+  riskLevel: 'low' | 'moderate' | 'high' | 'critical';
+  predictedNextIssueWindow: string;
+  recommendedTaskMessage: string;
+}
+
+export interface PredictiveMaintenanceSummary {
+  deviceId: string;
+  generatedAt: string;
+  overallHealthIndex: number;
+  shortestRulComponent: {
+    label: string;
+    estimatedDaysRemaining: number;
+    predictedServiceDate: string;
+    wearPercent: number;
+  } | null;
+  componentRul: ComponentRulPrediction[];
+  driftIndicators: SensorDriftIndicator[];
+  forecasts: {
+    next7DaysFlushes: number;
+    next7DaysWaterLiters: number;
+    dailyFlushTrendSlope: number;
+    series: DailyForecastPoint[];
+  };
+  campusRisk: RestroomRiskScore[];
+}

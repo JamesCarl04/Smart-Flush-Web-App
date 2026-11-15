@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api-client';
+import type { PredictiveMaintenanceSummary } from '@/types';
 import { format } from 'date-fns';
 
 export type DateRange = {
@@ -35,6 +36,7 @@ export type AnalyticsData = {
     hourlyUsage: HourlyData[];
     uptimeStats: UptimeData[];
   };
+  predictive: PredictiveMaintenanceSummary | null;
 };
 
 // API response interfaces
@@ -85,6 +87,7 @@ interface SystemPerformanceResponse {
     onlineCount: number;
     totalCount: number;
     daily?: Array<{ date: string; uptimePercent: number }>;
+    predictiveMaintenance?: PredictiveMaintenanceSummary;
   };
 }
 
@@ -198,6 +201,7 @@ export function useAnalytics(range: DateRange) {
           hourlyUsage,
           uptimeStats,
         },
+        predictive: perfRes.data.predictiveMaintenance ?? null,
       });
     } catch (err: unknown) {
       const message =
@@ -218,5 +222,7 @@ export function useAnalytics(range: DateRange) {
     return () => window.clearInterval(intervalId);
   }, [fetchAnalytics]);
 
-  return { data, loading, error };
+  const refetch = useCallback(() => fetchAnalytics(false), [fetchAnalytics]);
+
+  return { data, loading, error, refetch };
 }

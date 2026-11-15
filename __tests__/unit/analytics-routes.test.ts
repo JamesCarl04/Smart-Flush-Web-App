@@ -187,6 +187,131 @@ describe('Analytics API Routes', () => {
       expect(json.data.daily).toHaveLength(2);
       expect(json.data.daily[0]).toEqual({ date: '2026-08-26', uptimePercent: 100 });
       expect(json.data.daily[1]).toEqual({ date: '2026-08-27', uptimePercent: 50 });
+      expect(json.data.predictiveMaintenance).toBeDefined();
+      expect(json.data.predictiveMaintenance.componentRul).toHaveLength(6);
+      expect(json.data.predictiveMaintenance.driftIndicators).toHaveLength(2);
+      expect(json.data.predictiveMaintenance.forecasts.series).toHaveLength(7);
+      expect(json.data.predictiveMaintenance.campusRisk).toHaveLength(22);
+    });
+
+    it('aggregates hardware wear counters, flush telemetry, and campus incidents into predictiveMaintenance', async () => {
+      const nowMs = Date.now();
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'devices') {
+          return {
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'toilet-01',
+                  data: () => ({
+                    id: 'toilet-01',
+                    name: 'Prototype Unit',
+                    status: 'online',
+                    lastSeen: { toMillis: () => nowMs },
+                  }),
+                },
+              ],
+            }),
+            doc: jest.fn().mockReturnValue({
+              collection: jest.fn().mockReturnValue({
+                doc: jest.fn().mockReturnValue({
+                  get: jest.fn().mockResolvedValue({
+                    exists: true,
+                    data: () => ({
+                      uvOnTimeSeconds: 540_000, // 150 hrs = 50%
+                      lidCycleCount: 2_500,
+                      flowSensorTotalLiters: 120,
+                      pumpTotalLiters: 120,
+                      relayTotalTriggers: 3_000,
+                      ultrasonicConsecutiveFailures: 2,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (name === 'deviceUptimeDaily') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          };
+        }
+        if (name === 'flushEvents') {
+          return {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'f1',
+                  data: () => ({
+                    deviceId: 'toilet-01',
+                    waterVolume: 1.5,
+                    duration: 5,
+                    timestamp: { toMillis: () => nowMs - 2 * 3_600_000 },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        if (name === 'issueReports') {
+          return {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'ir1',
+                  data: () => ({
+                    deviceId: 'SDCA-FL1-CANTEEN-M-S01',
+                    status: 'confirmed',
+                    lastReportedAt: { toMillis: () => nowMs - 3_600_000 },
+                  }),
+                },
+                {
+                  id: 'ir2',
+                  data: () => ({
+                    deviceId: 'SDCA-FL1-CANTEEN-M',
+                    status: 'pending_review',
+                    lastReportedAt: { toMillis: () => nowMs - 13 * 3_600_000 },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: [] }),
+        };
+      });
+
+      const request = new Request('http://localhost:3000/api/analytics/system-performance');
+      const res = await getSystemPerformance(request);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      const pm = json.data.predictiveMaintenance;
+      expect(pm.deviceId).toBe('toilet-01');
+      const uvRul = pm.componentRul.find(
+        (c: { key: string }) => c.key === 'uvOnTimeSeconds',
+      );
+      expect(uvRul.wearPercent).toBe(50);
+
+      const ultraDrift = pm.driftIndicators.find(
+        (d: { sensorKey: string }) => d.sensorKey === 'ultrasonic_echo_stability',
+      );
+      expect(ultraDrift.status).toBe('watch');
+
+      const canteenMale = pm.campusRisk.find(
+        (r: { roomId: string }) => r.roomId === 'SDCA-FL1-CANTEEN-M',
+      );
+      expect(canteenMale.totalIncidents).toBe(2);
+      expect(canteenMale.mtbiHours).toBe(12);
     });
   });
 

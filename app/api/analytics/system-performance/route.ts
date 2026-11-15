@@ -3,6 +3,13 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { enumerateIsoDateRange, validateIsoDateRange } from '@/lib/date-utils';
+import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
+import {
+  buildPredictiveMaintenanceSummary,
+  type CampusIncidentRecord,
+  type FlushSample,
+  type UltrasonicSample,
+} from '@/lib/predictive-maintenance';
 
 interface DeviceDoc {
   id: string;
@@ -34,6 +41,146 @@ function toMillisSafe(value: unknown): number | null {
   return null;
 }
 
+const PHT_OFFSET_MS = 8 * 3_600_000;
+
+function toPhtIsoDate(ms: number): string {
+  return new Date(ms + PHT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+interface QueryLikeCollection {
+  orderBy?: (field: string, dir?: 'asc' | 'desc') => QueryLikeCollection;
+  limit?: (n: number) => QueryLikeCollection;
+  get?: () => Promise<{
+    docs?: Array<{ id?: string; data: () => Record<string, unknown> }>;
+  }>;
+}
+
+async function safeGetCollectionDocs(
+  collectionName: string,
+  orderByField?: string,
+  limitCount = 400,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const colRef = adminDb.collection(collectionName) as unknown as QueryLikeCollection;
+    if (!colRef) return [];
+
+    if (orderByField && typeof colRef.orderBy === 'function') {
+      try {
+        let q = colRef.orderBy(orderByField, 'desc');
+        if (typeof q?.limit === 'function') {
+          q = q.limit(limitCount);
+        }
+        if (typeof q?.get === 'function') {
+          const snap = await q.get();
+          return (snap?.docs ?? []).map((doc) => ({ id: doc.id, ...doc.data() }));
+        }
+      } catch {
+        // Fallback below if single-field ordering is unsupported by a partial mock or index
+      }
+    }
+
+    if (typeof colRef.limit === 'function') {
+      const limited = colRef.limit(limitCount);
+      if (limited && typeof limited.get === 'function') {
+        const snap = await limited.get();
+        return (snap?.docs ?? []).map((doc) => ({ id: doc.id, ...doc.data() }));
+      }
+    }
+
+    if (typeof colRef.get === 'function') {
+      const snap = await colRef.get();
+      return (snap?.docs ?? []).map((doc) => ({ id: doc.id, ...doc.data() }));
+    }
+
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+async function safeGetWearCounters(
+  deviceId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const colRef = adminDb.collection('devices') as unknown as {
+      doc?: (id: string) => {
+        collection?: (sub: string) => {
+          doc?: (subId: string) => {
+            get?: () => Promise<{
+              exists?: boolean;
+              data?: () => Record<string, unknown>;
+            }>;
+          };
+        };
+      };
+    };
+    const docSnap = await colRef
+      ?.doc?.(deviceId)
+      ?.collection?.('maintenanceCounters')
+      ?.doc?.('current')
+      ?.get?.();
+    if (docSnap && docSnap.exists && typeof docSnap.data === 'function') {
+      return docSnap.data() ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function safeGetRecentUltrasonicSamples(
+  deviceId: string,
+  dates: string[],
+): Promise<UltrasonicSample[]> {
+  try {
+    const recentDates = dates.slice(-3);
+    const colRef = adminDb.collection('sensorReadings') as unknown as {
+      doc?: (date: string) => {
+        collection?: (sub: string) => {
+          where?: (
+            field: string,
+            op: string,
+            val: unknown,
+          ) => {
+            limit?: (n: number) => {
+              get?: () => Promise<{
+                docs?: Array<{ data: () => Record<string, unknown> }>;
+              }>;
+            };
+            get?: () => Promise<{
+              docs?: Array<{ data: () => Record<string, unknown> }>;
+            }>;
+          };
+        };
+      };
+    };
+    if (!colRef || typeof colRef.doc !== 'function') return [];
+
+    const snapshots = await Promise.all(
+      recentDates.map(async (date) => {
+        const sub = colRef.doc?.(date)?.collection?.('readings');
+        const filtered = sub?.where?.('deviceId', '==', deviceId);
+        if (!filtered) return [];
+        const limited =
+          typeof filtered.limit === 'function' ? filtered.limit(150) : filtered;
+        const snap = await limited?.get?.();
+        return (snap?.docs ?? []).map((d) => d.data());
+      }),
+    );
+
+    return snapshots
+      .flat()
+      .filter((doc) => doc.sensorType === 'ultrasonic')
+      .map((doc) => ({
+        value: typeof doc.value === 'number' ? doc.value : Number(doc.value ?? 0),
+        timestampMs: toMillisSafe(doc.timestamp) ?? undefined,
+      }))
+      .filter((sample) => Number.isFinite(sample.value));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
@@ -42,6 +189,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
+    const requestedDeviceId = searchParams.get('deviceId')?.trim() || null;
 
     if (from && to) {
       const rangeCheck = validateIsoDateRange(from, to, 366);
@@ -53,11 +201,27 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
-    const snap = await adminDb.collection('devices').get();
-    const fiveMinAgoMillis = Date.now() - 5 * 60 * 1000;
+    const nowMs = Date.now();
+    const todayPht = toPhtIsoDate(nowMs);
+    const sevenDaysAgoPht = toPhtIsoDate(nowMs - 6 * 86_400_000);
+    const windowFrom = from ?? sevenDaysAgoPht;
+    const windowTo = to ?? todayPht;
+    const windowDates = enumerateIsoDateRange(windowFrom, windowTo);
 
-    const devices = snap.docs.map((d) => d.data() as DeviceDoc);
+    const snap = await adminDb.collection('devices').get();
+    const fiveMinAgoMillis = nowMs - 5 * 60 * 1000;
+
+    const devices = snap.docs.map((d) => {
+      const data = d.data() as Partial<DeviceDoc>;
+      return {
+        ...data,
+        id: data.id || d.id,
+        name: data.name || data.id || d.id,
+      } as DeviceDoc;
+    });
     const totalCount = devices.length;
+    const primaryDeviceId =
+      requestedDeviceId ?? devices[0]?.id ?? DEFAULT_DEVICE_ID;
 
     const onlineDevices = devices.filter((d) => {
       const lastSeenMillis = toMillisSafe(d.lastSeen);
@@ -73,13 +237,37 @@ export async function GET(request: Request): Promise<NextResponse> {
     let periodUptimePercent = liveSnapshotPercent;
     let dailyList: Array<{ date: string; uptimePercent: number }> = [];
 
-    if (from && to) {
+    const uptimePromise =
+      from && to
+        ? adminDb
+            .collection('deviceUptimeDaily')
+            .where('date', '>=', from)
+            .where('date', '<=', to)
+            .get()
+        : Promise.resolve(null);
+
+    const [
+      uptimeSnap,
+      rawWearCounters,
+      flushDocs,
+      uvDocs,
+      lidDocs,
+      taskDocs,
+      issueReportDocs,
+      ultrasonicSamples,
+    ] = await Promise.all([
+      uptimePromise,
+      safeGetWearCounters(primaryDeviceId),
+      safeGetCollectionDocs('flushEvents', 'timestamp', 400),
+      safeGetCollectionDocs('uvCycles', 'timestamp', 300),
+      safeGetCollectionDocs('lidEvents', 'timestamp', 400),
+      safeGetCollectionDocs('tasks', 'createdAt', 300),
+      safeGetCollectionDocs('issueReports', 'lastReportedAt', 200),
+      safeGetRecentUltrasonicSamples(primaryDeviceId, windowDates),
+    ]);
+
+    if (from && to && uptimeSnap) {
       const allDates = enumerateIsoDateRange(from, to);
-      const uptimeSnap = await adminDb
-        .collection('deviceUptimeDaily')
-        .where('date', '>=', from)
-        .where('date', '<=', to)
-        .get();
 
       const dayMap = new Map<string, { onlineMinutes: number; totalMinutes: number }>();
       for (const doc of uptimeSnap.docs) {
@@ -116,6 +304,133 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
+    const dailyBucketMap = new Map<
+      string,
+      { flushCount: number; waterLiters: number }
+    >();
+    for (const date of windowDates) {
+      dailyBucketMap.set(date, { flushCount: 0, waterLiters: 0 });
+    }
+
+    let observedFlushes = 0;
+    let observedWaterLiters = 0;
+    const flushSamples: FlushSample[] = [];
+
+    for (const doc of flushDocs) {
+      const ts = toMillisSafe(doc.timestamp);
+      const waterVolume =
+        typeof doc.waterVolume === 'number' && Number.isFinite(doc.waterVolume)
+          ? Math.max(0, doc.waterVolume)
+          : 0;
+      const duration =
+        typeof doc.duration === 'number' && Number.isFinite(doc.duration)
+          ? doc.duration
+          : 0;
+
+      if (duration > 0) {
+        flushSamples.push({
+          waterVolume,
+          duration,
+          timestampMs: ts ?? undefined,
+        });
+      }
+
+      if (ts !== null) {
+        const phtDate = toPhtIsoDate(ts);
+        if (phtDate >= windowFrom && phtDate <= windowTo) {
+          observedFlushes += 1;
+          observedWaterLiters += waterVolume;
+          const bucket = dailyBucketMap.get(phtDate);
+          if (bucket) {
+            bucket.flushCount += 1;
+            bucket.waterLiters += waterVolume;
+          }
+        }
+      }
+    }
+
+    let observedUvSeconds = 0;
+    for (const doc of uvDocs) {
+      const ts = toMillisSafe(doc.timestamp);
+      const duration =
+        typeof doc.duration === 'number' && Number.isFinite(doc.duration)
+          ? Math.max(0, doc.duration)
+          : 0;
+      if (ts !== null) {
+        const phtDate = toPhtIsoDate(ts);
+        if (phtDate >= windowFrom && phtDate <= windowTo) {
+          observedUvSeconds += duration;
+        }
+      }
+    }
+
+    let observedLidCycles = 0;
+    for (const doc of lidDocs) {
+      const ts = toMillisSafe(doc.timestamp);
+      if (doc.status !== undefined && doc.status !== 'open') continue;
+      if (ts !== null) {
+        const phtDate = toPhtIsoDate(ts);
+        if (phtDate >= windowFrom && phtDate <= windowTo) {
+          observedLidCycles += 1;
+        }
+      }
+    }
+
+    const incidents: CampusIncidentRecord[] = [];
+    for (const doc of taskDocs) {
+      const deviceId = typeof doc.deviceId === 'string' ? doc.deviceId : '';
+      const ts = toMillisSafe(doc.createdAt);
+      if (deviceId && ts !== null) {
+        incidents.push({
+          deviceId,
+          timestampMs: ts,
+          source: 'task',
+        });
+      }
+    }
+    for (const doc of issueReportDocs) {
+      if (doc.status === 'dismissed') continue;
+      const deviceId = typeof doc.deviceId === 'string' ? doc.deviceId : '';
+      const ts = toMillisSafe(doc.lastReportedAt ?? doc.firstReportedAt);
+      if (deviceId && ts !== null) {
+        incidents.push({
+          deviceId,
+          timestampMs: ts,
+          source: 'issue_report',
+          category: typeof doc.category === 'string' ? doc.category : undefined,
+        });
+      }
+    }
+
+    const historicalDaily = windowDates.map((date) => {
+      const bucket = dailyBucketMap.get(date) ?? {
+        flushCount: 0,
+        waterLiters: 0,
+      };
+      return {
+        date,
+        flushCount: bucket.flushCount,
+        waterLiters: Math.round(bucket.waterLiters * 100) / 100,
+      };
+    });
+
+    const predictiveMaintenance = buildPredictiveMaintenanceSummary({
+      deviceId: primaryDeviceId,
+      rawCounters: rawWearCounters,
+      windowDays: windowDates.length,
+      observedWindowTotals: {
+        flushes: observedFlushes,
+        waterLiters: observedWaterLiters,
+        uvSeconds: observedUvSeconds,
+        lidCycles: observedLidCycles,
+      },
+      flushSamples,
+      ultrasonicSamples,
+      historicalDaily,
+      incidents,
+      nowMs,
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -139,6 +454,7 @@ export async function GET(request: Request): Promise<NextResponse> {
                 : null,
           };
         }),
+        predictiveMaintenance,
       },
     });
   } catch (error) {
