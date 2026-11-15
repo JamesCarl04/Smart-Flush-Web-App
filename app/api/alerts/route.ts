@@ -8,6 +8,17 @@ import {
   RATE_LIMITS,
   createRateLimitResponse,
 } from '@/lib/rate-limit';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  invalidateRuntimeCache,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const ALERTS_CACHE_TTL_MS = 15_000;
 
 interface CreateAlertBody {
   type: string;
@@ -59,14 +70,34 @@ function timestampToMillis(value: AlertDoc['timestamp']): number {
 
 // GET /api/alerts?acknowledged=false
 export async function GET(request: Request): Promise<NextResponse> {
+  let cacheKey = '';
   try {
     const user = await verifyAuthToken(request);
     await requireSupervisorOrAdmin(user);
 
     const { searchParams } = new URL(request.url);
     const acknowledgedParam = searchParams.get('acknowledged');
+    cacheKey = `alerts:${acknowledgedParam ?? 'all'}`;
 
-    const snap = await adminDb.collection('alerts').get();
+    const cached = getRuntimeCachedValue<unknown[]>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<unknown[]>(cacheKey);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
+
+    const alertsCol = adminDb.collection('alerts');
+    const snap =
+      typeof alertsCol.limit === 'function'
+        ? await alertsCol.limit(100).get()
+        : await alertsCol.get();
     const alerts = snap.docs
       .map((doc) => doc.data() as AlertDoc & Record<string, unknown>)
       .filter((alert) => {
@@ -85,9 +116,21 @@ export async function GET(request: Request): Promise<NextResponse> {
           timestampToMillis(b.timestamp) - timestampToMillis(a.timestamp),
       );
 
+    setRuntimeCachedValue(cacheKey, alerts, ALERTS_CACHE_TTL_MS);
+
     return NextResponse.json({ success: true, data: alerts });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Alerts] Firestore quota exceeded; returning fallback');
+      const stale = cacheKey ? getStaleRuntimeCachedValue<unknown[]>(cacheKey) : null;
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
     console.error('[Alerts] GET error:', error);
     return NextResponse.json(
       {
@@ -152,6 +195,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       deviceId,
       timestamp: FieldValue.serverTimestamp(),
     });
+
+    invalidateRuntimeCache('alerts:');
 
     return NextResponse.json(
       { success: true, data: { id: docRef.id } },

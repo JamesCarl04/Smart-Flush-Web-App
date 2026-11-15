@@ -10,6 +10,14 @@ import {
   type FlushSample,
   type UltrasonicSample,
 } from '@/lib/predictive-maintenance';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
 
 interface DeviceDoc {
   id: string;
@@ -44,13 +52,6 @@ function toMillisSafe(value: unknown): number | null {
 const PHT_OFFSET_MS = 8 * 3_600_000;
 const PERF_CACHE_TTL_MS = 30_000;
 
-interface CachedPerfEntry {
-  expiresAt: number;
-  payload: Record<string, unknown>;
-}
-
-const perfResponseCache = new Map<string, CachedPerfEntry>();
-
 function toPhtIsoDate(ms: number): string {
   return new Date(ms + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
@@ -62,12 +63,18 @@ interface SafeSnapshot {
 
 async function safeQueryGet(
   label: string,
-  promise: Promise<SafeSnapshot> | null,
+  promiseFactory: (() => Promise<SafeSnapshot>) | null,
 ): Promise<SafeSnapshot | null> {
-  if (!promise) return null;
+  if (!promiseFactory) return null;
+  if (isFirestoreQuotaCircuitOpen()) {
+    return { empty: true, docs: [] };
+  }
   try {
-    return await promise;
+    return await promiseFactory();
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+    }
     console.warn(`[Analytics] system-performance ${label} query degraded:`, err);
     return { empty: true, docs: [] };
   }
@@ -86,6 +93,10 @@ async function safeGetCollectionDocs(
   orderByField?: string,
   limitCount = 400,
 ): Promise<Array<Record<string, unknown>>> {
+  if (isFirestoreQuotaCircuitOpen()) {
+    return [];
+  }
+
   try {
     const colRef = adminDb.collection(collectionName) as unknown as QueryLikeCollection;
     if (!colRef) return [];
@@ -100,7 +111,11 @@ async function safeGetCollectionDocs(
           const snap = await q.get();
           return (snap?.docs ?? []).map((doc) => ({ id: doc.id, ...doc.data() }));
         }
-      } catch {
+      } catch (orderErr) {
+        if (isQuotaExceededError(orderErr)) {
+          markFirestoreQuotaExhausted();
+          return [];
+        }
         // Fallback below if single-field ordering is unsupported by a partial mock or index
       }
     }
@@ -119,7 +134,10 @@ async function safeGetCollectionDocs(
     }
 
     return [];
-  } catch {
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+    }
     return [];
   }
 }
@@ -127,6 +145,10 @@ async function safeGetCollectionDocs(
 async function safeGetWearCounters(
   deviceId: string,
 ): Promise<Record<string, unknown> | null> {
+  if (isFirestoreQuotaCircuitOpen()) {
+    return null;
+  }
+
   try {
     const colRef = adminDb.collection('devices') as unknown as {
       doc?: (id: string) => {
@@ -149,7 +171,10 @@ async function safeGetWearCounters(
       return docSnap.data() ?? null;
     }
     return null;
-  } catch {
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+    }
     return null;
   }
 }
@@ -158,6 +183,10 @@ async function safeGetRecentUltrasonicSamples(
   deviceId: string,
   dates: string[],
 ): Promise<UltrasonicSample[]> {
+  if (isFirestoreQuotaCircuitOpen()) {
+    return [];
+  }
+
   try {
     const recentDates = dates.slice(-1);
     const colRef = adminDb.collection('sensorReadings') as unknown as {
@@ -202,7 +231,10 @@ async function safeGetRecentUltrasonicSamples(
         timestampMs: toMillisSafe(doc.timestamp) ?? undefined,
       }))
       .filter((sample) => Number.isFinite(sample.value));
-  } catch {
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+    }
     return [];
   }
 }
@@ -228,12 +260,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const nowMs = Date.now();
-    const useCache = process.env.NODE_ENV !== 'test';
-    const cacheKey = `${from ?? ''}:${to ?? ''}:${requestedDeviceId ?? ''}`;
-    if (useCache) {
-      const cached = perfResponseCache.get(cacheKey);
-      if (cached && cached.expiresAt > nowMs) {
-        return NextResponse.json(cached.payload);
+    const cacheKey = `analytics:sysperf:${from ?? ''}:${to ?? ''}:${requestedDeviceId ?? ''}`;
+    const cached = getRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      if (stale) {
+        return NextResponse.json({ ...stale, degraded: true });
       }
     }
 
@@ -243,9 +279,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     const windowTo = to ?? todayPht;
     const windowDates = enumerateIsoDateRange(windowFrom, windowTo);
 
+    const devicesCol = adminDb.collection('devices');
+    const boundedDevicesQuery =
+      typeof devicesCol.limit === 'function' ? devicesCol.limit(200) : devicesCol;
     const snap = await safeQueryGet(
       'devices',
-      adminDb.collection('devices').get() as Promise<SafeSnapshot>,
+      () => boundedDevicesQuery.get() as Promise<SafeSnapshot>,
     );
     const fiveMinAgoMillis = nowMs - 5 * 60 * 1000;
 
@@ -276,17 +315,24 @@ export async function GET(request: Request): Promise<NextResponse> {
     let periodUptimePercent = liveSnapshotPercent;
     let dailyList: Array<{ date: string; uptimePercent: number }> = [];
 
-    const uptimePromise =
+    const uptimeQuery =
       from && to
-        ? safeQueryGet(
-            'deviceUptimeDaily',
-            adminDb
-              .collection('deviceUptimeDaily')
-              .where('date', '>=', from)
-              .where('date', '<=', to)
-              .get() as Promise<SafeSnapshot>,
-          )
-        : Promise.resolve(null);
+        ? adminDb
+            .collection('deviceUptimeDaily')
+            .where('date', '>=', from)
+            .where('date', '<=', to)
+        : null;
+    const boundedUptimeQuery =
+      uptimeQuery && typeof uptimeQuery.limit === 'function'
+        ? uptimeQuery.limit(500)
+        : uptimeQuery;
+
+    const uptimePromise = boundedUptimeQuery
+      ? safeQueryGet(
+          'deviceUptimeDaily',
+          () => boundedUptimeQuery.get() as Promise<SafeSnapshot>,
+        )
+      : Promise.resolve(null);
 
     const [
       uptimeSnap,
@@ -500,16 +546,22 @@ export async function GET(request: Request): Promise<NextResponse> {
       },
     };
 
-    if (useCache) {
-      perfResponseCache.set(cacheKey, {
-        expiresAt: nowMs + PERF_CACHE_TTL_MS,
-        payload,
-      });
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      if (stale) {
+        return NextResponse.json({ ...stale, degraded: true });
+      }
+      return NextResponse.json({ ...payload, degraded: true });
     }
+
+    setRuntimeCachedValue(cacheKey, payload, PERF_CACHE_TTL_MS);
 
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+    }
     console.error('[Analytics] system-performance error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch system performance' },

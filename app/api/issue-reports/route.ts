@@ -5,11 +5,19 @@ import {
   listIssueReports,
   parseIssueReportStatus,
 } from '@/lib/issue-report-moderation';
+import {
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+} from '@/lib/local-runtime-cache';
 
 function failure(error: unknown): NextResponse {
   if (error instanceof Response) return new NextResponse(error.body, error);
   if (error instanceof IssueReportModerationError) {
     return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+  }
+  if (isQuotaExceededError(error)) {
+    markFirestoreQuotaExhausted();
+    return NextResponse.json({ success: true, data: [], degraded: true });
   }
   console.error('[Issue Reports] listing failed:', error);
   return NextResponse.json({ success: false, error: 'Failed to fetch issue reports' }, { status: 500 });

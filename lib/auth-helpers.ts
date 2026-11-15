@@ -2,6 +2,135 @@
 // Shared auth token verification and role guards for all protected API routes
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import {
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+} from '@/lib/local-runtime-cache';
+
+const USER_PROFILE_CACHE_TTL_MS = 5 * 60_000;
+const MAX_USER_PROFILE_CACHE_ENTRIES = 500;
+
+interface CachedUserProfileEntry {
+  profile: UserProfile;
+  expiresAtMs: number;
+}
+
+const userProfileCache = new Map<string, CachedUserProfileEntry>();
+
+function isTestEnvironment(): boolean {
+  return process.env.NODE_ENV === 'test';
+}
+
+function getCachedUserProfile(uid: string): CachedUserProfileEntry | null {
+  if (isTestEnvironment()) {
+    return null;
+  }
+
+  return userProfileCache.get(uid) ?? null;
+}
+
+function setCachedUserProfile(uid: string, profile: UserProfile): void {
+  if (isTestEnvironment()) {
+    return;
+  }
+
+  if (userProfileCache.has(uid)) {
+    userProfileCache.delete(uid);
+  }
+  userProfileCache.set(uid, {
+    profile,
+    expiresAtMs: Date.now() + USER_PROFILE_CACHE_TTL_MS,
+  });
+
+  if (userProfileCache.size > MAX_USER_PROFILE_CACHE_ENTRIES) {
+    const oldestKey = userProfileCache.keys().next().value;
+    if (typeof oldestKey === 'string') {
+      userProfileCache.delete(oldestKey);
+    }
+  }
+}
+
+export function invalidateUserProfileCache(uid?: string): void {
+  if (isTestEnvironment()) {
+    return;
+  }
+
+  if (!uid) {
+    userProfileCache.clear();
+    return;
+  }
+
+  userProfileCache.delete(uid);
+}
+
+function syncCustomRoleClaimIfNeeded(
+  uid: string,
+  role: UserRole,
+  existingTokenRole: UserRole | null,
+): void {
+  if (
+    isTestEnvironment() ||
+    existingTokenRole === role ||
+    typeof adminAuth.setCustomUserClaims !== 'function'
+  ) {
+    return;
+  }
+
+  void adminAuth.setCustomUserClaims(uid, { role }).catch(() => {});
+}
+
+async function resolveQuotaFallbackProfile(
+  user: DecodedIdToken,
+  staleCachedProfile: UserProfile | null,
+): Promise<UserProfile> {
+  if (!isTestEnvironment() && staleCachedProfile && staleCachedProfile.role !== null) {
+    return staleCachedProfile;
+  }
+
+  const tokenRole = normalizeUserRole(
+    (user as DecodedIdToken & { role?: unknown }).role,
+  );
+  if (tokenRole !== null) {
+    const claimProfile: UserProfile = {
+      id: user.uid,
+      email: stringOrNull(user.email),
+      displayName: stringOrNull(user.name),
+      role: tokenRole,
+    };
+    setCachedUserProfile(user.uid, claimProfile);
+    return claimProfile;
+  }
+
+  if (typeof adminAuth.getUser === 'function') {
+    try {
+      const authUser = await adminAuth.getUser(user.uid);
+      if (!authUser.disabled) {
+        const customRole = normalizeUserRole(authUser.customClaims?.role);
+        if (customRole !== null) {
+          const recoveredProfile: UserProfile = {
+            id: authUser.uid,
+            email: stringOrNull(authUser.email) ?? stringOrNull(user.email),
+            displayName:
+              stringOrNull(authUser.displayName) ?? stringOrNull(user.name),
+            role: customRole,
+          };
+          setCachedUserProfile(user.uid, recoveredProfile);
+          return recoveredProfile;
+        }
+      }
+    } catch {
+      // Fail closed if Firebase Auth lookup fails during quota fallback.
+    }
+  }
+
+  return {
+    id: user.uid,
+    email: user.email ?? null,
+    displayName: user.name ?? null,
+    role: null,
+  };
+}
 
 const USER_ROLES = [
   'admin',
@@ -87,60 +216,102 @@ export async function getUserRole(
 export async function getUserProfile(
   user: DecodedIdToken,
 ): Promise<UserProfile> {
-  const doc = await adminDb.collection('users').doc(user.uid).get();
-  const uidData = doc.data();
-  const uidIsActive =
-    uidData?.active !== false && uidData?.isActive !== false;
-  const uidRole = uidIsActive ? normalizeUserRole(uidData?.role) : null;
+  const cached = getCachedUserProfile(user.uid);
+  if (cached && Date.now() < cached.expiresAtMs) {
+    return cached.profile;
+  }
 
-  if (doc.exists && !uidIsActive) {
+  const tokenRole = normalizeUserRole(
+    (user as DecodedIdToken & { role?: unknown }).role,
+  );
+  if (tokenRole !== null) {
+    const claimProfile: UserProfile = {
+      id: user.uid,
+      email: stringOrNull(user.email),
+      displayName: stringOrNull(user.name),
+      role: tokenRole,
+    };
+    setCachedUserProfile(user.uid, claimProfile);
+    return claimProfile;
+  }
+
+  if (isFirestoreQuotaCircuitOpen()) {
+    return resolveQuotaFallbackProfile(user, cached?.profile ?? null);
+  }
+
+  try {
+    const doc = await adminDb.collection('users').doc(user.uid).get();
+    const uidData = doc.data();
+    const uidIsActive =
+      uidData?.active !== false && uidData?.isActive !== false;
+    const uidRole = uidIsActive ? normalizeUserRole(uidData?.role) : null;
+
+    if (doc.exists && !uidIsActive) {
+      const inactiveProfile: UserProfile = {
+        id: doc.id,
+        email: stringOrNull(uidData?.email) ?? user.email ?? null,
+        displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+        role: null,
+      };
+      setCachedUserProfile(user.uid, inactiveProfile);
+      return inactiveProfile;
+    }
+
+    if (doc.exists && uidRole !== null) {
+      const profile: UserProfile = {
+        id: doc.id,
+        email: stringOrNull(uidData?.email) ?? user.email ?? null,
+        displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+        role: uidRole,
+      };
+      setCachedUserProfile(user.uid, profile);
+      syncCustomRoleClaimIfNeeded(user.uid, uidRole, tokenRole);
+      return profile;
+    }
+
+    if (user.email) {
+      const emailBaseQuery = adminDb
+        .collection('users')
+        .where('email', '==', user.email);
+      const emailSnapshot =
+        typeof emailBaseQuery.limit === 'function'
+          ? await emailBaseQuery.limit(1).get()
+          : await emailBaseQuery.get();
+
+      const emailDoc = emailSnapshot.docs[0];
+      const emailData = emailDoc?.data();
+      const emailIsActive =
+        emailData?.active !== false && emailData?.isActive !== false;
+      const emailRole = emailIsActive ? normalizeUserRole(emailData?.role) : null;
+
+      if (emailDoc && emailRole !== null) {
+        const profile: UserProfile = {
+          id: emailDoc.id,
+          email: stringOrNull(emailData?.email) ?? user.email,
+          displayName:
+            stringOrNull(emailData?.displayName) ?? user.name ?? null,
+          role: emailRole,
+        };
+        setCachedUserProfile(user.uid, profile);
+        syncCustomRoleClaimIfNeeded(user.uid, emailRole, tokenRole);
+        return profile;
+      }
+    }
+
     return {
-      id: doc.id,
-      email: stringOrNull(uidData?.email) ?? user.email ?? null,
-      displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
+      id: user.uid,
+      email: user.email ?? null,
+      displayName: user.name ?? null,
       role: null,
     };
-  }
-
-  if (doc.exists && uidRole !== null) {
-    return {
-      id: doc.id,
-      email: stringOrNull(uidData?.email) ?? user.email ?? null,
-      displayName: stringOrNull(uidData?.displayName) ?? user.name ?? null,
-      role: uidRole,
-    };
-  }
-
-  if (user.email) {
-    const emailSnapshot = await adminDb
-      .collection('users')
-      .where('email', '==', user.email)
-      .limit(1)
-      .get();
-
-    const emailDoc = emailSnapshot.docs[0];
-    const emailData = emailDoc?.data();
-    const emailIsActive =
-      emailData?.active !== false && emailData?.isActive !== false;
-    const emailRole = emailIsActive ? normalizeUserRole(emailData?.role) : null;
-
-    if (emailDoc && emailRole !== null) {
-      return {
-        id: emailDoc.id,
-        email: stringOrNull(emailData?.email) ?? user.email,
-        displayName:
-          stringOrNull(emailData?.displayName) ?? user.name ?? null,
-        role: emailRole,
-      };
+  } catch (error) {
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      return resolveQuotaFallbackProfile(user, cached?.profile ?? null);
     }
-  }
 
-  return {
-    id: user.uid,
-    email: user.email ?? null,
-    displayName: user.name ?? null,
-    role: null,
-  };
+    throw error;
+  }
 }
 
 /**

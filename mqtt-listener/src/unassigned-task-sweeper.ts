@@ -15,11 +15,25 @@ const ACTIVE_ASSIGNMENT_STATUSES = [
 ] as const;
 
 const RETRY_MS = readPositiveIntEnv('AUTOMATION_UNASSIGNED_RETRY_MS', 60_000);
-const SWEEP_MS = readPositiveIntEnv('AUTOMATION_UNASSIGNED_SWEEP_MS', 15_000);
+const SWEEP_MS = readPositiveIntEnv('AUTOMATION_UNASSIGNED_SWEEP_MS', 120_000);
+const QUOTA_BACKOFF_MS = readPositiveIntEnv('AUTOMATION_QUOTA_BACKOFF_MS', 120_000);
 const SWEEP_LIMIT = 25;
 
 let sweepInterval: NodeJS.Timeout | null = null;
 let sweepInFlight = false;
+let quotaBackoffUntilMs = 0;
+
+function isQuotaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return typeof error === 'string' && error.includes('RESOURCE_EXHAUSTED');
+  }
+  const err = error as { code?: unknown; message?: unknown };
+  if (err.code === 8 || err.code === '8' || err.code === 'resource-exhausted') {
+    return true;
+  }
+  const msg = typeof err.message === 'string' ? err.message : '';
+  return msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota exceeded');
+}
 
 function readPositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? '', 10);
@@ -129,14 +143,28 @@ export async function sweepUnassignedAutomationTasks(): Promise<{
   assigned: number;
   rescheduled: number;
 }> {
+  if (process.env.NODE_ENV !== 'test' && Date.now() < quotaBackoffUntilMs) {
+    return { scanned: 0, assigned: 0, rescheduled: 0 };
+  }
+
   const now = Timestamp.now();
-  const snapshot = await adminDb
-    .collection('tasks')
-    .where('status', '==', 'unassigned')
-    .where('autoAssignmentEligibleAt', '<=', now)
-    .orderBy('autoAssignmentEligibleAt', 'asc')
-    .limit(SWEEP_LIMIT)
-    .get();
+  let snapshot;
+  try {
+    snapshot = await adminDb
+      .collection('tasks')
+      .where('status', '==', 'unassigned')
+      .where('autoAssignmentEligibleAt', '<=', now)
+      .orderBy('autoAssignmentEligibleAt', 'asc')
+      .limit(SWEEP_LIMIT)
+      .get();
+  } catch (error) {
+    if (isQuotaError(error) && process.env.NODE_ENV !== 'test') {
+      quotaBackoffUntilMs = Date.now() + QUOTA_BACKOFF_MS;
+      console.warn('[AutomationRetry] Quota exhausted; pausing sweep for backoff');
+      return { scanned: 0, assigned: 0, rescheduled: 0 };
+    }
+    throw error;
+  }
 
   let assigned = 0;
   let rescheduled = 0;
@@ -154,6 +182,11 @@ export async function sweepUnassignedAutomationTasks(): Promise<{
         rescheduled += 1;
       }
     } catch (error) {
+      if (isQuotaError(error) && process.env.NODE_ENV !== 'test') {
+        quotaBackoffUntilMs = Date.now() + QUOTA_BACKOFF_MS;
+        console.warn('[AutomationRetry] Quota exhausted during task retry; backing off');
+        break;
+      }
       console.error(`[AutomationRetry] Failed to process task ${candidate.id}:`, error);
     }
   }
@@ -166,10 +199,14 @@ export function startUnassignedTaskSweeper(): NodeJS.Timeout {
 
   const run = async () => {
     if (sweepInFlight) return;
+    if (process.env.NODE_ENV !== 'test' && Date.now() < quotaBackoffUntilMs) return;
     sweepInFlight = true;
     try {
       await sweepUnassignedAutomationTasks();
     } catch (error) {
+      if (isQuotaError(error) && process.env.NODE_ENV !== 'test') {
+        quotaBackoffUntilMs = Date.now() + QUOTA_BACKOFF_MS;
+      }
       console.error('[AutomationRetry] Sweep failed:', error);
     } finally {
       sweepInFlight = false;

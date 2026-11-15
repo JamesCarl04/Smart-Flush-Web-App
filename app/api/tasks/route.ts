@@ -23,6 +23,17 @@ import {
   isTaskTriggerType,
   type TaskApiData,
 } from '@/lib/task-types';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  invalidateRuntimeCache,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const TASKS_CACHE_TTL_MS = 15_000;
 
 interface CreateTaskBody {
   deviceId?: unknown;
@@ -44,16 +55,30 @@ function taskCreatedAtMillis(task: { createdAt: number | null }): number {
 }
 
 async function listMaintenanceUserIds(): Promise<string[]> {
-  const snapshot = await adminDb
-    .collection('users')
-    .where('role', 'in', ['maintenance', 'technician'])
-    .get();
+  if (isFirestoreQuotaCircuitOpen()) {
+    return [];
+  }
 
-  return snapshot.docs.map((doc) => doc.id);
+  try {
+    const query = adminDb
+      .collection('users')
+      .where('role', 'in', ['maintenance', 'technician']);
+    const snapshot =
+      typeof query.limit === 'function' ? await query.limit(200).get() : await query.get();
+
+    return snapshot.docs.map((doc) => doc.id);
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+      return [];
+    }
+    throw err;
+  }
 }
 
 // GET /api/tasks
 export async function GET(request: Request): Promise<NextResponse> {
+  let cacheKey = '';
   try {
     const user = await verifyAuthToken(request);
     const role = await getUserRole(user);
@@ -82,12 +107,32 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
-    if (role === 'maintenance' || role === 'technician') {
+    const isMaint = role === 'maintenance' || role === 'technician';
+    cacheKey = isMaint
+      ? `tasks:maint:${user.uid}:${statusParam ?? 'all'}`
+      : `tasks:admin:${statusParam ?? 'all'}`;
+
+    const cached = getRuntimeCachedValue<TaskApiData[]>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<TaskApiData[]>(cacheKey);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
+
+    if (isMaint) {
       const taskMap = new Map<string, TaskApiData>();
-      const allTasksSnapshot = await adminDb
-        .collection('tasks')
-        .orderBy('createdAt', 'desc')
-        .get();
+      const baseQuery = adminDb.collection('tasks').orderBy('createdAt', 'desc');
+      const allTasksSnapshot =
+        typeof baseQuery.limit === 'function'
+          ? await baseQuery.limit(100).get()
+          : await baseQuery.get();
 
       for (const doc of allTasksSnapshot.docs) {
         const rawTask = serializeTaskSnapshot(doc);
@@ -118,11 +163,16 @@ export async function GET(request: Request): Promise<NextResponse> {
           taskCreatedAtMillis(right) - taskCreatedAtMillis(left),
       );
 
+      setRuntimeCachedValue(cacheKey, tasks, TASKS_CACHE_TTL_MS);
+
       return NextResponse.json({ success: true, data: tasks });
     }
 
+    const adminTasksQuery = adminDb.collection('tasks').orderBy('createdAt', 'desc');
     const [snapshot, maintenanceUserIds] = await Promise.all([
-      adminDb.collection('tasks').orderBy('createdAt', 'desc').get(),
+      typeof adminTasksQuery.limit === 'function'
+        ? adminTasksQuery.limit(100).get()
+        : adminTasksQuery.get(),
       listMaintenanceUserIds(),
     ]);
     const tasks = snapshot.docs
@@ -130,10 +180,23 @@ export async function GET(request: Request): Promise<NextResponse> {
       .map((task) => withDashboardTaskStatus(task, maintenanceUserIds))
       .filter((task) => !statusParam || task.status === statusParam);
 
+    setRuntimeCachedValue(cacheKey, tasks, TASKS_CACHE_TTL_MS);
+
     return NextResponse.json({ success: true, data: tasks });
   } catch (error) {
     if (error instanceof Response) {
       return new NextResponse(error.body, error);
+    }
+
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Tasks] Firestore quota exceeded; returning fallback');
+      const stale = cacheKey ? getStaleRuntimeCachedValue<TaskApiData[]>(cacheKey) : null;
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
     }
 
     console.error('[Tasks] GET error:', error);
@@ -229,6 +292,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       isBroadcast,
       assignmentType,
     });
+
+    invalidateRuntimeCache('tasks:');
 
     return NextResponse.json(
       {

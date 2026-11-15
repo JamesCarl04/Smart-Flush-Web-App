@@ -4,6 +4,16 @@ import { validateIsoDateRange } from '@/lib/date-utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const WATER_USAGE_CACHE_TTL_MS = 30_000;
 
 interface FlushEventDoc {
   waterVolume: number;
@@ -69,15 +79,47 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
+    const cacheKey = `analytics:water-usage:${from}:${to}`;
+    const cached = getRuntimeCachedValue<WaterUsageDay[]>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<WaterUsageDay[]>(cacheKey);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
+
     const fromTs = Timestamp.fromDate(new Date(`${from}T00:00:00.000Z`));
     const toTs = Timestamp.fromDate(new Date(`${to}T23:59:59.999Z`));
 
-    const snap = await adminDb
-      .collection('flushEvents')
-      .where('timestamp', '>=', fromTs)
-      .where('timestamp', '<=', toTs)
-      .orderBy('timestamp', 'asc')
-      .get();
+    let snap;
+    try {
+      const waterQuery = adminDb
+        .collection('flushEvents')
+        .where('timestamp', '>=', fromTs)
+        .where('timestamp', '<=', toTs)
+        .orderBy('timestamp', 'asc');
+      snap = await (typeof waterQuery.limit === 'function'
+        ? waterQuery.limit(500).get()
+        : waterQuery.get());
+    } catch (queryError) {
+      if (isQuotaExceededError(queryError)) {
+        markFirestoreQuotaExhausted();
+        console.warn('[Analytics] water-usage quota exceeded; returning fallback');
+        const stale = getStaleRuntimeCachedValue<WaterUsageDay[]>(cacheKey);
+        return NextResponse.json({
+          success: true,
+          data: stale ?? [],
+          degraded: true,
+        });
+      }
+      throw queryError;
+    }
 
     // Group by date
     const grouped = new Map<string, number[]>();
@@ -102,6 +144,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         flushCount: volumes.length,
       });
     }
+
+    setRuntimeCachedValue(cacheKey, result, WATER_USAGE_CACHE_TTL_MS);
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

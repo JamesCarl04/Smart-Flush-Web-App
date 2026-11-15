@@ -7,6 +7,16 @@ import {
   type AvailableTechnician,
 } from '@/lib/task-assignment';
 import type { TaskDoc } from '@/lib/task-types';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const ISSUE_REPORTS_CACHE_TTL_MS = 20_000;
 
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 const RETRY_MS = 60_000;
@@ -135,15 +145,38 @@ export function safeSerializeIssueReport(
 }
 
 export async function listIssueReports(status: IssueReportStatus): Promise<Record<string, unknown>[]> {
-  const snapshot = await adminDb.collection('issueReports').where('status', '==', status).limit(100).get();
-  const values = await Promise.all(snapshot.docs.map(async (doc) => {
-    const submissions = await doc.ref.collection('submissions').orderBy('submittedAt', 'asc').get();
-    return safeSerializeIssueReport(doc.id, doc.data() as Record<string, unknown>, submissions.docs.map((submission) => ({
-      id: submission.id,
-      ...(submission.data() as Record<string, unknown>),
-    })));
-  }));
-  return values.sort((left, right) => Number(right.lastReportedAt ?? 0) - Number(left.lastReportedAt ?? 0));
+  const cacheKey = `issue-reports:${status}`;
+  const cached = getRuntimeCachedValue<Record<string, unknown>[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  if (isFirestoreQuotaCircuitOpen()) {
+    return getStaleRuntimeCachedValue<Record<string, unknown>[]>(cacheKey) ?? [];
+  }
+
+  try {
+    const query = adminDb.collection('issueReports').where('status', '==', status);
+    const snapshot =
+      typeof query.limit === 'function' ? await query.limit(100).get() : await query.get();
+    const values = await Promise.all(snapshot.docs.map(async (doc) => {
+      const submissions = await doc.ref.collection('submissions').orderBy('submittedAt', 'asc').get();
+      return safeSerializeIssueReport(doc.id, doc.data() as Record<string, unknown>, submissions.docs.map((submission) => ({
+        id: submission.id,
+        ...(submission.data() as Record<string, unknown>),
+      })));
+    }));
+    const sorted = values.sort((left, right) => Number(right.lastReportedAt ?? 0) - Number(left.lastReportedAt ?? 0));
+    setRuntimeCachedValue(cacheKey, sorted, ISSUE_REPORTS_CACHE_TTL_MS);
+    return sorted;
+  } catch (error) {
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Issue Reports] Firestore quota exceeded; returning fallback');
+      return getStaleRuntimeCachedValue<Record<string, unknown>[]>(cacheKey) ?? [];
+    }
+    throw error;
+  }
 }
 
 function taskDescription(category: string, categories: string[], descriptions: string[], referenceCode?: string | null): string {

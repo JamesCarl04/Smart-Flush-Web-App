@@ -97,7 +97,7 @@ interface SystemPerformanceResponse {
   };
 }
 
-const ANALYTICS_REFRESH_MS = 10_000;
+const ANALYTICS_REFRESH_MS = 30_000;
 
 export function useAnalytics(range: DateRange) {
   const { user } = useAuth();
@@ -267,6 +267,12 @@ export function useAnalytics(range: DateRange) {
     void fetchAnalytics(true);
 
     const intervalId = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
       void fetchAnalytics(false);
     }, ANALYTICS_REFRESH_MS);
 

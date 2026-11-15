@@ -1,5 +1,10 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { resolveStaffOperationalStatus } from '@/lib/staff-workload';
+import {
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+} from '@/lib/local-runtime-cache';
 
 export interface TaskAssignmentShape {
   assignedTo: string | null;
@@ -72,12 +77,24 @@ export async function listRequiredTaskUserIds(
     return [task.assignedTo];
   }
 
-  const snapshot = await adminDb
-    .collection('users')
-    .where('role', 'in', ['maintenance', 'technician'])
-    .get();
+  if (isFirestoreQuotaCircuitOpen()) {
+    return [];
+  }
 
-  return snapshot.docs.map((doc) => doc.id);
+  try {
+    const snapshot = await adminDb
+      .collection('users')
+      .where('role', 'in', ['maintenance', 'technician'])
+      .get();
+
+    return snapshot.docs.map((doc) => doc.id);
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+      return [];
+    }
+    throw err;
+  }
 }
 
 export interface AvailableTechnician {
@@ -122,6 +139,10 @@ export function selectAvailableTechnicianAlphabetically(
  * Finds all on-duty, active maintenance personnel who do NOT have an active uncompleted work order.
  */
 export async function findAvailableMaintenancePersonnel(): Promise<AvailableTechnician[]> {
+  if (isFirestoreQuotaCircuitOpen()) {
+    return [];
+  }
+
   try {
     const [usersSnapshot, activeTasksSnapshot] = await Promise.all([
       adminDb.collection('users').where('role', 'in', ['maintenance', 'technician']).get(),
@@ -137,7 +158,12 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
           'reassignment_needed',
         ])
         .get()
-        .catch(() => ({ docs: [] })),
+        .catch((err) => {
+          if (isQuotaExceededError(err)) {
+            markFirestoreQuotaExhausted();
+          }
+          return { docs: [] };
+        }),
     ]);
 
     const activeTasks = activeTasksSnapshot.docs.map((doc) => ({
@@ -179,6 +205,11 @@ export async function findAvailableMaintenancePersonnel(): Promise<AvailableTech
       return selected?.id === left.id ? -1 : 1;
     });
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[task-assignment] Firestore quota exhausted; returning no available personnel');
+      return [];
+    }
     console.error('[task-assignment] findAvailableMaintenancePersonnel error:', err);
     return [];
   }

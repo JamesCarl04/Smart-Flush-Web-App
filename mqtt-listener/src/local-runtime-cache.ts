@@ -94,10 +94,20 @@ function enqueueWrite(
   return writeQueue;
 }
 
+const deviceHeartbeatsInMemory = new Map<string, number>();
+
+export function getInMemoryDeviceHeartbeats(): Map<string, number> {
+  return deviceHeartbeatsInMemory;
+}
+
 export function recordDeviceHeartbeat(
   deviceId: string,
   lastSeenMs = Date.now(),
 ): Promise<void> {
+  const prev = deviceHeartbeatsInMemory.get(deviceId) ?? 0;
+  if (lastSeenMs > prev) {
+    deviceHeartbeatsInMemory.set(deviceId, lastSeenMs);
+  }
   return enqueueWrite((cache) => {
     cache.devices[deviceId] = {
       deviceId,

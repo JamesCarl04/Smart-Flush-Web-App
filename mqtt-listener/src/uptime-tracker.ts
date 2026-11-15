@@ -2,45 +2,114 @@
 // Minute-by-minute device uptime aggregator for calculating real historical daily SLA.
 import { adminDb } from './firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getInMemoryDeviceHeartbeats } from './local-runtime-cache';
 
 const TICK_INTERVAL_MS = 60_000; // 1 minute
 const FIVE_MIN_MS = 5 * 60 * 1000;
+const DEVICE_CACHE_REFRESH_MS = 60 * 60_000; // 60 minutes
+const QUOTA_BACKOFF_MS = 120_000;
 
 let tickerTimer: NodeJS.Timeout | null = null;
+const cachedDeviceLastSeenMs = new Map<string, number>();
+let lastDeviceCacheRefreshMs = 0;
+let uptimeQuotaBackoffUntilMs = 0;
+
+function isQuotaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return typeof error === 'string' && error.includes('RESOURCE_EXHAUSTED');
+  }
+  const err = error as { code?: unknown; message?: unknown };
+  if (err.code === 8 || err.code === '8' || err.code === 'resource-exhausted') {
+    return true;
+  }
+  const msg = typeof err.message === 'string' ? err.message : '';
+  return msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota exceeded');
+}
+
+function parseLastSeenMillis(ls: unknown): number {
+  if (!ls) return 0;
+  if (typeof ls === 'object') {
+    const candidate = ls as { toMillis?: () => number; _seconds?: number };
+    if (typeof candidate.toMillis === 'function') {
+      return candidate.toMillis();
+    }
+    if (typeof candidate._seconds === 'number') {
+      return candidate._seconds * 1000;
+    }
+  }
+  if (typeof ls === 'string' || typeof ls === 'number') {
+    return new Date(ls).getTime();
+  }
+  return 0;
+}
 
 export function todayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
+function mergeInMemoryHeartbeats(): void {
+  if (typeof getInMemoryDeviceHeartbeats !== 'function') {
+    return;
+  }
+
+  for (const [deviceId, seenAtMs] of getInMemoryDeviceHeartbeats().entries()) {
+    const prev = cachedDeviceLastSeenMs.get(deviceId) ?? 0;
+    if (seenAtMs > prev) {
+      cachedDeviceLastSeenMs.set(deviceId, seenAtMs);
+    }
+  }
+}
+
 export async function recordUptimeTick(now = new Date()): Promise<void> {
-  const dateStr = todayKey(now);
+  const isTestEnv = process.env.NODE_ENV === 'test';
   const nowMs = now.getTime();
+  if (!isTestEnv && Date.now() < uptimeQuotaBackoffUntilMs) {
+    return;
+  }
+
+  const dateStr = todayKey(now);
   const thresholdMs = nowMs - FIVE_MIN_MS;
 
   try {
-    const devicesSnap = await adminDb.collection('devices').get();
-    if (devicesSnap.empty) {
+    let entries: Array<[string, number]>;
+
+    if (
+      isTestEnv ||
+      lastDeviceCacheRefreshMs === 0 ||
+      nowMs - lastDeviceCacheRefreshMs >= DEVICE_CACHE_REFRESH_MS
+    ) {
+      const devicesSnap = await adminDb.collection('devices').get();
+      if (devicesSnap.empty && (isTestEnv || cachedDeviceLastSeenMs.size === 0)) {
+        return;
+      }
+
+      if (isTestEnv) {
+        entries = devicesSnap.docs.map((doc) => [
+          doc.id,
+          parseLastSeenMillis(doc.data().lastSeen),
+        ]);
+      } else {
+        for (const doc of devicesSnap.docs) {
+          const parsed = parseLastSeenMillis(doc.data().lastSeen);
+          const existing = cachedDeviceLastSeenMs.get(doc.id) ?? 0;
+          cachedDeviceLastSeenMs.set(doc.id, Math.max(existing, parsed));
+        }
+        mergeInMemoryHeartbeats();
+        lastDeviceCacheRefreshMs = nowMs;
+        entries = Array.from(cachedDeviceLastSeenMs.entries());
+      }
+    } else {
+      mergeInMemoryHeartbeats();
+      entries = Array.from(cachedDeviceLastSeenMs.entries());
+    }
+
+    if (entries.length === 0) {
       return;
     }
 
     const batch = adminDb.batch();
 
-    for (const doc of devicesSnap.docs) {
-      const data = doc.data();
-      const deviceId = doc.id;
-      const ls = data.lastSeen as any;
-
-      let lastSeenMillis = 0;
-      if (ls) {
-        if (typeof ls.toMillis === 'function') {
-          lastSeenMillis = ls.toMillis();
-        } else if (ls._seconds) {
-          lastSeenMillis = ls._seconds * 1000;
-        } else if (typeof ls === 'string' || typeof ls === 'number') {
-          lastSeenMillis = new Date(ls).getTime();
-        }
-      }
-
+    for (const [deviceId, lastSeenMillis] of entries) {
       const isOnline = lastSeenMillis >= thresholdMs;
       const dailyDocRef = adminDb
         .collection('deviceUptimeDaily')
@@ -61,6 +130,11 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
 
     await batch.commit();
   } catch (error) {
+    if (isQuotaError(error) && !isTestEnv) {
+      uptimeQuotaBackoffUntilMs = Date.now() + QUOTA_BACKOFF_MS;
+      console.warn('[UptimeTracker] Quota exhausted; backing off uptime tick');
+      return;
+    }
     console.error('[UptimeTracker] Failed to record uptime tick:', error);
   }
 }

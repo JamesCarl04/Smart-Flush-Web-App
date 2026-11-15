@@ -59,11 +59,12 @@ const client = getMqttClient();
 void processPendingAutomationState();
 startUnassignedTaskSweeper();
 startUptimeTracker();
+const AUTOMATION_RECOVERY_MS = 300_000;
 const automationRecoveryInterval = setInterval(() => {
   void processPendingAutomationState().catch((error) => {
     console.error('[Automation] Pending-state recovery failed:', error);
   });
-}, 5_000);
+}, AUTOMATION_RECOVERY_MS);
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 

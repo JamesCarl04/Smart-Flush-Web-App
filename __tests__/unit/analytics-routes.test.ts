@@ -12,6 +12,7 @@ jest.mock('@/lib/auth-helpers', () => ({
 }));
 
 import { GET as getDashboard } from '@/app/api/analytics/dashboard/route';
+import { GET as getWaterUsage } from '@/app/api/analytics/water-usage/route';
 import { GET as getSystemPerformance } from '@/app/api/analytics/system-performance/route';
 import { GET as getFlushPatterns } from '@/app/api/analytics/flush-patterns/route';
 
@@ -611,6 +612,50 @@ describe('Analytics API Routes', () => {
 
       const monday = (json.data.byDay as BucketItem[]).find((d) => d.label === 'Monday');
       expect(monday?.count).toBe(5);
+    });
+
+    it('returns 200 OK empty buckets when Firestore throws RESOURCE_EXHAUSTED', async () => {
+      mockCollection.mockImplementation(() => ({
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockRejectedValue(new Error('8 RESOURCE_EXHAUSTED: Quota exceeded.')),
+      }));
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/flush-patterns?from=2026-09-07&to=2026-09-07',
+      );
+      const res = await getFlushPatterns(request);
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.degraded).toBe(true);
+      expect(json.data.byDay).toHaveLength(7);
+      expect(json.data.byHour).toHaveLength(24);
+      expect(json.data.byDay.every((bucket: { count: number }) => bucket.count === 0)).toBe(true);
+      expect(json.data.byHour.every((bucket: { count: number }) => bucket.count === 0)).toBe(true);
+    });
+  });
+
+  describe('GET /api/analytics/water-usage', () => {
+    it('returns 200 OK empty array when Firestore throws RESOURCE_EXHAUSTED', async () => {
+      mockCollection.mockImplementation(() => ({
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockRejectedValue(new Error('8 RESOURCE_EXHAUSTED: Quota exceeded.')),
+      }));
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/water-usage?from=2026-09-07&to=2026-09-07',
+      );
+      const res = await getWaterUsage(request);
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.degraded).toBe(true);
+      expect(json.data).toEqual([]);
     });
   });
 });

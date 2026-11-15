@@ -3,6 +3,18 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken, requireAdmin, requireMaintenance } from '@/lib/auth-helpers';
 import { FieldValue } from 'firebase-admin/firestore';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  invalidateRuntimeCache,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const DEVICES_CACHE_KEY = 'devices:all';
+const DEVICES_CACHE_TTL_MS = 30_000;
 
 interface CreateDeviceBody {
   name: string;
@@ -20,7 +32,25 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await verifyAuthToken(request);
     await requireMaintenance(user);
 
-    const snapshot = await adminDb.collection('devices').get();
+    const cached = getRuntimeCachedValue<unknown[]>(DEVICES_CACHE_KEY);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<unknown[]>(DEVICES_CACHE_KEY);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
+
+    const devicesCol = adminDb.collection('devices');
+    const snapshot =
+      typeof devicesCol.limit === 'function'
+        ? await devicesCol.limit(100).get()
+        : await devicesCol.get();
     const devices = snapshot.docs.map((doc) => {
       const data = doc.data();
       return {
@@ -29,9 +59,21 @@ export async function GET(request: Request): Promise<NextResponse> {
       };
     });
 
+    setRuntimeCachedValue(DEVICES_CACHE_KEY, devices, DEVICES_CACHE_TTL_MS);
+
     return NextResponse.json({ success: true, data: devices });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Devices] Firestore quota exceeded; returning fallback');
+      const stale = getStaleRuntimeCachedValue<unknown[]>(DEVICES_CACHE_KEY);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
     console.error('[Devices] GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch devices' },
@@ -81,6 +123,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     };
 
     await docRef.set(device);
+
+    invalidateRuntimeCache('devices:');
+    invalidateRuntimeCache('device-connection:');
 
     return NextResponse.json(
       { success: true, data: { ...device, id: docRef.id } },

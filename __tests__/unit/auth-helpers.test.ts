@@ -324,5 +324,45 @@ describe('auth-helpers', () => {
       );
     });
   });
+
+  describe('custom claims and quota resilience', () => {
+    it('resolves verified role directly from Firebase Auth custom claim without Firestore read', async () => {
+      const profile = await getUserProfile({
+        uid: 'claim-admin',
+        email: 'admin@sdca.edu.ph',
+        name: 'Admin',
+        role: 'admin',
+      } as any);
+
+      expect(profile).toEqual({
+        id: 'claim-admin',
+        email: 'admin@sdca.edu.ph',
+        displayName: 'Admin',
+        role: 'admin',
+      });
+      expect(adminDb.collection).not.toHaveBeenCalled();
+    });
+
+    it('fails closed with role: null when Firestore throws RESOURCE_EXHAUSTED and no custom claim exists', async () => {
+      (adminDb.collection as jest.Mock).mockImplementation(() => ({
+        doc: jest.fn(() => ({
+          get: jest.fn().mockRejectedValue(new Error('8 RESOURCE_EXHAUSTED: Quota exceeded.')),
+        })),
+      }));
+
+      const profile = await getUserProfile({
+        uid: 'quota-user-1',
+        email: 'user@sdca.edu.ph',
+        name: 'Quota User',
+      } as any);
+
+      expect(profile).toEqual({
+        id: 'quota-user-1',
+        email: 'user@sdca.edu.ph',
+        displayName: 'Quota User',
+        role: null,
+      });
+    });
+  });
 })
 

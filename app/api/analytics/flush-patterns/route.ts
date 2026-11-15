@@ -4,6 +4,16 @@ import { validateIsoDateRange } from '@/lib/date-utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const FLUSH_PATTERNS_CACHE_TTL_MS = 30_000;
 
 interface PatternBucket {
   label: string;
@@ -19,6 +29,19 @@ const DAY_NAMES = [
   'Friday',
   'Saturday',
 ];
+
+function buildEmptyFlushPatterns(): {
+  byDay: PatternBucket[];
+  byHour: PatternBucket[];
+} {
+  return {
+    byDay: DAY_NAMES.map((label) => ({ label, count: 0 })),
+    byHour: Array.from({ length: 24 }, (_, hour) => ({
+      label: `${String(hour).padStart(2, '0')}:00`,
+      count: 0,
+    })),
+  };
+}
 
 interface HasToDate {
   toDate: () => Date;
@@ -100,6 +123,27 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
+    const cacheKey = `analytics:flush-patterns:${from ?? ''}:${to ?? ''}`;
+    const cached = getRuntimeCachedValue<{
+      byDay: PatternBucket[];
+      byHour: PatternBucket[];
+    }>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<{
+        byDay: PatternBucket[];
+        byHour: PatternBucket[];
+      }>(cacheKey);
+      return NextResponse.json({
+        success: true,
+        data: stale ?? buildEmptyFlushPatterns(),
+        degraded: true,
+      });
+    }
+
     let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
     let startTs: Timestamp | null = null;
     let endTs: Timestamp | null = null;
@@ -122,25 +166,47 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
-    let snap = await flushQuery.get();
+    let snap;
+    try {
+      const boundedFlushQuery =
+        typeof flushQuery.limit === 'function' ? flushQuery.limit(500) : flushQuery;
+      snap = await boundedFlushQuery.get();
 
-    // Backwards compatibility / Fallback: If flushEvents has no records for the requested range,
-    // fallback to lidEvents where status == 'open' so legacy test records are not lost.
-    if (snap.empty) {
-      let lidQuery: FirebaseFirestore.Query = adminDb
-        .collection('lidEvents')
-        .where('status', '==', 'open');
+      // Backwards compatibility / Fallback: If flushEvents has no records for the requested range,
+      // fallback to lidEvents where status == 'open' so legacy test records are not lost.
+      if (snap.empty) {
+        let lidQuery: FirebaseFirestore.Query = adminDb
+          .collection('lidEvents')
+          .where('status', '==', 'open');
 
-      if (startTs && endTs) {
-        lidQuery = lidQuery
-          .where('timestamp', '>=', startTs)
-          .where('timestamp', '<=', endTs);
+        if (startTs && endTs) {
+          lidQuery = lidQuery
+            .where('timestamp', '>=', startTs)
+            .where('timestamp', '<=', endTs);
+        }
+
+        const boundedLidQuery =
+          typeof lidQuery.limit === 'function' ? lidQuery.limit(500) : lidQuery;
+        const lidSnap = await boundedLidQuery.get();
+        if (!lidSnap.empty) {
+          snap = lidSnap;
+        }
       }
-
-      const lidSnap = await lidQuery.get();
-      if (!lidSnap.empty) {
-        snap = lidSnap;
+    } catch (queryError) {
+      if (isQuotaExceededError(queryError)) {
+        markFirestoreQuotaExhausted();
+        console.warn('[Analytics] flush-patterns quota exceeded; returning fallback');
+        const stale = getStaleRuntimeCachedValue<{
+          byDay: PatternBucket[];
+          byHour: PatternBucket[];
+        }>(cacheKey);
+        return NextResponse.json({
+          success: true,
+          data: stale ?? buildEmptyFlushPatterns(),
+          degraded: true,
+        });
       }
+      throw queryError;
     }
 
     const byDay = new Array<number>(7).fill(0);
@@ -185,9 +251,12 @@ export async function GET(request: Request): Promise<NextResponse> {
       count,
     }));
 
+    const patternsData = { byDay: byDayResult, byHour: byHourResult };
+    setRuntimeCachedValue(cacheKey, patternsData, FLUSH_PATTERNS_CACHE_TTL_MS);
+
     return NextResponse.json({
       success: true,
-      data: { byDay: byDayResult, byHour: byHourResult },
+      data: patternsData,
     });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);

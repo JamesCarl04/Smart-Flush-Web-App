@@ -45,15 +45,192 @@ export function shouldUseLocalRuntimeCache(): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
+const DEFAULT_QUOTA_COOLDOWN_MS = 60_000;
+const MAX_RUNTIME_CACHE_ENTRIES = 250;
+
+let firestoreQuotaCircuitOpenUntilMs = 0;
+
+interface RuntimeCacheEntry {
+  value: unknown;
+  expiresAtMs: number;
+}
+
+const runtimeResponseCache = new Map<string, RuntimeCacheEntry>();
+
+export interface KnownMaintenanceAccountInfo {
+  email: string;
+  displayName: string;
+  role: 'maintenance';
+}
+
+const KNOWN_MAINTENANCE_ACCOUNTS: Record<string, KnownMaintenanceAccountInfo> = {
+  'juan.delacruz@sdca.edu.ph': {
+    email: 'juan.delacruz@sdca.edu.ph',
+    displayName: 'Juan Dela Cruz',
+    role: 'maintenance',
+  },
+  'maria.santos@sdca.edu.ph': {
+    email: 'maria.santos@sdca.edu.ph',
+    displayName: 'Maria Santos',
+    role: 'maintenance',
+  },
+  'antonio.luna@sdca.edu.ph': {
+    email: 'antonio.luna@sdca.edu.ph',
+    displayName: 'Antonio Luna',
+    role: 'maintenance',
+  },
+  'ramon.bautista@sdca.edu.ph': {
+    email: 'ramon.bautista@sdca.edu.ph',
+    displayName: 'Ramon Bautista',
+    role: 'maintenance',
+  },
+  'carlos.garcia@sdca.edu.ph': {
+    email: 'carlos.garcia@sdca.edu.ph',
+    displayName: 'Carlos Garcia',
+    role: 'maintenance',
+  },
+  'evaluator1@sdca.edu.ph': {
+    email: 'evaluator1@sdca.edu.ph',
+    displayName: 'Evaluator 1',
+    role: 'maintenance',
+  },
+};
+
+function isTestEnvironment(): boolean {
+  return process.env.NODE_ENV === 'test';
+}
+
 export function isQuotaExceededError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
+  if (!error || typeof error !== 'object') {
+    return (
+      typeof error === 'string' &&
+      (error.includes('RESOURCE_EXHAUSTED') || error.includes('Quota exceeded'))
+    );
+  }
+
+  const err = error as { code?: unknown; message?: unknown };
+  if (
+    err.code === 8 ||
+    err.code === '8' ||
+    err.code === 'resource-exhausted' ||
+    err.code === 'RESOURCE_EXHAUSTED'
+  ) {
+    return true;
+  }
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof err.message === 'string'
+        ? err.message
+        : '';
+
+  return (
+    message.includes('RESOURCE_EXHAUSTED') ||
+    message.includes('Quota exceeded') ||
+    message.includes('resource-exhausted')
+  );
+}
+
+/** Trips the global Firestore quota circuit breaker so hot routes fail fast. */
+export function markFirestoreQuotaExhausted(
+  cooldownMs: number = DEFAULT_QUOTA_COOLDOWN_MS,
+): void {
+  if (isTestEnvironment()) {
+    return;
+  }
+
+  const safeCooldownMs =
+    Number.isFinite(cooldownMs) && cooldownMs > 0
+      ? cooldownMs
+      : DEFAULT_QUOTA_COOLDOWN_MS;
+  firestoreQuotaCircuitOpenUntilMs = Math.max(
+    firestoreQuotaCircuitOpenUntilMs,
+    Date.now() + safeCooldownMs,
+  );
+}
+
+export function isFirestoreQuotaCircuitOpen(): boolean {
+  if (isTestEnvironment()) {
     return false;
   }
 
-  return (
-    error.message.includes('RESOURCE_EXHAUSTED') ||
-    error.message.includes('Quota exceeded')
-  );
+  return Date.now() < firestoreQuotaCircuitOpenUntilMs;
+}
+
+export function getRuntimeCachedValue<T>(key: string): T | null {
+  if (isTestEnvironment()) {
+    return null;
+  }
+
+  const entry = runtimeResponseCache.get(key);
+  if (!entry || Date.now() > entry.expiresAtMs) {
+    return null;
+  }
+
+  return entry.value as T;
+}
+
+export function getStaleRuntimeCachedValue<T>(key: string): T | null {
+  if (isTestEnvironment()) {
+    return null;
+  }
+
+  const entry = runtimeResponseCache.get(key);
+  return entry ? (entry.value as T) : null;
+}
+
+export function setRuntimeCachedValue<T>(
+  key: string,
+  value: T,
+  ttlMs: number,
+): void {
+  if (isTestEnvironment()) {
+    return;
+  }
+
+  const safeTtlMs = Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : 15_000;
+  if (runtimeResponseCache.has(key)) {
+    runtimeResponseCache.delete(key);
+  }
+  runtimeResponseCache.set(key, {
+    value,
+    expiresAtMs: Date.now() + safeTtlMs,
+  });
+
+  if (runtimeResponseCache.size > MAX_RUNTIME_CACHE_ENTRIES) {
+    const oldestKey = runtimeResponseCache.keys().next().value;
+    if (typeof oldestKey === 'string') {
+      runtimeResponseCache.delete(oldestKey);
+    }
+  }
+}
+
+export function invalidateRuntimeCache(prefix?: string): void {
+  if (isTestEnvironment()) {
+    return;
+  }
+
+  if (!prefix) {
+    runtimeResponseCache.clear();
+    return;
+  }
+
+  for (const key of Array.from(runtimeResponseCache.keys())) {
+    if (key.startsWith(prefix)) {
+      runtimeResponseCache.delete(key);
+    }
+  }
+}
+
+export function getKnownMaintenanceAccountInfo(
+  email: string | null | undefined,
+): KnownMaintenanceAccountInfo | null {
+  if (isTestEnvironment() || !email) {
+    return null;
+  }
+
+  return KNOWN_MAINTENANCE_ACCOUNTS[email.trim().toLowerCase()] ?? null;
 }
 
 async function readCache(): Promise<LocalRuntimeCache> {

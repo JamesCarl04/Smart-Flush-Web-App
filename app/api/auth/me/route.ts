@@ -2,45 +2,83 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getUserProfile, verifyAuthToken } from '@/lib/auth-helpers';
+import {
+  getRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const PRESENCE_HEARTBEAT_TTL_MS = 60_000;
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
     const profile = await getUserProfile(user);
 
-    const userRef = adminDb.collection('users').doc(user.uid);
-    const userSnap = await userRef.get();
+    const url = new URL(request.url);
+    const platform = url.searchParams.get('platform');
+    const presenceCacheKey = `auth:presence:${user.uid}:${platform ?? 'any'}`;
 
-    const targetDocId = userSnap.exists ? user.uid : (profile.id || user.uid);
-    const targetRef = targetDocId === user.uid ? userRef : adminDb.collection('users').doc(targetDocId);
-    const targetSnap = targetDocId === user.uid ? userSnap : await targetRef.get();
+    if (
+      !isFirestoreQuotaCircuitOpen() &&
+      !getRuntimeCachedValue<boolean>(presenceCacheKey)
+    ) {
+      try {
+        const userRef = adminDb.collection('users').doc(user.uid);
+        const userSnap = await userRef.get();
 
-    if (targetSnap.exists) {
-      const userData = targetSnap.data() || {};
-      const isActive = userData.active !== false && userData.isActive !== false;
-      const url = new URL(request.url);
-      const platform = url.searchParams.get('platform');
-      const isPlatformRoleMatch =
-        platform === 'web'
-          ? profile.role === 'admin'
-          : platform === 'mobile'
-            ? profile.role === 'supervisor' ||
-              profile.role === 'maintenance' ||
-              profile.role === 'technician'
-            : profile.role !== null;
+        const targetDocId = userSnap.exists ? user.uid : profile.id || user.uid;
+        const targetRef =
+          targetDocId === user.uid
+            ? userRef
+            : adminDb.collection('users').doc(targetDocId);
+        const targetSnap =
+          targetDocId === user.uid ? userSnap : await targetRef.get();
 
-      if (isActive && isPlatformRoleMatch) {
-        const currentStatus = userData.status;
-        const targetStatus = currentStatus === 'on_task' ? 'on_task' : 'available';
-        await targetRef.set(
-          {
-            isOnline: true,
-            status: targetStatus,
-            lastSeen: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+        if (targetSnap.exists) {
+          const userData = targetSnap.data() || {};
+          const isActive =
+            userData.active !== false && userData.isActive !== false;
+          const isPlatformRoleMatch =
+            platform === 'web'
+              ? profile.role === 'admin'
+              : platform === 'mobile'
+                ? profile.role === 'supervisor' ||
+                  profile.role === 'maintenance' ||
+                  profile.role === 'technician'
+                : profile.role !== null;
+
+          if (isActive && isPlatformRoleMatch) {
+            const currentStatus = userData.status;
+            const targetStatus =
+              currentStatus === 'on_task' ? 'on_task' : 'available';
+            await targetRef.set(
+              {
+                isOnline: true,
+                status: targetStatus,
+                lastSeen: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true },
+            );
+          }
+        }
+
+        setRuntimeCachedValue(presenceCacheKey, true, PRESENCE_HEARTBEAT_TTL_MS);
+      } catch (presenceError) {
+        if (isQuotaExceededError(presenceError)) {
+          markFirestoreQuotaExhausted();
+          console.warn(
+            '[Auth/Me] Firestore quota exhausted during presence update; returning verified profile',
+          );
+        } else {
+          console.warn(
+            '[Auth/Me] Non-fatal error updating user presence:',
+            presenceError,
+          );
+        }
       }
     }
 

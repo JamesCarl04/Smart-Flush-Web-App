@@ -6,9 +6,16 @@ import {
 } from '@/lib/device-constants';
 import {
   getCachedDeviceEntry,
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
   isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
   shouldUseLocalRuntimeCache,
 } from '@/lib/local-runtime-cache';
+
+const DEVICE_CONNECTION_CACHE_TTL_MS = 15_000;
 
 export type DeviceStatus = 'online' | 'offline';
 
@@ -93,9 +100,45 @@ export function getConnectionStateFromDeviceData(
   };
 }
 
+async function resolveQuotaFallbackDeviceState(
+  deviceId: string,
+  cacheKey: string,
+): Promise<DeviceConnectionState> {
+  const cachedDevice = await getCachedDeviceEntry(deviceId);
+  if (cachedDevice) {
+    return getConnectionStateFromDeviceData(deviceId, {
+      lastSeen:
+        typeof cachedDevice.lastSeenMs === 'number' && cachedDevice.lastSeenMs > 0
+          ? new Date(cachedDevice.lastSeenMs)
+          : null,
+    });
+  }
+
+  const stale = getStaleRuntimeCachedValue<DeviceConnectionState>(cacheKey);
+  if (stale) {
+    return stale;
+  }
+
+  return {
+    deviceId,
+    exists: true,
+    connected: false,
+    status: 'offline',
+    lastSeenMs: null,
+    staleMs: null,
+    reason: 'Firestore quota temporarily exhausted',
+  };
+}
+
 export async function getDeviceConnectionState(
   deviceId = DEFAULT_DEVICE_ID,
 ): Promise<DeviceConnectionState> {
+  const cacheKey = `device-connection:${deviceId}`;
+  const cachedState = getRuntimeCachedValue<DeviceConnectionState>(cacheKey);
+  if (cachedState) {
+    return cachedState;
+  }
+
   if (shouldUseLocalRuntimeCache()) {
     const cachedDevice = await getCachedDeviceEntry(deviceId);
 
@@ -106,37 +149,38 @@ export async function getDeviceConnectionState(
     }
   }
 
+  if (isFirestoreQuotaCircuitOpen()) {
+    return resolveQuotaFallbackDeviceState(deviceId, cacheKey);
+  }
+
   let snapshot;
 
   try {
     snapshot = await adminDb.collection('devices').doc(deviceId).get();
   } catch (error) {
     if (isQuotaExceededError(error)) {
-      const cachedDevice = await getCachedDeviceEntry(deviceId);
-
-      if (cachedDevice && typeof cachedDevice.lastSeenMs === 'number' && cachedDevice.lastSeenMs > 0) {
-        return getConnectionStateFromDeviceData(deviceId, {
-          lastSeen: new Date(cachedDevice.lastSeenMs),
-        });
-      }
+      markFirestoreQuotaExhausted();
+      return resolveQuotaFallbackDeviceState(deviceId, cacheKey);
     }
 
     throw error;
   }
 
-  if (!snapshot.exists) {
-    return {
-      deviceId,
-      exists: false,
-      connected: false,
-      status: 'offline',
-      lastSeenMs: null,
-      staleMs: null,
-      reason: 'Device record not found',
-    };
-  }
+  const state: DeviceConnectionState = !snapshot.exists
+    ? {
+        deviceId,
+        exists: false,
+        connected: false,
+        status: 'offline',
+        lastSeenMs: null,
+        staleMs: null,
+        reason: 'Device record not found',
+      }
+    : getConnectionStateFromDeviceData(deviceId, snapshot.data());
 
-  return getConnectionStateFromDeviceData(deviceId, snapshot.data());
+  setRuntimeCachedValue(cacheKey, state, DEVICE_CONNECTION_CACHE_TTL_MS);
+
+  return state;
 }
 
 export async function ensureDeviceConnected(

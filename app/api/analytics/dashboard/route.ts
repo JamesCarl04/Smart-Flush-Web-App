@@ -3,6 +3,16 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const DASHBOARD_CACHE_TTL_MS = 30_000;
 
 interface FlushEventDoc {
   waterVolume: number;
@@ -23,16 +33,18 @@ interface SafeQueryResult {
 
 async function safeQueryGet(
   label: string,
-  promise: Promise<{
-    size: number;
-    empty: boolean;
-    docs: Array<{ data: () => Record<string, unknown> }>;
-  }> | null,
+  promiseFactory: (() => Promise<SafeQueryResult>) | null,
 ): Promise<SafeQueryResult | null> {
-  if (!promise) return null;
+  if (!promiseFactory) return null;
+  if (isFirestoreQuotaCircuitOpen()) {
+    return { size: 0, empty: true, docs: [] };
+  }
   try {
-    return await promise;
+    return await promiseFactory();
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+    }
     console.warn(`[Analytics] dashboard ${label} query degraded:`, err);
     return { size: 0, empty: true, docs: [] };
   }
@@ -74,6 +86,19 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
+    const cacheKey = `analytics:dashboard:${from ?? ''}:${to ?? ''}`;
+    const cached = getRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      if (stale) {
+        return NextResponse.json({ success: true, data: stale, degraded: true });
+      }
+    }
+
     let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
     let uvQuery: FirebaseFirestore.Query = adminDb.collection('uvCycles');
 
@@ -84,20 +109,45 @@ export async function GET(request: Request): Promise<NextResponse> {
       uvQuery = uvQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
     }
 
-    const uptimeDailyPromise = from && to
-      ? adminDb
-          .collection('deviceUptimeDaily')
-          .where('date', '>=', from)
-          .where('date', '<=', to)
-          .get()
-      : null;
+    const boundedFlushQuery =
+      typeof flushQuery.limit === 'function' ? flushQuery.limit(500) : flushQuery;
+    const boundedUvQuery =
+      typeof uvQuery.limit === 'function' ? uvQuery.limit(500) : uvQuery;
+    const devicesCol = adminDb.collection('devices');
+    const boundedDevicesQuery =
+      typeof devicesCol.limit === 'function' ? devicesCol.limit(200) : devicesCol;
+    const uptimeDailyQuery =
+      from && to
+        ? adminDb
+            .collection('deviceUptimeDaily')
+            .where('date', '>=', from)
+            .where('date', '<=', to)
+        : null;
+    const boundedUptimeQuery =
+      uptimeDailyQuery && typeof uptimeDailyQuery.limit === 'function'
+        ? uptimeDailyQuery.limit(500)
+        : uptimeDailyQuery;
 
     // Fetch all collections in parallel with fault-tolerant wrappers
     const [flushSnap, uvSnap, devicesSnap, uptimeDailySnap] = await Promise.all([
-      safeQueryGet('flushEvents', flushQuery.get() as Promise<SafeQueryResult>),
-      safeQueryGet('uvCycles', uvQuery.get() as Promise<SafeQueryResult>),
-      safeQueryGet('devices', adminDb.collection('devices').get() as Promise<SafeQueryResult>),
-      safeQueryGet('deviceUptimeDaily', uptimeDailyPromise as Promise<SafeQueryResult> | null),
+      safeQueryGet(
+        'flushEvents',
+        () => boundedFlushQuery.get() as Promise<SafeQueryResult>,
+      ),
+      safeQueryGet(
+        'uvCycles',
+        () => boundedUvQuery.get() as Promise<SafeQueryResult>,
+      ),
+      safeQueryGet(
+        'devices',
+        () => boundedDevicesQuery.get() as Promise<SafeQueryResult>,
+      ),
+      safeQueryGet(
+        'deviceUptimeDaily',
+        boundedUptimeQuery
+          ? () => boundedUptimeQuery.get() as Promise<SafeQueryResult>
+          : null,
+      ),
     ]);
 
     const safeFlushDocs = flushSnap?.docs ?? [];
@@ -163,25 +213,48 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
+    const dashboardData = {
+      totalFlushes,
+      totalWaterLiters: Math.round(totalWaterLiters * 100) / 100,
+      uvCompletionRate,
+      uvStats: {
+        total: totalUV,
+        completed: completedUV,
+        failed: failedUV,
+      },
+      avgFlushesPerDay,
+      uptimePercent: periodUptimePercent,
+      liveSnapshotPercent,
+    };
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      if (stale) {
+        return NextResponse.json({
+          success: true,
+          data: stale,
+          degraded: true,
+        });
+      }
+      return NextResponse.json({
+        success: true,
+        data: dashboardData,
+        degraded: true,
+      });
+    }
+
+    setRuntimeCachedValue(cacheKey, dashboardData, DASHBOARD_CACHE_TTL_MS);
+
     return NextResponse.json({
       success: true,
-      data: {
-        totalFlushes,
-        totalWaterLiters: Math.round(totalWaterLiters * 100) / 100,
-        uvCompletionRate,
-        uvStats: {
-          total: totalUV,
-          completed: completedUV,
-          failed: failedUV,
-        },
-        avgFlushesPerDay,
-        uptimePercent: periodUptimePercent,
-        liveSnapshotPercent,
-      },
+      data: dashboardData,
     });
   } catch (error: unknown) {
     if (error instanceof Response) {
       return new NextResponse(error.body, error);
+    }
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
     }
     console.error('[Analytics] dashboard error:', error);
     return NextResponse.json(

@@ -8,6 +8,18 @@ import {
   isTaskDispatchAction,
   validateAutomationRule,
 } from '@/lib/automation-rule-config';
+import {
+  getRuntimeCachedValue,
+  getStaleRuntimeCachedValue,
+  invalidateRuntimeCache,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+  setRuntimeCachedValue,
+} from '@/lib/local-runtime-cache';
+
+const AUTOMATION_RULES_CACHE_KEY = 'automation-rules:all';
+const AUTOMATION_RULES_CACHE_TTL_MS = 30_000;
 
 interface CreateRuleBody {
   name?: unknown;
@@ -25,24 +37,64 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     const user = await verifyAuthToken(request);
     await requireSupervisorOrAdmin(user);
-    const snap = await adminDb
+
+    const cached = getRuntimeCachedValue<unknown[]>(AUTOMATION_RULES_CACHE_KEY);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    if (isFirestoreQuotaCircuitOpen()) {
+      const stale = getStaleRuntimeCachedValue<unknown[]>(
+        AUTOMATION_RULES_CACHE_KEY,
+      );
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
+
+    const rulesQuery = adminDb
       .collection('automationRules')
-      .orderBy('createdAt', 'desc')
-      .get();
+      .orderBy('createdAt', 'desc');
+    const snap =
+      typeof rulesQuery.limit === 'function'
+        ? await rulesQuery.limit(100).get()
+        : await rulesQuery.get();
+    const rules = snap.docs.map((d) => {
+      const rule = d.data() as Record<string, unknown>;
+      return {
+        ...rule,
+        repeatIntervalMinutes: getRepeatIntervalMinutes(
+          rule.repeatIntervalMinutes,
+        ),
+      };
+    });
+
+    setRuntimeCachedValue(
+      AUTOMATION_RULES_CACHE_KEY,
+      rules,
+      AUTOMATION_RULES_CACHE_TTL_MS,
+    );
+
     return NextResponse.json({
       success: true,
-      data: snap.docs.map((d) => {
-        const rule = d.data() as Record<string, unknown>;
-        return {
-          ...rule,
-          repeatIntervalMinutes: getRepeatIntervalMinutes(
-            rule.repeatIntervalMinutes,
-          ),
-        };
-      }),
+      data: rules,
     });
   } catch (error) {
     if (error instanceof Response) return new NextResponse(error.body, error);
+    if (isQuotaExceededError(error)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[AutomationRules] Firestore quota exceeded; returning fallback');
+      const stale = getStaleRuntimeCachedValue<unknown[]>(
+        AUTOMATION_RULES_CACHE_KEY,
+      );
+      return NextResponse.json({
+        success: true,
+        data: stale ?? [],
+        degraded: true,
+      });
+    }
     console.error('[AutomationRules] GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch rules' },
@@ -159,6 +211,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     } else {
       await docRef.set(ruleData);
     }
+
+    invalidateRuntimeCache('automation-rules:');
 
     return NextResponse.json(
       {
