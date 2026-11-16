@@ -213,7 +213,7 @@ describe('Analytics API Routes', () => {
       expect(json.data.daily[0]).toEqual({ date: '2026-08-26', uptimePercent: 100 });
       expect(json.data.daily[1]).toEqual({ date: '2026-08-27', uptimePercent: 50 });
       expect(json.data.predictiveMaintenance).toBeDefined();
-      expect(json.data.predictiveMaintenance.componentRul).toHaveLength(6);
+      expect(json.data.predictiveMaintenance.componentRul).toHaveLength(2);
       expect(json.data.predictiveMaintenance.driftIndicators).toHaveLength(2);
       expect(json.data.predictiveMaintenance.forecasts.series).toHaveLength(7);
       expect(json.data.predictiveMaintenance.campusRisk).toHaveLength(22);
@@ -322,10 +322,10 @@ describe('Analytics API Routes', () => {
 
       const pm = json.data.predictiveMaintenance;
       expect(pm.deviceId).toBe('toilet-01');
-      const uvRul = pm.componentRul.find(
-        (c: { key: string }) => c.key === 'uvOnTimeSeconds',
+      const flowRul = pm.componentRul.find(
+        (c: { key: string }) => c.key === 'flowSensorTotalLiters',
       );
-      expect(uvRul.wearPercent).toBe(50);
+      expect(flowRul.wearPercent).toBe(24);
 
       const ultraDrift = pm.driftIndicators.find(
         (d: { sensorKey: string }) => d.sensorKey === 'ultrasonic_echo_stability',
@@ -359,7 +359,7 @@ describe('Analytics API Routes', () => {
         expect(json.success).toBe(true);
         expect(json.data.totalCount).toBe(0);
         expect(json.data.predictiveMaintenance).toBeDefined();
-        expect(json.data.predictiveMaintenance.componentRul).toHaveLength(6);
+        expect(json.data.predictiveMaintenance.componentRul).toHaveLength(2);
       } finally {
         warnSpy.mockRestore();
       }

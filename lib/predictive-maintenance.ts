@@ -132,6 +132,7 @@ function componentRecommendation(
   status: PredictiveHealthStatus,
   actionPrefix: string,
   daysRemaining: number,
+  currentValue: number,
 ): string {
   const lowerFirst =
     actionPrefix.charAt(0).toLowerCase() + actionPrefix.slice(1);
@@ -144,12 +145,16 @@ function componentRecommendation(
   if (status === 'watch') {
     return `Routine check recommended in about ${daysRemaining} days.`;
   }
-  return `Working normally (about ${daysRemaining} days before service).`;
+  if (currentValue <= 0) {
+    return `No water usage recorded yet; baseline service estimate (~${daysRemaining} days).`;
+  }
+  return `Usage within rated limit (about ${daysRemaining} days until service).`;
 }
 
 /**
  * Computes estimated equipment lifespan (RUL), daily use rate, and predicted service dates
- * for all 6 hardware components tracked by KLIR wear counters.
+ * for sensor-backed hardware components on the prototype unit (Water Flow Meter and Water Flush Pump).
+ * Open-loop actuators without return sensors (UV-C lamp, lid servo, relay) are intentionally excluded.
  */
 export function computeComponentRulPredictions(params: {
   counters: HardwareWearCounterSnapshot;
@@ -168,39 +173,9 @@ export function computeComponentRulPredictions(params: {
       ? params.nowMs
       : Date.now();
   const obs = params.observedWindowTotals ?? {};
-  const obsFlushes = nonNegativeFinite(obs.flushes);
   const obsLiters = nonNegativeFinite(obs.waterLiters);
-  const obsUvSec = nonNegativeFinite(obs.uvSeconds);
-  const obsLidCycles = nonNegativeFinite(obs.lidCycles);
-
-  const effectiveFlushCycles =
-    params.counters.flushCycleCount > 0
-      ? params.counters.flushCycleCount
-      : obsFlushes;
 
   const specs: RulSpec[] = [
-    {
-      key: 'uvOnTimeSeconds',
-      label: 'UV Cleaning Lamp',
-      partNumber: 'Disinfection Light',
-      unit: 'hrs',
-      currentValue: roundTo(params.counters.uvOnTimeSeconds / 3600, 1),
-      ratedLimit: 300,
-      observedBurnPerDay: obsUvSec / 3600 / safeWindowDays,
-      fallbackBurnPerDay: 0.25,
-      actionPrefix: 'Replace UV cleaning lamp',
-    },
-    {
-      key: 'lidCycleCount',
-      label: 'Automatic Seat Lid Motor',
-      partNumber: 'Lid Opening Mechanism',
-      unit: 'cycles',
-      currentValue: roundTo(params.counters.lidCycleCount, 0),
-      ratedLimit: 10_000,
-      observedBurnPerDay: obsLidCycles / safeWindowDays,
-      fallbackBurnPerDay: 25,
-      actionPrefix: 'Check lid motor and hinge alignment',
-    },
     {
       key: 'flowSensorTotalLiters',
       label: 'Water Flow Meter',
@@ -222,28 +197,6 @@ export function computeComponentRulPredictions(params: {
       observedBurnPerDay: obsLiters / safeWindowDays,
       fallbackBurnPerDay: 10,
       actionPrefix: 'Clean pump filter and check seals',
-    },
-    {
-      key: 'relayTotalTriggers',
-      label: 'Power Switch Relay',
-      partNumber: 'Automatic Power Switch',
-      unit: 'switches',
-      currentValue: roundTo(params.counters.relayTotalTriggers, 0),
-      ratedLimit: 10_000,
-      observedBurnPerDay: (obsFlushes + obsLidCycles) / safeWindowDays,
-      fallbackBurnPerDay: 50,
-      actionPrefix: 'Check power switch connections',
-    },
-    {
-      key: 'flushCycleCount',
-      label: 'Flush Valve & Pipe',
-      partNumber: 'Main Water Line',
-      unit: 'flushes',
-      currentValue: roundTo(effectiveFlushCycles, 0),
-      ratedLimit: 1_000,
-      observedBurnPerDay: obsFlushes / safeWindowDays,
-      fallbackBurnPerDay: 20,
-      actionPrefix: 'Clean flush valve and check for mineral buildup',
     },
   ];
 
@@ -285,6 +238,7 @@ export function computeComponentRulPredictions(params: {
         status,
         spec.actionPrefix,
         estimatedDaysRemaining,
+        spec.currentValue,
       ),
     };
   });

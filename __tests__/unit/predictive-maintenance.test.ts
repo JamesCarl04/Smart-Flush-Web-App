@@ -46,43 +46,37 @@ describe('Predictive Maintenance Statistical Engine', () => {
   });
 
   describe('computeComponentRulPredictions', () => {
-    it('computes accurate wear percentages, burn rates, service dates, and statuses', () => {
+    it('computes accurate wear percentages, burn rates, service dates, and statuses for sensor-backed parts', () => {
       const predictions = computeComponentRulPredictions({
         counters: {
-          uvOnTimeSeconds: 972_000, // 270 / 300 hrs -> 90% -> critical
-          lidCycleCount: 7_500, // 75% -> warning
-          flowSensorTotalLiters: 250, // 50% -> watch
-          pumpTotalLiters: 100, // 20% -> healthy
+          uvOnTimeSeconds: 972_000,
+          lidCycleCount: 7_500,
+          flowSensorTotalLiters: 450, // 450 / 500 L -> 90% -> critical
+          pumpTotalLiters: 100, // 20% wear, 30 L/day -> 13d -> warning
           relayTotalTriggers: 4_000,
           ultrasonicConsecutiveFailures: 1,
           flushCycleCount: 850,
         },
         windowDays: 10,
         observedWindowTotals: {
-          flushes: 200, // 20 flushes/day -> 150 remaining -> ~8 days -> critical/warning
+          flushes: 200,
           waterLiters: 300, // 30 L/day
-          uvSeconds: 36_000, // 1 hr/day
-          lidCycles: 250, // 25 cycles/day
+          uvSeconds: 36_000,
+          lidCycles: 250,
         },
         nowMs: FIXED_NOW_MS,
       });
 
-      expect(predictions).toHaveLength(6);
+      expect(predictions).toHaveLength(2);
 
-      const uv = predictions.find((c) => c.key === 'uvOnTimeSeconds');
-      expect(uv?.currentValue).toBe(270);
-      expect(uv?.ratedLimit).toBe(300);
-      expect(uv?.wearPercent).toBe(90);
-      expect(uv?.dailyBurnRate).toBe(1);
-      expect(uv?.estimatedDaysRemaining).toBe(30);
-      expect(uv?.predictedServiceDate).toBe('2026-12-15');
-      expect(uv?.status).toBe('critical');
-
-      const lid = predictions.find((c) => c.key === 'lidCycleCount');
-      expect(lid?.wearPercent).toBe(75);
-      expect(lid?.dailyBurnRate).toBe(25);
-      expect(lid?.estimatedDaysRemaining).toBe(100);
-      expect(lid?.status).toBe('warning');
+      const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
+      expect(flow?.currentValue).toBe(450);
+      expect(flow?.ratedLimit).toBe(500);
+      expect(flow?.wearPercent).toBe(90);
+      expect(flow?.dailyBurnRate).toBe(30);
+      expect(flow?.estimatedDaysRemaining).toBe(2);
+      expect(flow?.predictedServiceDate).toBe('2026-11-17');
+      expect(flow?.status).toBe('critical');
 
       const pump = predictions.find((c) => c.key === 'pumpTotalLiters');
       expect(pump?.dailyBurnRate).toBe(30);
@@ -98,12 +92,13 @@ describe('Predictive Maintenance Statistical Engine', () => {
         nowMs: FIXED_NOW_MS,
       });
 
-      expect(predictions).toHaveLength(6);
+      expect(predictions).toHaveLength(2);
       for (const item of predictions) {
         expect(item.dailyBurnRate).toBeGreaterThan(0);
         expect(Number.isFinite(item.estimatedDaysRemaining)).toBe(true);
         expect(item.wearPercent).toBe(0);
         expect(item.status).toBe('healthy');
+        expect(item.recommendation).toContain('No water usage recorded yet');
       }
     });
   });
@@ -280,7 +275,7 @@ describe('Predictive Maintenance Statistical Engine', () => {
       expect(summary.deviceId).toBe('toilet-01');
       expect(summary.overallHealthIndex).toBeGreaterThan(0);
       expect(summary.overallHealthIndex).toBeLessThanOrEqual(100);
-      expect(summary.componentRul).toHaveLength(6);
+      expect(summary.componentRul).toHaveLength(2);
       expect(summary.driftIndicators).toHaveLength(2);
       expect(summary.forecasts.series).toHaveLength(7);
       expect(summary.campusRisk).toHaveLength(22);

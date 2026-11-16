@@ -849,7 +849,7 @@ const HEALTH_STATUS_META: Record<
       'border-emerald-300/80 bg-emerald-50 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200',
     bar: 'bg-emerald-600 dark:bg-emerald-500',
     iconColor: 'text-emerald-700 dark:text-emerald-400',
-    label: 'Good',
+    label: 'Within Limit',
     Icon: CheckCircle2,
   },
   watch: {
@@ -1006,7 +1006,7 @@ function PredictiveMaintenanceSection({
               {predictive ? `${predictive.overallHealthIndex}%` : '--'}
             </dd>
             <dd className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
-              All 6 monitored parts
+              Sensor-backed parts only
             </dd>
           </div>
 
@@ -1075,7 +1075,7 @@ function PredictiveMaintenanceSection({
       {/* Sub-panel A: Equipment Lifespan & Wear Grid */}
       <ChartCard
         title="Equipment Lifespan & Wear"
-        subtitle="Estimated time left before each part needs routine service"
+        subtitle="Sensor-backed parts only — estimated time left before routine service"
         icon={Cpu}
       >
         {loading && !predictive ? (
@@ -1087,7 +1087,7 @@ function PredictiveMaintenanceSection({
             icon={Cpu}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {predictive.componentRul.map((component) => (
               <ComponentRulCard
                 key={component.key}
@@ -1272,7 +1272,7 @@ function ComponentRulCard({
               {component.label}
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400">
-              {component.partNumber}
+              {component.partNumber} · Sensor Backed
             </p>
           </div>
           <HealthStatusBadge status={component.status} />
