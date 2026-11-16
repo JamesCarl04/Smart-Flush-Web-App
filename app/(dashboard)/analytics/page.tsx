@@ -264,7 +264,7 @@ export default function AnalyticsPage() {
           loading={loading}
         />
         <StatCard
-          title="UV Cleaning Rate"
+          title="UV Cycle Completion"
           icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
           iconBg="bg-emerald-500/10 dark:bg-emerald-500/15"
           value={
@@ -275,7 +275,7 @@ export default function AnalyticsPage() {
           subtext={
             data?.summary.uvTotal
               ? `${data.summary.uvCompleted}/${data.summary.uvTotal} cycles`
-              : 'Cleaning completion'
+              : 'Timer completion'
           }
           loading={loading}
         />
@@ -508,16 +508,16 @@ export default function AnalyticsPage() {
 
         {/* 4. UV Cycles Completed vs Failed (Clean Donut Chart with Center Metric) */}
         <ChartCard
-          title="UV Cleaning Performance"
-          subtitle="Completed cleaning cycles vs interrupted cycles"
+          title="UV Cycle Completion"
+          subtitle="Completed vs interrupted UV timer cycles"
           icon={Sparkles}
         >
           {loading ? (
             <DonutSkeleton />
           ) : !data?.charts.uvStats.length ? (
             <EmptyChartState
-              title="No UV Cleaning Records"
-              description="No UV cleaning cycles recorded in this period."
+              title="No UV Cycle Records"
+              description="No UV timer cycles recorded in this period."
               icon={Sparkles}
             />
           ) : (
