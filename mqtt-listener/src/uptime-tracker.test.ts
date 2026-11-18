@@ -35,9 +35,12 @@ describe('uptime-tracker', () => {
     stopUptimeTracker();
   });
 
-  it('formats todayKey as YYYY-MM-DD', () => {
+  it('formats todayKey as YYYY-MM-DD in Philippine Time (UTC+8)', () => {
     const fixedDate = new Date('2026-08-29T12:00:00Z');
     expect(todayKey(fixedDate)).toBe('2026-08-29');
+
+    const earlyMorningPht = new Date('2026-08-29T20:00:00Z'); // 04:00 PHT on Aug 30
+    expect(todayKey(earlyMorningPht)).toBe('2026-08-30');
   });
 
   it('records uptime tick for online and offline devices', async () => {
@@ -107,6 +110,56 @@ describe('uptime-tracker', () => {
     );
 
     expect(mockBatchCommit).toHaveBeenCalled();
+  });
+
+  it('ignores room placeholder docs with lastSeen: null when active hardware devices exist', async () => {
+    const now = new Date('2026-08-29T20:00:00Z'); // 2026-08-30 04:00 PHT
+    const twoMinAgo = new Date(now.getTime() - 2 * 60 * 1000);
+
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'devices') {
+        return {
+          get: jest.fn().mockResolvedValue({
+            empty: false,
+            docs: [
+              {
+                id: 'toilet-01',
+                data: () => ({
+                  lastSeen: { toMillis: () => twoMinAgo.getTime() },
+                }),
+              },
+              {
+                id: 'SDCA-FL2-M1',
+                data: () => ({
+                  lastSeen: null,
+                }),
+              },
+            ],
+          }),
+        };
+      }
+      if (name === 'deviceUptimeDaily') {
+        return {
+          doc: mockDoc,
+        };
+      }
+      return {};
+    });
+
+    await recordUptimeTick(now);
+
+    expect(mockBatchSet).toHaveBeenCalledTimes(1);
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        deviceId: 'toilet-01',
+        date: '2026-08-30',
+        totalMinutes: { _increment: 1 },
+        onlineMinutes: { _increment: 1 },
+      }),
+      { merge: true },
+    );
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });
 
   it('handles empty device collection without errors', async () => {

@@ -28,7 +28,7 @@ export type AnalyticsData = {
     uvCompleted?: number;
     uvFailed?: number;
     avgFlushesPerDay: number;
-    systemUptime: number;
+    systemUptime: number | null;
     liveSnapshotUptime?: number;
   };
   charts: {
@@ -193,17 +193,23 @@ export function useAnalytics(range: DateRange) {
       // Uptime stats from system-performance daily breakdown
       const dailyPerf = perfData?.daily ?? [];
       const fallbackUptime =
-        perfData?.uptimePercent ?? dashData?.uptimePercent ?? 100;
+        typeof perfData?.uptimePercent === 'number'
+          ? perfData.uptimePercent
+          : typeof dashData?.uptimePercent === 'number'
+            ? dashData.uptimePercent
+            : null;
       const uptimeStats: UptimeData[] =
         dailyPerf.length > 0
           ? dailyPerf.map((d) => ({
               date: format(new Date(`${d.date}T00:00:00`), 'MMM dd'),
               uptime: d.uptimePercent,
             }))
-          : flushCounts.map((f) => ({
-              date: f.date,
-              uptime: fallbackUptime,
-            }));
+          : typeof fallbackUptime === 'number'
+            ? flushCounts.map((f) => ({
+                date: f.date,
+                uptime: fallbackUptime,
+              }))
+            : [];
 
       const waterTotalFlushes = waterDays.reduce(
         (sum, d) => sum + d.flushCount,

@@ -105,9 +105,11 @@ const ULTRASONIC_MIN_CHANGE_CM = readPositiveFloatEnv(
 const lastSeenWriteCache = new Map<string, number>();
 const sensorWriteCache = new Map<string, { value: number; writtenAtMs: number }>();
 
-/** Returns today's date as YYYY-MM-DD in UTC */
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+const PHT_OFFSET_MS = 8 * 3_600_000;
+
+/** Returns today's date as YYYY-MM-DD in Philippine Time (UTC+8) */
+function todayKey(nowMs = Date.now()): string {
+  return new Date(nowMs + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** Derives a human-readable sensorType from the MQTT topic last segment */

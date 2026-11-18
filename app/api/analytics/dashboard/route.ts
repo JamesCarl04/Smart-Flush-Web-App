@@ -28,7 +28,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 interface SafeQueryResult {
   size: number;
   empty: boolean;
-  docs: Array<{ data: () => Record<string, unknown> }>;
+  docs: Array<{ id?: string; data: () => Record<string, unknown> }>;
 }
 
 async function safeQueryGet(
@@ -184,13 +184,30 @@ export async function GET(request: Request): Promise<NextResponse> {
     const uvCompletionRate =
       totalUV === 0 ? null : Math.round((completedUV / totalUV) * 10000) / 100;
 
-    // Live Snapshot: devices with lastSeen within the last 5 minutes
+    // Live Snapshot: active hardware devices with lastSeen within the last 5 minutes
     const FIVE_MIN_AGO = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000);
-    const totalDevices = devicesSnap?.size ?? safeDevicesDocs.length;
-    const onlineDevices = safeDevicesDocs.filter((d) => {
+    const activeDeviceDocs = safeDevicesDocs.filter(
+      (d) => toMillisLoose(d.data().lastSeen) !== null,
+    );
+    const hardwareDeviceDocs =
+      activeDeviceDocs.length > 0 ? activeDeviceDocs : safeDevicesDocs;
+    const totalDevices = hardwareDeviceDocs.length;
+    const onlineDevices = hardwareDeviceDocs.filter((d) => {
       const lastSeenMillis = toMillisLoose(d.data().lastSeen) ?? 0;
       return lastSeenMillis >= FIVE_MIN_AGO.toMillis();
     }).length;
+
+    const scopedDeviceIds = new Set<string>();
+    for (const d of hardwareDeviceDocs) {
+      const data = d.data();
+      const id =
+        typeof d.id === 'string' && d.id.trim()
+          ? d.id.trim()
+          : typeof data.id === 'string' && data.id.trim()
+            ? data.id.trim()
+            : '';
+      if (id) scopedDeviceIds.add(id);
+    }
 
     const liveSnapshotPercent =
       totalDevices === 0
@@ -204,12 +221,23 @@ export async function GET(request: Request): Promise<NextResponse> {
       let totalTrackedMin = 0;
       for (const doc of uptimeDailySnap.docs) {
         const data = doc.data();
+        const docDeviceId =
+          typeof data.deviceId === 'string' ? data.deviceId.trim() : '';
+        if (
+          docDeviceId &&
+          scopedDeviceIds.size > 0 &&
+          !scopedDeviceIds.has(docDeviceId)
+        ) {
+          continue;
+        }
         totalOnlineMin += Number(data.onlineMinutes ?? 0);
         totalTrackedMin += Number(data.totalMinutes ?? 0);
       }
       if (totalTrackedMin > 0) {
-        periodUptimePercent =
-          Math.round((totalOnlineMin / totalTrackedMin) * 1000) / 10;
+        periodUptimePercent = Math.min(
+          100,
+          Math.max(0, Math.round((totalOnlineMin / totalTrackedMin) * 1000) / 10),
+        );
       }
     }
 

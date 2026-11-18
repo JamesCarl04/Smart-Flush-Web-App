@@ -23,8 +23,10 @@ interface SensorReadingDoc {
   unit: string;
 }
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+const PHT_OFFSET_MS = 8 * 3_600_000;
+
+function todayKey(nowMs = Date.now()): string {
+  return new Date(nowMs + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 export async function GET(

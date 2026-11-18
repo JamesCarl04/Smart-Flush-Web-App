@@ -8,6 +8,7 @@ const TICK_INTERVAL_MS = 60_000; // 1 minute
 const FIVE_MIN_MS = 5 * 60 * 1000;
 const DEVICE_CACHE_REFRESH_MS = 60 * 60_000; // 60 minutes
 const QUOTA_BACKOFF_MS = 120_000;
+const PHT_OFFSET_MS = 8 * 3_600_000;
 
 let tickerTimer: NodeJS.Timeout | null = null;
 const cachedDeviceLastSeenMs = new Map<string, number>();
@@ -44,20 +45,29 @@ function parseLastSeenMillis(ls: unknown): number {
 }
 
 export function todayKey(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + PHT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+function getSafeInMemoryHeartbeats(): Map<string, number> {
+  return typeof getInMemoryDeviceHeartbeats === 'function'
+    ? getInMemoryDeviceHeartbeats()
+    : new Map<string, number>();
 }
 
 function mergeInMemoryHeartbeats(): void {
-  if (typeof getInMemoryDeviceHeartbeats !== 'function') {
-    return;
-  }
-
-  for (const [deviceId, seenAtMs] of getInMemoryDeviceHeartbeats().entries()) {
+  for (const [deviceId, seenAtMs] of getSafeInMemoryHeartbeats().entries()) {
     const prev = cachedDeviceLastSeenMs.get(deviceId) ?? 0;
     if (seenAtMs > prev) {
       cachedDeviceLastSeenMs.set(deviceId, seenAtMs);
     }
   }
+}
+
+function filterActiveHardwareEntries(
+  entries: Array<[string, number]>,
+): Array<[string, number]> {
+  const active = entries.filter(([, lastSeenMs]) => lastSeenMs > 0);
+  return active.length > 0 ? active : entries;
 }
 
 export async function recordUptimeTick(now = new Date()): Promise<void> {
@@ -84,10 +94,17 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
       }
 
       if (isTestEnv) {
-        entries = devicesSnap.docs.map((doc) => [
-          doc.id,
-          parseLastSeenMillis(doc.data().lastSeen),
-        ]);
+        const inMemoryHeartbeats = getSafeInMemoryHeartbeats();
+        const rawEntries: Array<[string, number]> = devicesSnap.docs.map(
+          (doc) => [
+            doc.id,
+            Math.max(
+              parseLastSeenMillis(doc.data().lastSeen),
+              inMemoryHeartbeats.get(doc.id) ?? 0,
+            ),
+          ],
+        );
+        entries = filterActiveHardwareEntries(rawEntries);
       } else {
         for (const doc of devicesSnap.docs) {
           const parsed = parseLastSeenMillis(doc.data().lastSeen);
@@ -96,11 +113,15 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
         }
         mergeInMemoryHeartbeats();
         lastDeviceCacheRefreshMs = nowMs;
-        entries = Array.from(cachedDeviceLastSeenMs.entries());
+        entries = filterActiveHardwareEntries(
+          Array.from(cachedDeviceLastSeenMs.entries()),
+        );
       }
     } else {
       mergeInMemoryHeartbeats();
-      entries = Array.from(cachedDeviceLastSeenMs.entries());
+      entries = filterActiveHardwareEntries(
+        Array.from(cachedDeviceLastSeenMs.entries()),
+      );
     }
 
     if (entries.length === 0) {

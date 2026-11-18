@@ -40,9 +40,11 @@ interface FlushPayload {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns today's date as YYYY-MM-DD in local time */
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+const PHT_OFFSET_MS = 8 * 3_600_000;
+
+/** Returns today's date as YYYY-MM-DD in Philippine Time (UTC+8) */
+function todayKey(nowMs = Date.now()): string {
+  return new Date(nowMs + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** Derives a human-readable sensorType from the MQTT topic last segment */

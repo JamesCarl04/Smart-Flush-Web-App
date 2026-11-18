@@ -662,7 +662,7 @@ export default function ReportsPage() {
     const conservationRate =
       baselineWater > 0 ? Math.round((waterSaved / baselineWater) * 100) : 0;
     const uvRate = analyticsData?.summary.uvCompletion ?? null;
-    const uptime = analyticsData?.summary.systemUptime ?? 99.5;
+    const uptime = analyticsData?.summary.systemUptime ?? null;
 
     return {
       flushes,
@@ -671,7 +671,7 @@ export default function ReportsPage() {
       waterSaved: Math.round(waterSaved * 10) / 10,
       conservationRate,
       uvRate: uvRate !== null ? `${uvRate.toFixed(1)}%` : '100%',
-      uptime: `${uptime.toFixed(1)}%`,
+      uptime: typeof uptime === 'number' ? `${uptime.toFixed(1)}%` : 'N/A',
     };
   }, [analyticsData]);
 

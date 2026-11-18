@@ -151,6 +151,48 @@ describe('Analytics API Routes', () => {
         warnSpy.mockRestore();
       }
     });
+
+    it('excludes placeholder device docs with lastSeen: null from liveSnapshotPercent when active hardware exists', async () => {
+      const nowMs = Date.now();
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'devices') {
+          return {
+            get: jest.fn().mockResolvedValue({
+              size: 3,
+              docs: [
+                {
+                  id: 'toilet-01',
+                  data: () => ({ lastSeen: { toMillis: () => nowMs } }),
+                },
+                {
+                  id: 'SDCA-FL1-CANTEEN-M',
+                  data: () => ({ lastSeen: null }),
+                },
+                {
+                  id: 'SDCA-FL2-M1',
+                  data: () => ({ lastSeen: null }),
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ size: 0, empty: true, docs: [] }),
+        };
+      });
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/dashboard?from=2026-08-01&to=2026-08-03',
+      );
+      const res = await getDashboard(request);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.success).toBe(true);
+      expect(json.data.liveSnapshotPercent).toBe(100);
+      expect(json.data.uptimePercent).toBe(100);
+    });
   });
 
   describe('GET /api/analytics/system-performance', () => {
@@ -363,6 +405,88 @@ describe('Analytics API Routes', () => {
       } finally {
         warnSpy.mockRestore();
       }
+    });
+
+    it('returns 0% for unrecorded past days without telemetry, 100% for past days with flushEvents, and excludes lastSeen: null rooms', async () => {
+      const nowMs = Date.now();
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'devices') {
+          return {
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'toilet-01',
+                  data: () => ({
+                    id: 'toilet-01',
+                    name: 'Prototype Unit',
+                    status: 'online',
+                    lastSeen: { toMillis: () => nowMs },
+                  }),
+                },
+                {
+                  id: 'SDCA-FL2-M1',
+                  data: () => ({
+                    id: 'SDCA-FL2-M1',
+                    name: '2F Male 1 (QR Only)',
+                    status: 'offline',
+                    lastSeen: null,
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        if (name === 'deviceUptimeDaily') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          };
+        }
+        if (name === 'flushEvents') {
+          return {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'f-aug2',
+                  data: () => ({
+                    deviceId: 'toilet-01',
+                    waterVolume: 1.4,
+                    duration: 5,
+                    timestamp: {
+                      toMillis: () => Date.parse('2026-08-02T04:00:00.000Z'), // 12:00 PHT Aug 2
+                    },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: [] }),
+        };
+      });
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/system-performance?from=2026-08-01&to=2026-08-03',
+      );
+      const res = await getSystemPerformance(request);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.success).toBe(true);
+      expect(json.data.totalCount).toBe(1);
+      expect(json.data.onlineCount).toBe(1);
+      expect(json.data.liveSnapshotPercent).toBe(100);
+      expect(json.data.daily).toEqual([
+        { date: '2026-08-01', uptimePercent: 0 },
+        { date: '2026-08-02', uptimePercent: 100 },
+        { date: '2026-08-03', uptimePercent: 0 },
+      ]);
+      expect(json.data.uptimePercent).toBe(33.3);
     });
   });
 
