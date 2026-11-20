@@ -116,7 +116,9 @@ export function useActivityFeed(deviceId = 'toilet-01') {
           setLoading(true);
         }
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date(Date.now() + 8 * 3_600_000)
+          .toISOString()
+          .slice(0, 10);
         const response = await apiFetch<{
           success: boolean;
           data: SensorReading[];
@@ -142,6 +144,12 @@ export function useActivityFeed(deviceId = 'toilet-01') {
   useEffect(() => {
     void fetchFeed(true);
     const interval = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
       void fetchFeed(false);
     }, 15_000);
 

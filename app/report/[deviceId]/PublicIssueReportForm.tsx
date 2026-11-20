@@ -331,6 +331,28 @@ export function PublicIssueReportForm({
     setError(null);
 
     try {
+      const isPresentationDemo =
+        process.env.NODE_ENV !== 'production' &&
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('demo') === '1';
+
+      if (isPresentationDemo) {
+        const nowMs = Date.now();
+        setReceipt({
+          referenceCode: 'KLIR-4F-0842',
+          confirmation:
+            'Thank you. Your report has been queued for SDCA Annex facility review.',
+          submittedAt: nowMs,
+          photoCaptureStatus: photo ? 'captured' : 'unavailable',
+          photoCapturedAt: photo ? photoCapturedAt : null,
+          previewUrl:
+            photo && typeof URL.createObjectURL === 'function'
+              ? URL.createObjectURL(photo)
+              : null,
+        });
+        return;
+      }
+
       const effectiveCaptureStatus: PhotoCaptureStatus = photo ? 'captured' : 'unavailable';
       const body = new FormData(event.currentTarget);
       body.set('deviceId', device.id);

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 
 export interface MaintenancePersonnel {
@@ -35,10 +36,18 @@ interface MaintenancePersonnelResponse {
 
 const EMPTY_PERSONNEL: MaintenancePersonnel[] = [];
 
+const PRESENTATION_PERSONNEL: MaintenancePersonnel[] = [
+  { id: 'demo-tech-1', displayName: 'Alex Rivera', email: 'alex.rivera@sdca.edu.ph' },
+  { id: 'demo-tech-2', displayName: 'Elena Santos', email: 'elena.santos@sdca.edu.ph' },
+  { id: 'demo-tech-3', displayName: 'Marco Cruz', email: 'marco.cruz@sdca.edu.ph' },
+  { id: 'justine@gmail.com', displayName: 'Justine Reyes', email: 'justine@sdca.edu.ph' },
+];
+
 export function useMaintenancePersonnel({
   enabled = true,
 }: UseMaintenancePersonnelOptions = {}): UseMaintenancePersonnelResult {
   const { user, loading: authLoading } = useAuth();
+  const presentationMode = usePresentationMode();
   const [snapshotState, setSnapshotState] = useState<PersonnelSnapshotState>({
     personnel: [],
     error: null,
@@ -46,7 +55,7 @@ export function useMaintenancePersonnel({
   });
 
   useEffect(() => {
-    if (!enabled || authLoading || !user) {
+    if (presentationMode || !enabled || authLoading || !user) {
       return;
     }
 
@@ -100,19 +109,23 @@ export function useMaintenancePersonnel({
     return () => {
       cancelled = true;
     };
-  }, [authLoading, enabled, user]);
+  }, [authLoading, enabled, presentationMode, user]);
 
-  const personnel =
-    enabled && user && snapshotState.readyForUserId === user.uid
+  const personnel = presentationMode
+    ? PRESENTATION_PERSONNEL
+    : enabled && user && snapshotState.readyForUserId === user.uid
       ? snapshotState.personnel
       : EMPTY_PERSONNEL;
-  const loading = enabled
-    ? authLoading
-      ? true
-      : !!user && snapshotState.readyForUserId !== user.uid
-    : false;
-  const error =
-    enabled && user && snapshotState.readyForUserId === user.uid
+  const loading = presentationMode
+    ? false
+    : enabled
+      ? authLoading
+        ? true
+        : !!user && snapshotState.readyForUserId !== user.uid
+      : false;
+  const error = presentationMode
+    ? null
+    : enabled && user && snapshotState.readyForUserId === user.uid
       ? snapshotState.error
       : null;
 

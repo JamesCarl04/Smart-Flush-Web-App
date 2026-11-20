@@ -2,7 +2,7 @@
 // Thin wrapper around fetch that injects the Firebase Bearer token.
 import type { User } from 'firebase/auth';
 
-const GET_COALESCE_TTL_MS = 3_000;
+const GET_COALESCE_TTL_MS = 8_000;
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 const recentGetCache = new Map<string, { value: unknown; expiresAtMs: number }>();
 

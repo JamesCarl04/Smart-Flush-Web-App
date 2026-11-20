@@ -1,9 +1,11 @@
 // app/api/analytics/dashboard/route.ts
 import { NextResponse } from 'next/server';
+import { enumerateIsoDateRange } from '@/lib/date-utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
 import {
+  getCachedAnalyticsTelemetry,
   getRuntimeCachedValue,
   getStaleRuntimeCachedValue,
   isFirestoreQuotaCircuitOpen,
@@ -12,7 +14,8 @@ import {
   setRuntimeCachedValue,
 } from '@/lib/local-runtime-cache';
 
-const DASHBOARD_CACHE_TTL_MS = 30_000;
+const DASHBOARD_CACHE_TTL_MS = 120_000;
+const PHT_OFFSET_MS = 8 * 3_600_000;
 
 interface FlushEventDoc {
   waterVolume: number;
@@ -101,10 +104,16 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     let flushQuery: FirebaseFirestore.Query = adminDb.collection('flushEvents');
     let uvQuery: FirebaseFirestore.Query = adminDb.collection('uvCycles');
+    let rangeFromMs: number | null = null;
+    let rangeToMs: number | null = null;
 
     if (from) {
-      const fromTs = Timestamp.fromDate(new Date(`${from}T00:00:00.000Z`));
-      const toTs = Timestamp.fromDate(new Date(`${to}T23:59:59.999Z`));
+      const fromDate = new Date(`${from}T00:00:00.000+08:00`);
+      const toDate = new Date(`${to}T23:59:59.999+08:00`);
+      rangeFromMs = fromDate.getTime();
+      rangeToMs = toDate.getTime();
+      const fromTs = Timestamp.fromDate(fromDate);
+      const toTs = Timestamp.fromDate(toDate);
       flushQuery = flushQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
       uvQuery = uvQuery.where('timestamp', '>=', fromTs).where('timestamp', '<=', toTs);
     }
@@ -150,12 +159,56 @@ export async function GET(request: Request): Promise<NextResponse> {
       ),
     ]);
 
-    const safeFlushDocs = flushSnap?.docs ?? [];
-    const safeUvDocs = uvSnap?.docs ?? [];
-    const safeDevicesDocs = devicesSnap?.docs ?? [];
+    let safeFlushDocs = flushSnap?.docs ?? [];
+    let safeUvDocs = uvSnap?.docs ?? [];
+    let safeDevicesDocs = devicesSnap?.docs ?? [];
+    let usedLocalFallback = false;
+
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      isFirestoreQuotaCircuitOpen() &&
+      safeFlushDocs.length === 0 &&
+      safeUvDocs.length === 0 &&
+      safeDevicesDocs.length === 0
+    ) {
+      const local = await getCachedAnalyticsTelemetry();
+      const inRange = (tsMs: number) =>
+        (rangeFromMs === null || tsMs >= rangeFromMs) &&
+        (rangeToMs === null || tsMs <= rangeToMs);
+
+      if (local.flushEvents.length > 0 || local.uvCycles.length > 0 || local.devices.length > 0) {
+        usedLocalFallback = true;
+        safeFlushDocs = local.flushEvents
+          .filter((e) => inRange(e.timestampMs))
+          .map((e) => ({
+            id: e.id,
+            data: () => ({
+              waterVolume: e.waterVolume,
+              timestamp: e.timestampMs,
+            }),
+          }));
+        safeUvDocs = local.uvCycles
+          .filter((e) => inRange(e.timestampMs))
+          .map((e) => ({
+            id: e.id,
+            data: () => ({
+              completed: e.completed,
+            }),
+          }));
+        safeDevicesDocs = local.devices.map((d) => ({
+          id: d.id,
+          data: () => ({
+            id: d.id,
+            lastSeen: d.lastSeenMs,
+          }),
+        }));
+      }
+    }
 
     // Total flushes and water usage
-    const totalFlushes = flushSnap?.size ?? safeFlushDocs.length;
+    const totalFlushes = usedLocalFallback
+      ? safeFlushDocs.length
+      : (flushSnap?.size ?? safeFlushDocs.length);
     let totalWaterLiters = 0;
     const dateSet = new Set<string>();
 
@@ -164,7 +217,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       totalWaterLiters += d.waterVolume ?? 0;
 
       const tsMillis = toMillisLoose(d.timestamp);
-      const dateObj = tsMillis === null ? null : new Date(tsMillis);
+      const dateObj = tsMillis === null ? null : new Date(tsMillis + PHT_OFFSET_MS);
 
       if (dateObj && !isNaN(dateObj.getTime())) {
         const date = dateObj.toISOString().slice(0, 10);
@@ -172,9 +225,20 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
-    const distinctDays = dateSet.size || 1;
+    const activeDays = dateSet.size;
+    const distinctDays = activeDays || 1;
     const avgFlushesPerDay =
       Math.round((totalFlushes / distinctDays) * 100) / 100;
+    const windowDays =
+      from && to
+        ? Math.max(1, enumerateIsoDateRange(from, to).length)
+        : distinctDays;
+    const avgFlushesPerWindowDay =
+      Math.round((totalFlushes / windowDays) * 100) / 100;
+    const avgLitersPerFlush =
+      totalFlushes > 0
+        ? Math.round((totalWaterLiters / totalFlushes) * 100) / 100
+        : 0;
 
     // UV completion rate
     const uvDocs = safeUvDocs.map((d) => d.data() as unknown as UVCycleDoc);
@@ -251,12 +315,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         failed: failedUV,
       },
       avgFlushesPerDay,
+      avgFlushesPerWindowDay,
+      avgLitersPerFlush,
+      windowDays,
+      activeDays,
       uptimePercent: periodUptimePercent,
       liveSnapshotPercent,
     };
 
     if (isFirestoreQuotaCircuitOpen()) {
-      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      const stale = usedLocalFallback
+        ? null
+        : getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
       if (stale) {
         return NextResponse.json({
           success: true,

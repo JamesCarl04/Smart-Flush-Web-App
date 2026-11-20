@@ -7,6 +7,9 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { incrementCounters } from './hardware-counters';
 import {
   recordDeviceHeartbeat,
+  recordLocalFlushEvent,
+  recordLocalLidEvent,
+  recordLocalUVCycle,
   recordSensorReading,
 } from './local-runtime-cache';
 
@@ -231,6 +234,15 @@ export async function writeFlushEvent(
 ): Promise<{ id: string; flushCycleCount: number }> {
   try {
     const docRef = adminDb.collection('flushEvents').doc();
+    if (typeof recordLocalFlushEvent === 'function') {
+      await recordLocalFlushEvent({
+        id: docRef.id,
+        deviceId,
+        waterVolume: payload.volume,
+        duration: payload.duration,
+        timestampMs: Date.now(),
+      });
+    }
     await docRef.set({
       id: docRef.id,
       deviceId,
@@ -265,6 +277,14 @@ export async function writeLidEvent(
 ): Promise<void> {
   try {
     const docRef = adminDb.collection('lidEvents').doc();
+    if (typeof recordLocalLidEvent === 'function') {
+      await recordLocalLidEvent({
+        id: docRef.id,
+        deviceId,
+        status: payload.status,
+        timestampMs: Date.now(),
+      });
+    }
     await docRef.set({
       id: docRef.id,
       deviceId,
@@ -286,25 +306,81 @@ export async function writeLidEvent(
 }
 
 /**
- * Writes a UV sterilisation cycle to uvCycles.
+ * Writes a UV sterilisation cycle to uvCycles and atomically increments uvCyclesDaily/{YYYY-MM-DD}.
  */
 export async function writeUVCycle(
   payload: UVPayload,
   deviceId: string,
 ): Promise<void> {
   try {
+    const nowMs = Date.now();
+    const nowTs = Timestamp.now();
+    const safeDuration =
+      typeof payload.duration === 'number' &&
+      Number.isFinite(payload.duration) &&
+      payload.duration >= 0
+        ? payload.duration
+        : 0;
+    const isCompleted = Boolean(payload.completed);
+
     const docRef = adminDb.collection('uvCycles').doc();
+    if (typeof recordLocalUVCycle === 'function') {
+      await recordLocalUVCycle({
+        id: docRef.id,
+        deviceId,
+        duration: safeDuration,
+        completed: isCompleted,
+        reason: payload.reason ?? null,
+        timestampMs: nowMs,
+      });
+    }
     await docRef.set({
       id: docRef.id,
       deviceId,
-      duration: payload.duration,
-      completed: payload.completed,
+      duration: safeDuration,
+      completed: isCompleted,
       reason: payload.reason ?? null,
-      timestamp: Timestamp.now(),
+      timestamp: nowTs,
     });
     console.log(
-      `[Firestore] uvCycle written: ${payload.duration}s completed=${payload.completed}`,
+      `[Firestore] uvCycle written: ${safeDuration}s completed=${isCompleted}`,
     );
+
+    if (typeof FieldValue?.increment === 'function') {
+      try {
+        const dateKey = todayKey(nowMs);
+        const hourKey = String(
+          new Date(nowMs + PHT_OFFSET_MS).getUTCHours(),
+        ).padStart(2, '0');
+        await adminDb
+          .collection('uvCyclesDaily')
+          .doc(dateKey)
+          .set(
+            {
+              date: dateKey,
+              totalCount: FieldValue.increment(1),
+              completedCount: FieldValue.increment(isCompleted ? 1 : 0),
+              interruptedCount: FieldValue.increment(isCompleted ? 0 : 1),
+              totalDurationSeconds: FieldValue.increment(safeDuration),
+              hourlyCounts: {
+                [hourKey]: FieldValue.increment(1),
+              },
+              hourlyCompleted: {
+                [hourKey]: FieldValue.increment(isCompleted ? 1 : 0),
+              },
+              hourlyInterrupted: {
+                [hourKey]: FieldValue.increment(isCompleted ? 0 : 1),
+              },
+              lastCycleAt: nowTs,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+      } catch (rollupError) {
+        console.warn('[Firestore] uvCyclesDaily rollup error:', rollupError);
+      }
+    }
+
     void incrementCounters(deviceId, 'uv_cycle', payload);
   } catch (error) {
     console.error('[Firestore] writeUVCycle error:', error);

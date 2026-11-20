@@ -162,6 +162,35 @@ describe('uptime-tracker', () => {
     expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });
 
+  it('skips devices that have not checked in today so powered-off hardware does not accrue false downtime', async () => {
+    const now = new Date('2026-08-30T01:00:00Z'); // 2026-08-30 09:00 PHT
+    const yesterday = new Date('2026-08-29T10:00:00Z'); // 2026-08-29 18:00 PHT
+
+    mockCollection.mockImplementation((name: string) => {
+      if (name === 'devices') {
+        return {
+          get: jest.fn().mockResolvedValue({
+            empty: false,
+            docs: [
+              {
+                id: 'toilet-01',
+                data: () => ({
+                  lastSeen: { toMillis: () => yesterday.getTime() },
+                }),
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    await recordUptimeTick(now);
+
+    expect(mockBatchSet).not.toHaveBeenCalled();
+    expect(mockBatchCommit).not.toHaveBeenCalled();
+  });
+
   it('handles empty device collection without errors', async () => {
     mockCollection.mockReturnValue({
       get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),

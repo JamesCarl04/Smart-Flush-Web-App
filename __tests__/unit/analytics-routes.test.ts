@@ -488,6 +488,155 @@ describe('Analytics API Routes', () => {
       ]);
       expect(json.data.uptimePercent).toBe(33.3);
     });
+
+    it('prefers toilet-01 over alphabetically earlier SDCA-* rooms and falls back to cumulative flushEvents liters when maintenanceCounters doc is absent', async () => {
+      const nowMs = Date.now();
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'devices') {
+          return {
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'SDCA-FL1-CANTEEN-F',
+                  data: () => ({
+                    id: 'SDCA-FL1-CANTEEN-F',
+                    name: '1F Canteen Female',
+                    status: 'online',
+                    lastSeen: { toMillis: () => nowMs },
+                  }),
+                },
+                {
+                  id: 'toilet-01',
+                  data: () => ({
+                    id: 'toilet-01',
+                    name: 'Prototype Unit',
+                    status: 'online',
+                    lastSeen: { toMillis: () => nowMs },
+                  }),
+                },
+              ],
+            }),
+            doc: jest.fn().mockReturnValue({
+              collection: jest.fn().mockReturnValue({
+                doc: jest.fn().mockReturnValue({
+                  get: jest.fn().mockResolvedValue({ exists: false }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (name === 'flushEvents') {
+          return {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'f1',
+                  data: () => ({
+                    deviceId: 'toilet-01',
+                    waterVolume: 42.5,
+                    duration: 3,
+                    timestamp: { toMillis: () => nowMs - 2 * 86_400_000 },
+                  }),
+                },
+                {
+                  id: 'f2',
+                  data: () => ({
+                    deviceId: 'toilet-01',
+                    waterVolume: 33.58,
+                    duration: 3,
+                    timestamp: { toMillis: () => nowMs - 1 * 86_400_000 },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        };
+      });
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/system-performance?from=2026-11-10&to=2026-11-17',
+      );
+      const res = await getSystemPerformance(request);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.success).toBe(true);
+      const pm = json.data.predictiveMaintenance;
+      expect(pm.deviceId).toBe('toilet-01');
+      const flowRul = pm.componentRul.find(
+        (c: { key: string }) => c.key === 'flowSensorTotalLiters',
+      );
+      expect(flowRul.currentValue).toBe(76.1);
+      expect(flowRul.wearPercent).toBe(15.2);
+      expect(flowRul.unit).toBe('L');
+      expect(flowRul.recommendation).not.toContain('No water usage recorded yet');
+
+      const pumpRul = pm.componentRul.find(
+        (c: { key: string }) => c.key === 'flushCycleCount',
+      );
+      expect(pumpRul.currentValue).toBe(2);
+      expect(pumpRul.wearPercent).toBe(0.2);
+      expect(pumpRul.unit).toBe('flushes');
+      expect(pumpRul.recommendation).not.toContain('No flush cycles recorded yet');
+    });
+
+    it('skips querying tasks and issueReports when includeCampusRisk=false and reports uptimeSource', async () => {
+      const queriedCollections: string[] = [];
+      const nowMs = Date.now();
+      mockCollection.mockImplementation((name: string) => {
+        queriedCollections.push(name);
+        if (name === 'devices') {
+          return {
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  id: 'toilet-01',
+                  data: () => ({
+                    id: 'toilet-01',
+                    name: 'Prototype Unit',
+                    status: 'online',
+                    lastSeen: { toMillis: () => nowMs },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        if (name === 'deviceUptimeDaily') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          };
+        }
+        return {
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        };
+      });
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/system-performance?from=2026-10-01&to=2026-10-07&includeCampusRisk=false',
+      );
+      const res = await getSystemPerformance(request);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.success).toBe(true);
+      expect(queriedCollections).not.toContain('tasks');
+      expect(queriedCollections).not.toContain('issueReports');
+      expect(json.data.uptimeSource).toBe('live_snapshot');
+    });
   });
 
   describe('GET /api/analytics/flush-patterns', () => {
@@ -762,6 +911,59 @@ describe('Analytics API Routes', () => {
   });
 
   describe('GET /api/analytics/water-usage', () => {
+    it('zero-fills quiet calendar days across the requested date range when activity exists', async () => {
+      mockCollection.mockImplementation((name: string) => {
+        if (name === 'flushEvents') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                {
+                  data: () => ({
+                    waterVolume: 2.4,
+                    timestamp: {
+                      toDate: () => new Date('2026-09-02T04:00:00.000Z'), // 2026-09-02 12:00 PHT
+                    },
+                  }),
+                },
+                {
+                  data: () => ({
+                    waterVolume: 1.6,
+                    timestamp: {
+                      toDate: () => new Date('2026-09-04T04:00:00.000Z'), // 2026-09-04 12:00 PHT
+                    },
+                  }),
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: [] }),
+        };
+      });
+
+      const request = new Request(
+        'http://localhost:3000/api/analytics/water-usage?from=2026-09-01&to=2026-09-04',
+      );
+      const res = await getWaterUsage(request);
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data).toEqual([
+        { date: '2026-09-01', totalVolume: 0, avgVolume: 0, flushCount: 0 },
+        { date: '2026-09-02', totalVolume: 2.4, avgVolume: 2.4, flushCount: 1 },
+        { date: '2026-09-03', totalVolume: 0, avgVolume: 0, flushCount: 0 },
+        { date: '2026-09-04', totalVolume: 1.6, avgVolume: 1.6, flushCount: 1 },
+      ]);
+    });
+
     it('returns 200 OK empty array when Firestore throws RESOURCE_EXHAUSTED', async () => {
       mockCollection.mockImplementation(() => ({
         where: jest.fn().mockReturnThis(),

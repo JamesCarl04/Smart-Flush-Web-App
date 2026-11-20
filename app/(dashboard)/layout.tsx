@@ -75,6 +75,10 @@ export default function DashboardLayout({
     ).length;
 
   useEffect(() => {
+    if (presentationMode) {
+      setPendingIssueReportsCount(2);
+      return;
+    }
     if (!user || role !== 'admin' || roleLoading) {
       setPendingIssueReportsCount(0);
       return;
@@ -93,13 +97,21 @@ export default function DashboardLayout({
     };
     void loadPendingCount();
     window.addEventListener('issue-reports:refresh', loadPendingCount);
-    const interval = window.setInterval(loadPendingCount, 30_000);
+    const interval = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+      void loadPendingCount();
+    }, 60_000);
     return () => {
       cancelled = true;
       window.removeEventListener('issue-reports:refresh', loadPendingCount);
       window.clearInterval(interval);
     };
-  }, [role, roleLoading, user]);
+  }, [presentationMode, role, roleLoading, user]);
 
   const handleLogout = useCallback(async (redirectQuery?: string) => {
     setIsLoggingOut(true);
@@ -164,7 +176,7 @@ export default function DashboardLayout({
     },
     {
       title: 'Operations',
-      items: buildOperationsNavigation(role, pendingIssueReportsCount).map((item) => ({
+      items: buildOperationsNavigation(presentationMode ? 'admin' : role, pendingIssueReportsCount).map((item) => ({
         ...item,
         icon:
           item.name === 'Tasks'

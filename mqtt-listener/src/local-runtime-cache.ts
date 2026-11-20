@@ -21,10 +21,46 @@ interface LocalRuntimeSensorReading {
   };
 }
 
+export interface LocalRuntimeFlushEvent {
+  id: string;
+  deviceId: string;
+  waterVolume: number;
+  duration: number;
+  timestampMs: number;
+}
+
+export interface LocalRuntimeUVCycle {
+  id: string;
+  deviceId: string;
+  duration: number;
+  completed: boolean;
+  reason?: string | null;
+  timestampMs: number;
+}
+
+export interface LocalRuntimeLidEvent {
+  id: string;
+  deviceId: string;
+  status: 'open' | 'closed';
+  timestampMs: number;
+}
+
+export interface LocalRuntimeUptimeDaily {
+  deviceId: string;
+  date: string; // YYYY-MM-DD (PHT)
+  onlineMinutes: number;
+  totalMinutes: number;
+  updatedAtMs: number;
+}
+
 interface LocalRuntimeCache {
   updatedAtMs: number;
   devices: Record<string, LocalRuntimeDeviceEntry>;
   readings: Record<string, LocalRuntimeSensorReading[]>;
+  flushEvents?: LocalRuntimeFlushEvent[];
+  uvCycles?: LocalRuntimeUVCycle[];
+  lidEvents?: LocalRuntimeLidEvent[];
+  uptimeDaily?: Record<string, LocalRuntimeUptimeDaily>;
 }
 
 const CACHE_PATH = path.resolve(
@@ -35,12 +71,17 @@ const CACHE_PATH = path.resolve(
   'device-cache.json',
 );
 const MAX_SENSOR_READINGS = 200;
+const MAX_UV_CYCLE_ENTRIES = 2_000;
 
 function emptyCache(): LocalRuntimeCache {
   return {
     updatedAtMs: 0,
     devices: {},
     readings: {},
+    flushEvents: [],
+    uvCycles: [],
+    lidEvents: [],
+    uptimeDaily: {},
   };
 }
 
@@ -54,6 +95,13 @@ async function readCache(): Promise<LocalRuntimeCache> {
         typeof parsed.updatedAtMs === 'number' ? parsed.updatedAtMs : 0,
       devices: parsed.devices ?? {},
       readings: parsed.readings ?? {},
+      flushEvents: Array.isArray(parsed.flushEvents) ? parsed.flushEvents : [],
+      uvCycles: Array.isArray(parsed.uvCycles) ? parsed.uvCycles : [],
+      lidEvents: Array.isArray(parsed.lidEvents) ? parsed.lidEvents : [],
+      uptimeDaily:
+        parsed.uptimeDaily && typeof parsed.uptimeDaily === 'object'
+          ? parsed.uptimeDaily
+          : {},
     };
   } catch (error) {
     const code =
@@ -144,5 +192,106 @@ export function recordSensorReading(params: {
     const readings = cache.readings[params.deviceId] ?? [];
     readings.push(reading);
     cache.readings[params.deviceId] = readings.slice(-MAX_SENSOR_READINGS);
+  });
+}
+
+export function recordLocalFlushEvent(params: {
+  id: string;
+  deviceId: string;
+  waterVolume: number;
+  duration: number;
+  timestampMs?: number;
+}): Promise<void> {
+  const timestampMs = params.timestampMs ?? Date.now();
+  return enqueueWrite((cache) => {
+    const list = cache.flushEvents ?? [];
+    list.push({
+      id: params.id,
+      deviceId: params.deviceId,
+      waterVolume: params.waterVolume,
+      duration: params.duration,
+      timestampMs,
+    });
+    cache.flushEvents = list.slice(-MAX_SENSOR_READINGS);
+  });
+}
+
+export function recordLocalUVCycle(params: {
+  id: string;
+  deviceId: string;
+  duration: number;
+  completed: boolean;
+  reason?: string | null;
+  timestampMs?: number;
+}): Promise<void> {
+  const timestampMs = params.timestampMs ?? Date.now();
+  return enqueueWrite((cache) => {
+    const list = cache.uvCycles ?? [];
+    list.push({
+      id: params.id,
+      deviceId: params.deviceId,
+      duration: params.duration,
+      completed: params.completed,
+      reason: params.reason ?? null,
+      timestampMs,
+    });
+    cache.uvCycles = list.slice(-MAX_UV_CYCLE_ENTRIES);
+  });
+}
+
+export function recordLocalLidEvent(params: {
+  id: string;
+  deviceId: string;
+  status: 'open' | 'closed';
+  timestampMs?: number;
+}): Promise<void> {
+  const timestampMs = params.timestampMs ?? Date.now();
+  return enqueueWrite((cache) => {
+    const list = cache.lidEvents ?? [];
+    list.push({
+      id: params.id,
+      deviceId: params.deviceId,
+      status: params.status,
+      timestampMs,
+    });
+    cache.lidEvents = list.slice(-MAX_SENSOR_READINGS);
+  });
+}
+
+export function recordLocalUptimeTick(params: {
+  deviceId: string;
+  date: string;
+  isOnline: boolean;
+  nowMs?: number;
+}): Promise<void> {
+  const nowMs = params.nowMs ?? Date.now();
+  const key = `${params.deviceId}_${params.date}`;
+  return enqueueWrite((cache) => {
+    const map = cache.uptimeDaily ?? {};
+    const existing = map[key] ?? {
+      deviceId: params.deviceId,
+      date: params.date,
+      onlineMinutes: 0,
+      totalMinutes: 0,
+      updatedAtMs: nowMs,
+    };
+    map[key] = {
+      deviceId: params.deviceId,
+      date: params.date,
+      onlineMinutes: existing.onlineMinutes + (params.isOnline ? 1 : 0),
+      totalMinutes: existing.totalMinutes + 1,
+      updatedAtMs: nowMs,
+    };
+    // Retain at most 400 daily records to bound local cache size
+    const keys = Object.keys(map);
+    if (keys.length > 400) {
+      keys
+        .sort()
+        .slice(0, keys.length - 400)
+        .forEach((oldKey) => {
+          delete map[oldKey];
+        });
+    }
+    cache.uptimeDaily = map;
   });
 }

@@ -47,10 +47,33 @@ function UnavailableReportPage() {
 
 export default async function PublicReportPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ deviceId: string }>;
+  searchParams?: Promise<{ demo?: string }>;
 }) {
   const { deviceId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const isPresentationDemo =
+    process.env.NODE_ENV !== 'production' && resolvedSearchParams?.demo === '1';
+
+  if (isPresentationDemo) {
+    const demoDevice: PublicReportingDevice = {
+      id: deviceId || 'toilet-01',
+      name: "Men's Restroom • Stall 1 (Smart Unit)",
+      location: '4th Floor Restroom Zone',
+      building: 'SDCA Annex Building',
+      floor: '4th Floor',
+      publicReportingEnabled: true,
+    };
+    return (
+      <PublicIssueReportForm
+        device={demoDevice}
+        hasPendingReport={false}
+      />
+    );
+  }
+
   let device: PublicReportingDevice;
   try {
     device = await loadPublicReportingDevice(deviceId);

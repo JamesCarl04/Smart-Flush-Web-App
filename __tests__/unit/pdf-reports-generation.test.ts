@@ -2,6 +2,7 @@ import {
   generatePDFBuffer,
   generateMaintenanceTaskPDFBuffer,
   generateSupervisorAuditPDFBuffer,
+  generateUvCyclePDFBuffer,
   type FlushEventRow,
   type UVCycleRow,
   type MaintenanceTaskRow,
@@ -9,6 +10,7 @@ import {
   type SupervisorAuditRow,
   type SupervisorAuditSummary,
 } from '@/lib/pdf-report';
+import { buildUvCycleRangeReport } from '@/lib/uv-cycle-analytics';
 
 describe('PDF Reports Generation Engine', () => {
   it('generates standard usage PDF with water conservation calculation', async () => {
@@ -144,5 +146,54 @@ describe('PDF Reports Generation Engine', () => {
     expect(pdfString.includes('%%EOF')).toBe(true);
     expect(pdfString.includes('Supervisor QA & Approval Audit Report')).toBe(true);
     expect(pdfString.includes('Approval Rate: 100%')).toBe(true);
+  });
+
+  it('generates UV Sanitization Cycle PDF buffer with vector Line Graph and exact HH:mm:ss PHT timestamps', async () => {
+    const uvReport = buildUvCycleRangeReport({
+      records: [
+        {
+          id: 'uv-log-1',
+          deviceId: 'toilet-01',
+          duration: 5,
+          completed: true,
+          reason: null,
+          timestampMs: Date.parse('2026-11-19T18:38:50.000+08:00'),
+        },
+        {
+          id: 'uv-log-2',
+          deviceId: 'toilet-01',
+          duration: 5,
+          completed: true,
+          reason: null,
+          timestampMs: Date.parse('2026-11-19T18:59:10.000+08:00'),
+        },
+      ],
+      from: '2026-11-19',
+      to: '2026-11-19',
+      granularity: 'hour',
+      nowMs: Date.parse('2026-11-19T22:00:00.000+08:00'),
+    });
+
+    const pdfBuffer = await generateUvCyclePDFBuffer(uvReport);
+    expect(pdfBuffer).toBeInstanceOf(Uint8Array);
+    expect(pdfBuffer.length).toBeGreaterThan(800);
+
+    const pdfString = Buffer.from(pdfBuffer).toString('binary');
+    expect(pdfString.startsWith('%PDF-1.4')).toBe(true);
+    expect(pdfString.includes('%%EOF')).toBe(true);
+    expect(pdfString.includes('UV Sanitization Cycle Activity Report')).toBe(true);
+    expect(pdfString.includes('DOCUMENT CONTROL')).toBe(true);
+    expect(pdfString.includes('ISO/IEC 17025 Cl. 7.8')).toBe(true);
+    expect(pdfString.includes('UV Cycles Logged Line Graph')).toBe(true);
+    expect(pdfString.includes('Figure 1.')).toBe(true);
+    // Exact second-level PHT timestamps preserved in dedicated columns
+    expect(pdfString.includes('2026-11-19')).toBe(true);
+    expect(pdfString.includes('18:38:50')).toBe(true);
+    expect(pdfString.includes('18:59:10')).toBe(true);
+    // Vector polyline, markers, pagination footer, and formal lab sign-off
+    expect(pdfString.includes('0.01 0.52 0.78 RG 1.8 w')).toBe(true);
+    expect(pdfString.includes('Page 1 of')).toBe(true);
+    expect(pdfString.includes('APPROVED BY')).toBe(true);
+    expect(pdfString.includes('--- END OF LABORATORY REPORT ---')).toBe(true);
   });
 });

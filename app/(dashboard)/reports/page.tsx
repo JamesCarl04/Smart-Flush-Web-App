@@ -37,25 +37,37 @@ import { useDeviceStatus } from '@/hooks/useDeviceStatus';
 import { useMaintenancePersonnel } from '@/hooks/useMaintenancePersonnel';
 import { useTasks } from '@/hooks/useTasks';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { UvCycleReportCanvas } from '@/components/reports/UvCycleReportCanvas';
+import { isValidIsoDate } from '@/lib/date-utils';
+import {
+  getPhtPeriodBounds,
+  toPhtIsoDate,
+  type UvDayGranularity,
+} from '@/lib/uv-cycle-analytics';
 import { getErrorMessage } from '@/lib/error-utils';
 import type { Task, TaskStatus, TaskTriggerType } from '@/types';
 
 type ReportType =
+  | 'uv_cycles'
   | 'daily'
   | 'usage_summary'
   | 'maintenance_tasks'
   | 'supervisor_audit';
 
 type DateRangeOption =
+  | 'today'
+  | 'this_week'
   | 'last_7_days'
-  | 'last_30_days'
   | 'this_month'
+  | 'last_30_days'
   | 'last_month'
+  | 'this_year'
   | 'custom';
 
 type ExportFormat = 'PDF' | 'CSV' | 'JSON';
 
 type RequestReportType =
+  | 'uv_cycles'
   | 'daily'
   | 'weekly'
   | 'monthly'
@@ -74,6 +86,11 @@ interface ExportRecord {
 }
 
 const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] = [
+  {
+    label: 'UV Sanitization Cycle Logs',
+    value: 'uv_cycles',
+    desc: 'Log-backed UV cycle line graph and exact HH:mm:ss timestamps across day, week, month, or year.',
+  },
   {
     label: 'Daily Restroom Activity',
     value: 'daily',
@@ -97,10 +114,13 @@ const REPORT_TYPE_OPTIONS: { label: string; value: ReportType; desc: string }[] 
 ];
 
 const RANGE_OPTIONS: { label: string; value: DateRangeOption }[] = [
+  { label: 'Today', value: 'today' },
+  { label: 'This Week (Mon–Sun)', value: 'this_week' },
   { label: 'Last 7 Days', value: 'last_7_days' },
-  { label: 'Last 30 Days', value: 'last_30_days' },
   { label: 'This Month', value: 'this_month' },
+  { label: 'Last 30 Days', value: 'last_30_days' },
   { label: 'Last Month', value: 'last_month' },
+  { label: 'This Year', value: 'this_year' },
   { label: 'Custom Date Range', value: 'custom' },
 ];
 
@@ -478,13 +498,46 @@ export default function ReportsPage() {
   const [reportType, setReportType] = useState<ReportType>('usage_summary');
   const [dateRange, setDateRange] = useState<DateRangeOption>('last_7_days');
   const [formatType, setFormatType] = useState<ExportFormat>('PDF');
-  const [singleDate, setSingleDate] = useState(() =>
-    format(new Date(), 'yyyy-MM-dd'),
-  );
+  const [uvGranularity, setUvGranularity] = useState<UvDayGranularity>('hour');
+  const [singleDate, setSingleDate] = useState(() => toPhtIsoDate());
   const [customRange, setCustomRange] = useState(() => ({
     from: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
-    to: format(new Date(), 'yyyy-MM-dd'),
+    to: toPhtIsoDate(),
   }));
+
+  // Allow deep-linking from /analytics -> /reports?type=uv_cycles&from=...&to=...&granularity=...
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const paramType = params.get('type');
+    if (
+      paramType === 'uv_cycles' ||
+      paramType === 'daily' ||
+      paramType === 'usage_summary' ||
+      paramType === 'maintenance_tasks' ||
+      paramType === 'supervisor_audit'
+    ) {
+      setReportType(paramType);
+    }
+    const paramGranularity = params.get('granularity');
+    if (
+      paramGranularity === 'hour' ||
+      paramGranularity === 'minute' ||
+      paramGranularity === 'second'
+    ) {
+      setUvGranularity(paramGranularity);
+    }
+    const paramFrom = params.get('from');
+    const paramTo = params.get('to') ?? paramFrom;
+    if (paramFrom && paramTo && isValidIsoDate(paramFrom) && isValidIsoDate(paramTo)) {
+      if (paramType === 'daily') {
+        setSingleDate(paramFrom);
+      } else {
+        setDateRange('custom');
+        setCustomRange({ from: paramFrom, to: paramTo });
+      }
+    }
+  }, []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [srAnnouncement, setSrAnnouncement] = useState('');
   const [exportHistory, setExportHistory] = useState<ExportRecord[]>(() => {
@@ -518,6 +571,7 @@ export default function ReportsPage() {
     }
   }, [exportHistory]);
 
+  const isUvCyclesReport = reportType === 'uv_cycles';
   const isMaintenanceTaskReport = reportType === 'maintenance_tasks';
   const isSupervisorAuditReport = reportType === 'supervisor_audit';
   const isDailyReport = reportType === 'daily';
@@ -535,16 +589,32 @@ export default function ReportsPage() {
     }
 
     const now = new Date();
+    const phtBounds = getPhtPeriodBounds(undefined, now.getTime());
     switch (dateRange) {
+      case 'today':
+        return {
+          from: phtBounds.todayPht,
+          to: phtBounds.todayPht,
+        };
+      case 'this_week':
+        return {
+          from: phtBounds.weekFrom,
+          to: phtBounds.weekTo,
+        };
+      case 'this_year':
+        return {
+          from: phtBounds.yearFrom,
+          to: phtBounds.yearTo,
+        };
       case 'last_30_days':
         return {
           from: format(subDays(now, 29), 'yyyy-MM-dd'),
-          to: format(now, 'yyyy-MM-dd'),
+          to: phtBounds.todayPht,
         };
       case 'this_month':
         return {
-          from: format(startOfMonth(now), 'yyyy-MM-dd'),
-          to: format(endOfMonth(now), 'yyyy-MM-dd'),
+          from: phtBounds.monthFrom,
+          to: phtBounds.monthTo,
         };
       case 'last_month': {
         const previousMonth = subMonths(now, 1);
@@ -557,7 +627,7 @@ export default function ReportsPage() {
       default:
         return {
           from: format(subDays(now, 6), 'yyyy-MM-dd'),
-          to: format(now, 'yyyy-MM-dd'),
+          to: phtBounds.todayPht,
         };
     }
   }, [customRange, dateRange, isDailyReport, singleDate, usesExplicitRange]);
@@ -661,7 +731,7 @@ export default function ReportsPage() {
     const waterSaved = Math.max(0, baselineWater - waterLiters);
     const conservationRate =
       baselineWater > 0 ? Math.round((waterSaved / baselineWater) * 100) : 0;
-    const uvRate = analyticsData?.summary.uvCompletion ?? null;
+    const uvTotal = analyticsData?.summary.uvTotal ?? 0;
     const uptime = analyticsData?.summary.systemUptime ?? null;
 
     return {
@@ -670,7 +740,7 @@ export default function ReportsPage() {
       baselineWater: Math.round(baselineWater * 10) / 10,
       waterSaved: Math.round(waterSaved * 10) / 10,
       conservationRate,
-      uvRate: uvRate !== null ? `${uvRate.toFixed(1)}%` : '100%',
+      uvRate: `${uvTotal} cycles`,
       uptime: typeof uptime === 'number' ? `${uptime.toFixed(1)}%` : 'N/A',
     };
   }, [analyticsData]);
@@ -772,6 +842,9 @@ export default function ReportsPage() {
           from: resolvedRange.from,
           to: resolvedRange.to,
           format: formatType.toLowerCase(),
+          ...(requestType === 'uv_cycles' && resolvedRange.from === resolvedRange.to
+            ? { granularity: uvGranularity }
+            : {}),
         }),
       });
 
@@ -1086,7 +1159,13 @@ export default function ReportsPage() {
         />
 
         {/* Primary View Router */}
-        {isSupervisorAuditReport ? (
+        {isUvCyclesReport ? (
+          <UvCycleReportCanvas
+            range={resolvedRange}
+            granularity={uvGranularity}
+            onGranularityChange={setUvGranularity}
+          />
+        ) : isSupervisorAuditReport ? (
           <SupervisorAuditReport
             approvalRate={supervisorAuditSummary.approvalRate}
             approvedCount={supervisorAuditSummary.approvedCount}
@@ -1216,8 +1295,8 @@ function DailyAuditReportCanvas({
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
-          label="Disinfection Rate"
-          sublabel="Automatic UV Cleaning"
+          label="UV Cycles Logged"
+          sublabel="Verified 5s UV cycles"
           loading={loading}
           value={telemetry.uvRate}
         />
@@ -1359,8 +1438,8 @@ function UsageTelemetryReportCanvas({
         />
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
-          label="Disinfection Rate"
-          sublabel="Automatic UV cleaning cycles"
+          label="UV Cycles Logged"
+          sublabel="Verified 5s UV cycles"
           loading={loading}
           value={telemetry.uvRate}
         />

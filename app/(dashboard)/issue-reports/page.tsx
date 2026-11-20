@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 
 type Status = 'pending_review' | 'confirmed' | 'dismissed';
 interface IssueReportView {
@@ -62,8 +63,121 @@ function categoryLabel(value: string | null): string {
   return value?.replaceAll('_', ' ') ?? 'Other';
 }
 
+function buildPresentationIssueReports(): Record<Status, IssueReportView[]> {
+  const now = Date.now();
+  return {
+    pending_review: [
+      {
+        id: 'demo-ir-1',
+        referenceCode: 'KLIR-4F-0842',
+        deviceId: 'toilet-01',
+        device: {
+          name: "Men's Restroom • Stall 1 (Smart Unit)",
+          location: '4th Floor Restroom Zone',
+          building: 'SDCA Annex Building',
+          floor: '4th Floor',
+        },
+        category: 'continuous_leak',
+        categories: ['continuous_leak'],
+        status: 'pending_review',
+        confirmationCount: 3,
+        firstReportedAt: now - 14 * 60_000,
+        lastReportedAt: now - 4 * 60_000,
+        descriptions: [
+          'Flush valve keeps running continuously after departure; water flow stays elevated.',
+          'Confirmed water still trickling inside Stall 1 bowl.',
+        ],
+        evidence: [
+          { submissionId: 'sub-demo-1', contentType: 'image/jpeg', size: 184_320 },
+        ],
+        submissions: [
+          {
+            submissionId: 'sub-demo-1',
+            photoCaptureStatus: 'captured',
+            photoCapturedAt: now - 14 * 60_000,
+            submittedAt: now - 14 * 60_000,
+          },
+        ],
+      },
+      {
+        id: 'demo-ir-2',
+        referenceCode: 'KLIR-2F-0839',
+        deviceId: 'SDCA-FL2-F1-S3',
+        device: {
+          name: '2F Female Restroom 1 • Stall 3',
+          location: '2nd Floor Left Wing',
+          building: 'SDCA Annex Building',
+          floor: '2nd Floor',
+        },
+        category: 'blockage_or_dirty',
+        categories: ['blockage_or_dirty'],
+        status: 'pending_review',
+        confirmationCount: 2,
+        firstReportedAt: now - 32 * 60_000,
+        lastReportedAt: now - 18 * 60_000,
+        descriptions: [
+          'Stall 3 requires immediate housekeeping and drain check before midday rush.',
+        ],
+        evidence: [],
+        submissions: [
+          {
+            submissionId: 'sub-demo-2',
+            photoCaptureStatus: 'unavailable',
+            photoCapturedAt: null,
+            submittedAt: now - 32 * 60_000,
+          },
+        ],
+      },
+    ],
+    confirmed: [
+      {
+        id: 'demo-ir-3',
+        referenceCode: 'KLIR-1F-0831',
+        deviceId: 'SDCA-FL1-CANTEEN-M-S2',
+        device: {
+          name: '1F Canteen Male Restroom • Stall 2',
+          location: '1st Floor Canteen Zone',
+          building: 'SDCA Annex Building',
+          floor: '1st Floor',
+        },
+        category: 'no_water',
+        categories: ['no_water'],
+        status: 'confirmed',
+        confirmationCount: 4,
+        firstReportedAt: now - 2.4 * 3_600_000,
+        lastReportedAt: now - 2.1 * 3_600_000,
+        descriptions: ['Low pressure reported on Stall 2 supply line.'],
+        evidence: [],
+        linkedTaskId: 'demo-task-2',
+      },
+    ],
+    dismissed: [
+      {
+        id: 'demo-ir-4',
+        referenceCode: 'KLIR-3F-0825',
+        deviceId: 'SDCA-FL3-M1-S1',
+        device: {
+          name: '3F Male Restroom 1 • Stall 1',
+          location: '3rd Floor Left Wing',
+          building: 'SDCA Annex Building',
+          floor: '3rd Floor',
+        },
+        category: 'other',
+        categories: ['other'],
+        status: 'dismissed',
+        confirmationCount: 1,
+        firstReportedAt: now - 5 * 3_600_000,
+        lastReportedAt: now - 5 * 3_600_000,
+        descriptions: ['Duplicate test scan verified clear on inspection.'],
+        evidence: [],
+      },
+    ],
+  };
+}
+
 export default function IssueReportsPage() {
   const { user, role, roleLoading, roleError } = useAuth();
+  const presentationMode = usePresentationMode();
   const [status, setStatus] = useState<Status>('pending_review');
   const [reportsByStatus, setReportsByStatus] = useState<Record<Status, IssueReportView[]>>({
     pending_review: [],
@@ -85,6 +199,15 @@ export default function IssueReportsPage() {
   const [busyEvidenceKey, setBusyEvidenceKey] = useState<string | null>(null);
 
   const load = useCallback(async (targetStatus: Status) => {
+    if (presentationMode) {
+      if (!loadedRef.current.pending_review) {
+        setReportsByStatus(buildPresentationIssueReports());
+        loadedRef.current = { pending_review: true, confirmed: true, dismissed: true };
+        setLoadedStatuses({ pending_review: true, confirmed: true, dismissed: true });
+      }
+      setError(null);
+      return;
+    }
     if (!user || role !== 'admin' || roleLoading) return;
     try {
       const response = await apiFetch<{ success: boolean; data?: IssueReportView[]; error?: string }>(
@@ -99,7 +222,7 @@ export default function IssueReportsPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load reports');
     }
-  }, [role, roleLoading, user]);
+  }, [presentationMode, role, roleLoading, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +232,12 @@ export default function IssueReportsPage() {
     ALL_STATUSES.filter((s) => s !== status).forEach((s) => {
       void load(s);
     });
+
+    if (presentationMode) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     // Event listener for cross-component refresh (e.g. actions from layout or mutations)
     const handleRefresh = () => {
@@ -130,9 +259,29 @@ export default function IssueReportsPage() {
       window.removeEventListener('issue-reports:refresh', handleRefresh);
       window.clearInterval(intervalId);
     };
-  }, [load, status]);
+  }, [load, presentationMode, status]);
 
   const mutate = async (reportId: string, path: string, body?: Record<string, unknown>) => {
+    if (presentationMode && !busyReportId) {
+      setBusyReportId(reportId);
+      const nextStatus: Status = path.includes('/dismiss') ? 'dismissed' : 'confirmed';
+      setReportsByStatus((prev) => {
+        const target = prev[status].find((r) => r.id === reportId);
+        if (!target) return prev;
+        const updated: IssueReportView = {
+          ...target,
+          status: nextStatus,
+          ...(nextStatus === 'confirmed' ? { linkedTaskId: 'demo-task-new' } : {}),
+        };
+        return {
+          ...prev,
+          [status]: prev[status].filter((r) => r.id !== reportId),
+          [nextStatus]: [updated, ...prev[nextStatus]],
+        };
+      });
+      setBusyReportId(null);
+      return;
+    }
     if (!user || role !== 'admin' || busyReportId) return;
     setBusyReportId(reportId);
     setError(null);
@@ -168,8 +317,8 @@ export default function IssueReportsPage() {
     }
   };
 
-  if (roleLoading) return <div role="status" className="p-6">Loading administrator access…</div>;
-  if (!user || role !== 'admin') {
+  if (roleLoading && !presentationMode) return <div role="status" className="p-6">Loading administrator access…</div>;
+  if ((!user || role !== 'admin') && !presentationMode) {
     return (
       <section className="mx-auto max-w-2xl rounded-xl border border-rose-200 bg-rose-50 p-8 text-center dark:border-rose-900 dark:bg-rose-950/30">
         <h1 className="text-xl font-semibold">Access denied</h1>

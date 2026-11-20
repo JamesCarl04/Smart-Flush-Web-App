@@ -4,46 +4,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
+import { ACTIVE_WATERFLOW_THRESHOLD } from '@/lib/device-constants';
+import {
+  getReadingTimestampMillis,
+  isFreshSensorReadingTimestamp,
+  type SensorTimestampLike,
+} from '@/lib/sensor-freshness';
 
 type SystemState = 'standby' | 'lid_open' | 'flushing' | 'uv_active';
 
 interface SensorReading {
   sensorType: string;
   value: number;
-  timestamp?:
-    | { _seconds?: number; seconds?: number }
-    | string
-    | number
-    | null;
-}
-
-function getReadingTimestampMillis(timestamp: unknown): number {
-  if (!timestamp) return 0;
-  if (typeof timestamp === 'number') {
-    return timestamp > 1e11 ? timestamp : timestamp * 1000;
-  }
-  if (typeof timestamp === 'string') {
-    const parsed = Date.parse(timestamp);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  if (typeof timestamp === 'object') {
-    if (
-      'toMillis' in timestamp &&
-      typeof (timestamp as { toMillis: () => number }).toMillis === 'function'
-    ) {
-      return (timestamp as { toMillis: () => number }).toMillis();
-    }
-    const seconds =
-      ('_seconds' in timestamp &&
-        typeof (timestamp as { _seconds: unknown })._seconds === 'number' &&
-        (timestamp as { _seconds: number })._seconds) ||
-      ('seconds' in timestamp &&
-        typeof (timestamp as { seconds: unknown }).seconds === 'number' &&
-        (timestamp as { seconds: number }).seconds) ||
-      0;
-    return seconds * 1000;
-  }
-  return 0;
+  timestamp?: SensorTimestampLike;
 }
 
 export function useSystemState(deviceId = 'toilet-01') {
@@ -75,7 +48,9 @@ export function useSystemState(deviceId = 'toilet-01') {
           setLoading(true);
         }
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date(Date.now() + 8 * 3_600_000)
+          .toISOString()
+          .slice(0, 10);
         const response = await apiFetch<{
           success: boolean;
           data: SensorReading[];
@@ -84,14 +59,18 @@ export function useSystemState(deviceId = 'toilet-01') {
         if (response.success && response.data && response.data.length > 0) {
           const latest = response.data[response.data.length - 1];
           const timestampMillis = getReadingTimestampMillis(latest.timestamp);
-          const age = Date.now() - timestampMillis;
-          const isStale =
-            timestampMillis === 0 || age > 15_000 || age < -15_000;
+          const isFresh = isFreshSensorReadingTimestamp(timestampMillis);
 
-          if (!isStale && latest.sensorType === 'waterflow') {
+          if (
+            isFresh &&
+            latest.sensorType === 'waterflow' &&
+            typeof latest.value === 'number' &&
+            Number.isFinite(latest.value) &&
+            latest.value > ACTIVE_WATERFLOW_THRESHOLD
+          ) {
             setSystemState('flushing');
           } else if (
-            !isStale &&
+            isFresh &&
             (latest.sensorType === 'uv' || latest.sensorType === 'uv_active')
           ) {
             setSystemState('uv_active');
@@ -115,8 +94,14 @@ export function useSystemState(deviceId = 'toilet-01') {
   useEffect(() => {
     void fetchState(true);
     const interval = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
       void fetchState(false);
-    }, 10_000);
+    }, 15_000);
 
     return () => window.clearInterval(interval);
   }, [fetchState]);

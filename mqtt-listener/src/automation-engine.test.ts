@@ -21,6 +21,7 @@ class MemoryStore implements AutomationStore {
   readonly pump = new Map<string, { active: boolean; routineCycleCount: number; hadFlow: boolean }>();
   pendingEvents: Array<{ eventId?: string; ruleId: string; deviceId: string; cycleCount?: number }> = [];
   readonly invalidSince = new Map<string, number>();
+  setInvalidCalls = 0;
   readonly consumedEventIds = new Set<string>();
   failDispatch = false;
   failAcknowledgeOnce = false;
@@ -103,6 +104,7 @@ class MemoryStore implements AutomationStore {
   }
   async getInvalidUltrasonicSince(deviceId: string) { return this.invalidSince.get(deviceId) ?? null; }
   async setInvalidUltrasonicSince(deviceId: string, value: number | null) {
+    this.setInvalidCalls += 1;
     if (value === null) this.invalidSince.delete(deviceId); else this.invalidSince.set(deviceId, value);
   }
 }
@@ -450,5 +452,28 @@ describe('TelemetryAutomationEngine', () => {
     await new TelemetryAutomationEngine(store).processPendingThresholdEvents();
 
     expect(store.createdTasks).toEqual([{ rule: store.rules[0], cycleCount: undefined }]);
+  });
+
+  it('skips redundant setInvalidUltrasonicSince writes across consecutive valid ultrasonic readings', async () => {
+    const store = new MemoryStore();
+    store.rules = [rule({ id: 'ultrasonic', trigger: 'ultrasonic_sensor_fault', threshold: 10 })];
+    let now = 0;
+    const engine = new TelemetryAutomationEngine(store, { now: () => now });
+
+    for (let i = 0; i < 5; i++) {
+      now += 1_000;
+      await engine.handleUltrasonic('toilet-a', { distance: 45, unit: 'cm', timestamp: i });
+    }
+    expect(store.setInvalidCalls).toBe(1);
+
+    engine.recordHeartbeat('toilet-a', now);
+    await engine.handleUltrasonic('toilet-a', { distance: -1, unit: 'cm', timestamp: 6 });
+    expect(store.setInvalidCalls).toBe(2);
+
+    for (let i = 0; i < 5; i++) {
+      now += 1_000;
+      await engine.handleUltrasonic('toilet-a', { distance: 45, unit: 'cm', timestamp: 7 + i });
+    }
+    expect(store.setInvalidCalls).toBe(3);
   });
 });

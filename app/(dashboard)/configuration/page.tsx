@@ -28,6 +28,7 @@ import { reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAuth } from '@/hooks/useAuth';
 import { useDeviceStatus } from '@/hooks/useDeviceStatus';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 import { DEFAULT_DEVICE_ID } from '@/lib/device-constants';
 import { getErrorMessage } from '@/lib/error-utils';
@@ -308,6 +309,7 @@ function getRuleModal(): HTMLDialogElement | null {
 
 export default function ConfigurationPage() {
   const { user, role } = useAuth();
+  const presentationMode = usePresentationMode();
   const { ultrasonicDistance } = useSensorData();
   const { connected, loading: deviceLoading } = useDeviceStatus(DEFAULT_DEVICE_ID);
 
@@ -423,6 +425,58 @@ export default function ConfigurationPage() {
   }, [user]);
 
   const fetchRules = useCallback(async () => {
+    if (presentationMode) {
+      setRules([
+        {
+          id: 'demo-rule-1',
+          group: 'alerts',
+          name: 'Sustained Water Leak Guard',
+          trigger: 'water_overuse',
+          threshold: 4,
+          repeatIntervalMinutes: 10,
+          basis: getRuleBasis('water_overuse', 4, undefined, 10),
+          action: 'Send Alert & Notify Admin',
+          enabled: true,
+        },
+        {
+          id: 'demo-rule-2',
+          group: 'alerts',
+          name: 'Dry Flush Supply Monitor',
+          trigger: 'no_water_after_flush',
+          threshold: 2,
+          waterWaitSeconds: 8,
+          repeatIntervalMinutes: 15,
+          basis: getRuleBasis('no_water_after_flush', 2, 8, 15),
+          action: 'Send Task to Available Maintenance',
+          enabled: true,
+        },
+        {
+          id: 'demo-rule-3',
+          group: 'alerts',
+          name: 'HC-SR04 Ultrasonic Echo Guard',
+          trigger: 'ultrasonic_sensor_fault',
+          threshold: 5,
+          repeatIntervalMinutes: 10,
+          basis: getRuleBasis('ultrasonic_sensor_fault', 5, undefined, 10),
+          action: 'Send Alert & Notify Admin',
+          enabled: true,
+        },
+        {
+          id: 'demo-rule-4',
+          group: 'maintenance',
+          name: 'Routine Deep Sanitization Dispatch',
+          trigger: 'maintenance_due',
+          threshold: 250,
+          repeatIntervalMinutes: 60,
+          basis: getRuleBasis('maintenance_due', 250, undefined, 60),
+          action: 'Send Task to Available Maintenance',
+          enabled: true,
+        },
+      ]);
+      setLoadingRules(false);
+      return;
+    }
+
     if (!user) {
       setRules([]);
       setLoadingRules(false);
@@ -460,7 +514,7 @@ export default function ConfigurationPage() {
     } finally {
       setLoadingRules(false);
     }
-  }, [user]);
+  }, [presentationMode, user]);
 
   useEffect(() => {
     void fetchConfiguration();
@@ -1046,10 +1100,10 @@ export default function ConfigurationPage() {
           </div>
         </div>
 
-        {user ? (
+        {user || presentationMode ? (
           <PublicReportingControls
             user={user}
-            role={role}
+            role={presentationMode ? 'admin' : role}
             device={{ id: DEFAULT_DEVICE_ID, name: deviceName, location: deviceLocation, publicReportingEnabled }}
             siteUrl={getSiteUrl()}
             onUpdated={setPublicReportingEnabled}

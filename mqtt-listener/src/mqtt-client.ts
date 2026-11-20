@@ -16,7 +16,6 @@ import {
   type UVPayload,
 } from './firestore-writers';
 import { resetOfflineWatchdog } from './alert-engine';
-import { recordDeviceHeartbeat } from './local-runtime-cache';
 import { createAutomationEngine } from './automation-engine';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -48,6 +47,29 @@ function ts(): string {
 let client: MqttClient | null = null;
 const automationEngine = createAutomationEngine();
 let messageQueue: Promise<void> = Promise.resolve();
+let ultrasonicQueued = false;
+let latestUltrasonicMessage: Buffer | null = null;
+
+function scheduleLatestUltrasonic(): void {
+  if (ultrasonicQueued) {
+    return;
+  }
+  ultrasonicQueued = true;
+  messageQueue = messageQueue.then(async () => {
+    const msg = latestUltrasonicMessage;
+    latestUltrasonicMessage = null;
+    try {
+      if (msg) {
+        await handleMessageSafely('toilet/sensors/ultrasonic', msg);
+      }
+    } finally {
+      ultrasonicQueued = false;
+      if (latestUltrasonicMessage) {
+        scheduleLatestUltrasonic();
+      }
+    }
+  });
+}
 
 // ─── Message router ───────────────────────────────────────────────────────────
 
@@ -166,9 +188,9 @@ export function getMqttClient(): MqttClient {
 
   client.on('connect', () => {
     console.log(`[${ts()}] [MQTT] ✓ Connected to ${brokerUrl}`);
-    // Stamp a fresh heartbeat immediately so the dashboard shows online in dev mode
-    // even before the first sensor message arrives from the ESP32
-    void recordDeviceHeartbeat(DEVICE_ID);
+
+
+    // Only stamp heartbeats when a real live MQTT message arrives from the ESP32
     client!.subscribe(
       ['toilet/sensors/#', 'toilet/events/#'],
       { qos: 1 },
@@ -184,7 +206,16 @@ export function getMqttClient(): MqttClient {
     );
   });
 
-  client.on('message', (topic, message) => {
+  client.on('message', (topic, message, packet) => {
+    // Ignore stale broker-retained messages so offline hardware is never stamped as online
+    if (packet?.retain) {
+      return;
+    }
+    if (topic === 'toilet/sensors/ultrasonic') {
+      latestUltrasonicMessage = message;
+      scheduleLatestUltrasonic();
+      return;
+    }
     messageQueue = messageQueue
       .then(() => handleMessageSafely(topic, message));
   });

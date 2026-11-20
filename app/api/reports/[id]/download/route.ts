@@ -6,6 +6,20 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken, requireSupervisorOrAdmin } from '@/lib/auth-helpers';
 import { validateIsoDateRange } from '@/lib/date-utils';
+import {
+  buildUvCycleRangeReport,
+  buildUvCyclesReportCsv,
+  getPhtPeriodBounds,
+  normalizeUvCycleDoc,
+  phtDateRangeToUtcMs,
+  type RawUvCycleRecord,
+} from '@/lib/uv-cycle-analytics';
+import {
+  getCachedAnalyticsTelemetry,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+} from '@/lib/local-runtime-cache';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { FlushEventRow, UVCycleRow } from '@/lib/pdf-report';
 
@@ -105,7 +119,7 @@ export async function GET(
         { status: 400 },
       );
     }
-    const dateRangeCheck = validateIsoDateRange(meta.from, meta.to);
+    const dateRangeCheck = validateIsoDateRange(meta.from, meta.to, 366);
     if (!dateRangeCheck.ok) {
       return NextResponse.json(
         { success: false, error: dateRangeCheck.error },
@@ -113,8 +127,100 @@ export async function GET(
       );
     }
 
-    const fromTs = Timestamp.fromDate(new Date(`${meta.from}T00:00:00.000Z`));
-    const toTs = Timestamp.fromDate(new Date(`${meta.to}T23:59:59.999Z`));
+    if (meta.type === 'uv_cycles') {
+      const bounds = getPhtPeriodBounds(meta.to);
+      const qFrom = meta.from < bounds.queryFrom ? meta.from : bounds.queryFrom;
+      const qTo = meta.to > bounds.queryTo ? meta.to : bounds.queryTo;
+      const { startMs, endMs } = phtDateRangeToUtcMs(qFrom, qTo);
+
+      let records: RawUvCycleRecord[] = [];
+      if (isFirestoreQuotaCircuitOpen()) {
+        if (process.env.NODE_ENV !== 'test') {
+          const local = await getCachedAnalyticsTelemetry();
+          records = local.uvCycles
+            .filter((e) => e.timestampMs >= startMs && e.timestampMs <= endMs)
+            .map((e) => ({
+              id: e.id,
+              deviceId: e.deviceId,
+              duration: e.duration,
+              completed: e.completed,
+              reason: e.reason ?? null,
+              timestampMs: e.timestampMs,
+            }));
+        }
+      } else {
+        try {
+          const snap = await adminDb
+            .collection('uvCycles')
+            .where('timestamp', '>=', Timestamp.fromMillis(startMs))
+            .where('timestamp', '<=', Timestamp.fromMillis(endMs))
+            .orderBy('timestamp', 'asc')
+            .limit(5_000)
+            .get();
+          for (const doc of snap.docs) {
+            const normalized = normalizeUvCycleDoc(doc.data(), doc.id);
+            if (normalized) records.push(normalized);
+          }
+        } catch (queryErr) {
+          if (isQuotaExceededError(queryErr)) {
+            markFirestoreQuotaExhausted();
+            if (process.env.NODE_ENV !== 'test') {
+              const local = await getCachedAnalyticsTelemetry();
+              records = local.uvCycles
+                .filter((e) => e.timestampMs >= startMs && e.timestampMs <= endMs)
+                .map((e) => ({
+                  id: e.id,
+                  deviceId: e.deviceId,
+                  duration: e.duration,
+                  completed: e.completed,
+                  reason: e.reason ?? null,
+                  timestampMs: e.timestampMs,
+                }));
+            }
+          } else {
+            throw queryErr;
+          }
+        }
+      }
+
+      const uvReport = buildUvCycleRangeReport({
+        records,
+        from: meta.from,
+        to: meta.to,
+      });
+      const uvFilename = `smart-flush-uv-cycles-${meta.from}-${meta.to}`;
+
+      if (meta.format === 'csv') {
+        return new Response(buildUvCyclesReportCsv(uvReport), {
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="${uvFilename}.csv"`,
+          },
+        });
+      }
+
+      if (meta.format === 'json') {
+        return new Response(JSON.stringify(uvReport, null, 2), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Disposition': `attachment; filename="${uvFilename}.json"`,
+          },
+        });
+      }
+
+      const { generateUvCyclePDFBuffer } = await import('@/lib/pdf-report');
+      const pdfBuffer = await generateUvCyclePDFBuffer(uvReport);
+      const pdfBody = Uint8Array.from(pdfBuffer).buffer as ArrayBuffer;
+      return new Response(pdfBody, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${uvFilename}.pdf"`,
+        },
+      });
+    }
+
+    const fromTs = Timestamp.fromDate(new Date(`${meta.from}T00:00:00.000+08:00`));
+    const toTs = Timestamp.fromDate(new Date(`${meta.to}T23:59:59.999+08:00`));
 
     const [flushSnap, uvSnap] = await Promise.all([
       adminDb

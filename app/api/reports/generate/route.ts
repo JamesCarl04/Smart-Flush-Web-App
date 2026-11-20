@@ -4,6 +4,22 @@ import { NextResponse } from 'next/server';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { adminDb } from '@/lib/firebase-admin';
+import { validateIsoDateRange } from '@/lib/date-utils';
+import {
+  buildUvCycleRangeReport,
+  buildUvCyclesReportCsv,
+  getPhtPeriodBounds,
+  normalizeUvCycleDoc,
+  phtDateRangeToUtcMs,
+  type RawUvCycleRecord,
+  type UvDayGranularity,
+} from '@/lib/uv-cycle-analytics';
+import {
+  getCachedAnalyticsTelemetry,
+  isFirestoreQuotaCircuitOpen,
+  isQuotaExceededError,
+  markFirestoreQuotaExhausted,
+} from '@/lib/local-runtime-cache';
 import {
   checkRateLimit,
   RATE_LIMITS,
@@ -25,10 +41,14 @@ interface ReportBody {
     | 'monthly'
     | 'custom'
     | 'maintenance_tasks'
-    | 'supervisor_audit';
+    | 'supervisor_audit'
+    | 'uv_cycles';
   from: string;
   to: string;
   format: 'csv' | 'json' | 'pdf';
+  granularity?: UvDayGranularity;
+  hour?: number | null;
+  deviceId?: string | null;
 }
 
 interface FlushEventDoc {
@@ -68,8 +88,15 @@ const VALID_REPORT_TYPES: ReportBody['type'][] = [
   'custom',
   'maintenance_tasks',
   'supervisor_audit',
+  'uv_cycles',
 ];
 const VALID_FORMATS: ReportBody['format'][] = ['csv', 'json', 'pdf'];
+const VALID_UV_GRANULARITIES = new Set<UvDayGranularity>([
+  'hour',
+  'minute',
+  'second',
+]);
+const DEVICE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function parseDateBoundary(
   date: string,
@@ -751,6 +778,86 @@ function buildSupervisorAuditJSON(
   };
 }
 
+async function fetchUvCycleReportRecords(
+  from: string,
+  to: string,
+): Promise<RawUvCycleRecord[]> {
+  const bounds = getPhtPeriodBounds(to);
+  const queryFrom = from < bounds.queryFrom ? from : bounds.queryFrom;
+  const queryTo = to > bounds.queryTo ? to : bounds.queryTo;
+  const { startMs, endMs } = phtDateRangeToUtcMs(queryFrom, queryTo);
+
+  const readLocalFallback = async (): Promise<RawUvCycleRecord[]> => {
+    if (process.env.NODE_ENV === 'test') return [];
+    const local = await getCachedAnalyticsTelemetry();
+    return local.uvCycles
+      .filter((e) => e.timestampMs >= startMs && e.timestampMs <= endMs)
+      .map((e) => ({
+        id: e.id,
+        deviceId: e.deviceId,
+        duration: e.duration,
+        completed: e.completed,
+        reason: e.reason ?? null,
+        timestampMs: e.timestampMs,
+      }));
+  };
+
+  if (isFirestoreQuotaCircuitOpen()) {
+    return readLocalFallback();
+  }
+
+  try {
+    const col = adminDb.collection('uvCycles') as unknown as {
+      where: (field: string, op: string, val: unknown) => {
+        where: (field: string, op: string, val: unknown) => {
+          orderBy?: (field: string, dir?: 'asc' | 'desc') => {
+            limit?: (n: number) => {
+              get: () => Promise<{
+                docs?: Array<{ id?: string; data: () => Record<string, unknown> }>;
+              }>;
+            };
+            get: () => Promise<{
+              docs?: Array<{ id?: string; data: () => Record<string, unknown> }>;
+            }>;
+          };
+          get: () => Promise<{
+            docs?: Array<{ id?: string; data: () => Record<string, unknown> }>;
+          }>;
+        };
+      };
+    };
+
+    const ranged = col
+      .where('timestamp', '>=', Timestamp.fromMillis(startMs))
+      .where('timestamp', '<=', Timestamp.fromMillis(endMs));
+    const ordered =
+      typeof ranged.orderBy === 'function'
+        ? ranged.orderBy('timestamp', 'asc')
+        : ranged;
+    const bounded =
+      'limit' in ordered && typeof ordered.limit === 'function'
+        ? ordered.limit(5_000)
+        : ordered;
+    const snap = await bounded.get();
+
+    const records: RawUvCycleRecord[] = [];
+    for (const doc of snap?.docs ?? []) {
+      const normalized = normalizeUvCycleDoc(doc.data(), doc.id ?? '');
+      if (normalized) {
+        records.push(normalized);
+      }
+    }
+    return records;
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Reports] uv_cycles query hit quota; falling back to local cache');
+      return readLocalFallback();
+    }
+    throw err;
+  }
+}
+
 function getDownloadFilename(
   type: ReportBody['type'],
   format: ReportBody['format'],
@@ -758,11 +865,13 @@ function getDownloadFilename(
   to: string,
 ): string {
   const prefix =
-    type === 'supervisor_audit'
-      ? 'smart-flush-supervisor-qa-audit'
-      : type === 'maintenance_tasks'
-        ? 'smart-flush-maintenance-tasks'
-        : 'smart-flush';
+    type === 'uv_cycles'
+      ? 'smart-flush-uv-cycles'
+      : type === 'supervisor_audit'
+        ? 'smart-flush-supervisor-qa-audit'
+        : type === 'maintenance_tasks'
+          ? 'smart-flush-maintenance-tasks'
+          : 'smart-flush';
 
   return `${prefix}-${from}-${to}.${format}`;
 }
@@ -796,16 +905,28 @@ async function saveReportMetadata(
   to: string,
   format: ReportBody['format'],
 ) {
-  const reportRef = adminDb.collection('reports').doc();
-  await reportRef.set({
-    id: reportRef.id,
-    type,
-    from,
-    to,
-    format,
-    userId,
-    generatedAt: FieldValue.serverTimestamp(),
-  });
+  if (isFirestoreQuotaCircuitOpen()) {
+    return;
+  }
+  try {
+    const reportRef = adminDb.collection('reports').doc();
+    await reportRef.set({
+      id: reportRef.id,
+      type,
+      from,
+      to,
+      format,
+      userId,
+      generatedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markFirestoreQuotaExhausted();
+      console.warn('[Reports] Skipping report metadata write under Firestore quota limit');
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function POST(request: Request): Promise<NextResponse | Response> {
@@ -819,7 +940,7 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     }
 
     const body = (await request.json()) as Partial<ReportBody>;
-    const { type, from, to, format } = body;
+    const { type, from, to, format, granularity, hour, deviceId } = body;
 
     if (!type || !from || !to || !format) {
       return NextResponse.json(
@@ -833,7 +954,7 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
         {
           success: false,
           error:
-            'type must be daily, weekly, monthly, custom, or maintenance_tasks',
+            'type must be daily, weekly, monthly, custom, maintenance_tasks, supervisor_audit, or uv_cycles',
         },
         { status: 400 },
       );
@@ -842,6 +963,42 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
     if (!VALID_FORMATS.includes(format)) {
       return NextResponse.json(
         { success: false, error: 'format must be csv, json, or pdf' },
+        { status: 400 },
+      );
+    }
+
+    if (
+      granularity !== undefined &&
+      !VALID_UV_GRANULARITIES.has(granularity)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'granularity must be hour, minute, or second',
+        },
+        { status: 400 },
+      );
+    }
+
+    if (
+      hour !== undefined &&
+      hour !== null &&
+      (!Number.isInteger(hour) || hour < 0 || hour > 23)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'hour must be an integer between 0 and 23',
+        },
+        { status: 400 },
+      );
+    }
+
+    const sanitizedDeviceId =
+      typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null;
+    if (sanitizedDeviceId && !DEVICE_ID_RE.test(sanitizedDeviceId)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid deviceId parameter' },
         { status: 400 },
       );
     }
@@ -865,6 +1022,51 @@ export async function POST(request: Request): Promise<NextResponse | Response> {
           error: 'The end date must be on or after the start date',
         },
         { status: 400 },
+      );
+    }
+
+    if (type === 'uv_cycles') {
+      const rangeCheck = validateIsoDateRange(from, to, 366);
+      if (!rangeCheck.ok) {
+        return NextResponse.json(
+          { success: false, error: rangeCheck.error },
+          { status: 400 },
+        );
+      }
+
+      const filename = getDownloadFilename(type, format, from, to);
+      const records = await fetchUvCycleReportRecords(from, to);
+      const uvReport = buildUvCycleRangeReport({
+        records,
+        from,
+        to,
+        granularity,
+        hourFilter: hour ?? null,
+        deviceId: sanitizedDeviceId,
+      });
+
+      if (format === 'csv') {
+        const csv = buildUvCyclesReportCsv(uvReport);
+        await saveReportMetadata(user.uid, type, from, to, format);
+        return buildDownloadResponse(csv, format, filename);
+      }
+
+      if (format === 'json') {
+        await saveReportMetadata(user.uid, type, from, to, format);
+        return buildDownloadResponse(
+          JSON.stringify(uvReport, null, 2),
+          format,
+          filename,
+        );
+      }
+
+      const { generateUvCyclePDFBuffer } = await import('@/lib/pdf-report');
+      const pdfBuffer = await generateUvCyclePDFBuffer(uvReport);
+      await saveReportMetadata(user.uid, type, from, to, format);
+      return buildDownloadResponse(
+        Uint8Array.from(pdfBuffer).buffer as ArrayBuffer,
+        format,
+        filename,
       );
     }
 

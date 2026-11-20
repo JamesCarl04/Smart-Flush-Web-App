@@ -21,10 +21,46 @@ export interface LocalRuntimeSensorReading {
   };
 }
 
+export interface LocalRuntimeFlushEvent {
+  id: string;
+  deviceId: string;
+  waterVolume: number;
+  duration: number;
+  timestampMs: number;
+}
+
+export interface LocalRuntimeUVCycle {
+  id: string;
+  deviceId: string;
+  duration: number;
+  completed: boolean;
+  reason?: string | null;
+  timestampMs: number;
+}
+
+export interface LocalRuntimeLidEvent {
+  id: string;
+  deviceId: string;
+  status: 'open' | 'closed';
+  timestampMs: number;
+}
+
+export interface LocalRuntimeUptimeDaily {
+  deviceId: string;
+  date: string; // YYYY-MM-DD (PHT)
+  onlineMinutes: number;
+  totalMinutes: number;
+  updatedAtMs: number;
+}
+
 interface LocalRuntimeCache {
   updatedAtMs: number;
   devices: Record<string, LocalRuntimeDeviceEntry>;
   readings: Record<string, LocalRuntimeSensorReading[]>;
+  flushEvents?: LocalRuntimeFlushEvent[];
+  uvCycles?: LocalRuntimeUVCycle[];
+  lidEvents?: LocalRuntimeLidEvent[];
+  uptimeDaily?: Record<string, LocalRuntimeUptimeDaily>;
 }
 
 const CACHE_PATH = path.join(
@@ -38,6 +74,10 @@ function emptyCache(): LocalRuntimeCache {
     updatedAtMs: 0,
     devices: {},
     readings: {},
+    flushEvents: [],
+    uvCycles: [],
+    lidEvents: [],
+    uptimeDaily: {},
   };
 }
 
@@ -248,6 +288,13 @@ async function readCache(): Promise<LocalRuntimeCache> {
         typeof parsed.updatedAtMs === 'number' ? parsed.updatedAtMs : 0,
       devices: parsed.devices ?? {},
       readings: parsed.readings ?? {},
+      flushEvents: Array.isArray(parsed.flushEvents) ? parsed.flushEvents : [],
+      uvCycles: Array.isArray(parsed.uvCycles) ? parsed.uvCycles : [],
+      lidEvents: Array.isArray(parsed.lidEvents) ? parsed.lidEvents : [],
+      uptimeDaily:
+        parsed.uptimeDaily && typeof parsed.uptimeDaily === 'object'
+          ? parsed.uptimeDaily
+          : {},
     };
   } catch (error) {
     const code =
@@ -300,4 +347,51 @@ export async function getCachedSensorReadings(
       return true;
     })
     .sort((a, b) => a.timestamp.seconds - b.timestamp.seconds);
+}
+
+export interface CachedAnalyticsTelemetry {
+  devices: Array<{
+    id: string;
+    name: string;
+    status: 'online' | 'offline';
+    lastSeenMs: number | null;
+  }>;
+  readings: LocalRuntimeSensorReading[];
+  flushEvents: LocalRuntimeFlushEvent[];
+  uvCycles: LocalRuntimeUVCycle[];
+  lidEvents: LocalRuntimeLidEvent[];
+  uptimeDaily: LocalRuntimeUptimeDaily[];
+}
+
+export async function getCachedAnalyticsTelemetry(): Promise<CachedAnalyticsTelemetry> {
+  const cache = await readCache();
+  const devices = Object.values(cache.devices).map((entry) => ({
+    id: entry.deviceId,
+    name: entry.deviceId,
+    status: entry.status,
+    lastSeenMs: entry.lastSeenMs,
+  }));
+  const readings = Object.values(cache.readings).flat();
+  const explicitFlushes = cache.flushEvents ?? [];
+  const flushEvents =
+    explicitFlushes.length > 0
+      ? explicitFlushes
+      : readings
+          .filter((r) => r.sensorType === 'waterflow' && r.value > 0)
+          .map((r) => ({
+            id: r.id,
+            deviceId: r.deviceId,
+            waterVolume: r.value,
+            duration: 5,
+            timestampMs: r.timestamp.seconds * 1000,
+          }));
+
+  return {
+    devices,
+    readings,
+    flushEvents,
+    uvCycles: cache.uvCycles ?? [],
+    lidEvents: cache.lidEvents ?? [],
+    uptimeDaily: Object.values(cache.uptimeDaily ?? {}),
+  };
 }

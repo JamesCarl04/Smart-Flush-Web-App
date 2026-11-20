@@ -20,6 +20,7 @@ jest.mock('firebase-admin/firestore', () => ({
   },
   FieldValue: {
     serverTimestamp: jest.fn(() => ({ _type: 'server-timestamp' })),
+    increment: jest.fn((n: number) => ({ _increment: n })),
   },
 }));
 
@@ -55,7 +56,7 @@ describe('writeUVCycle and writeLidEvent', () => {
     jest.clearAllMocks();
   });
 
-  it('writes UV cycle with server Timestamp.now() and optional reason', async () => {
+  it('writes UV cycle with server Timestamp.now(), optional reason, and uvCyclesDaily rollup', async () => {
     await writeUVCycle(
       {
         duration: 5,
@@ -67,6 +68,7 @@ describe('writeUVCycle and writeLidEvent', () => {
     );
 
     expect(mockCollection).toHaveBeenCalledWith('uvCycles');
+    expect(mockCollection).toHaveBeenCalledWith('uvCyclesDaily');
     expect(mockDoc).toHaveBeenCalled();
     expect(mockSet).toHaveBeenCalledWith({
       id: 'mock-doc-id',
@@ -76,6 +78,15 @@ describe('writeUVCycle and writeLidEvent', () => {
       reason: 'lid_opened',
       timestamp: { _type: 'server-now' },
     });
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalCount: { _increment: 1 },
+        completedCount: { _increment: 0 },
+        interruptedCount: { _increment: 1 },
+        totalDurationSeconds: { _increment: 5 },
+      }),
+      { merge: true },
+    );
   });
 
   it('writes Lid event with server Timestamp.now()', async () => {

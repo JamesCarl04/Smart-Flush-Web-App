@@ -3,10 +3,12 @@ import { getStallById, SDCA_RESTROOM_ROOMS } from '@/lib/restrooms';
 import type {
   ComponentRulPrediction,
   DailyForecastPoint,
+  LinearRegressionStats,
   PredictiveHealthStatus,
   PredictiveMaintenanceSummary,
   RestroomRiskScore,
   SensorDriftIndicator,
+  UsageForecastInterpretation,
 } from '@/types';
 
 const MS_PER_HOUR = 3_600_000;
@@ -49,7 +51,8 @@ export interface CampusIncidentRecord {
 function roundTo(value: number, decimals: number): number {
   if (!Number.isFinite(value)) return 0;
   const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
+  const rounded = Math.round(value * factor) / factor;
+  return rounded === 0 ? 0 : rounded;
 }
 
 function nonNegativeFinite(value: unknown, fallback = 0): number {
@@ -133,6 +136,7 @@ function componentRecommendation(
   actionPrefix: string,
   daysRemaining: number,
   currentValue: number,
+  unit: string,
 ): string {
   const lowerFirst =
     actionPrefix.charAt(0).toLowerCase() + actionPrefix.slice(1);
@@ -146,14 +150,17 @@ function componentRecommendation(
     return `Routine check recommended in about ${daysRemaining} days.`;
   }
   if (currentValue <= 0) {
-    return `No water usage recorded yet; baseline service estimate (~${daysRemaining} days).`;
+    const activityLabel = unit === 'L' ? 'water usage' : 'flush cycles';
+    return `No ${activityLabel} recorded yet; baseline service estimate (~${daysRemaining} days).`;
   }
   return `Usage within rated limit (about ${daysRemaining} days until service).`;
 }
 
 /**
  * Computes estimated equipment lifespan (RUL), daily use rate, and predicted service dates
- * for sensor-backed hardware components on the prototype unit (Water Flow Meter and Water Flush Pump).
+ * for sensor-backed hardware components on the prototype unit:
+ * - Water Flow Meter (YF-S201) tracked by cumulative water volume (L)
+ * - Water Flush Pump tracked by cumulative flush actuation cycles (flushes)
  * Open-loop actuators without return sensors (UV-C lamp, lid servo, relay) are intentionally excluded.
  */
 export function computeComponentRulPredictions(params: {
@@ -174,28 +181,37 @@ export function computeComponentRulPredictions(params: {
       : Date.now();
   const obs = params.observedWindowTotals ?? {};
   const obsLiters = nonNegativeFinite(obs.waterLiters);
+  const obsFlushes = nonNegativeFinite(obs.flushes);
+  const effectiveFlowLiters =
+    params.counters.flowSensorTotalLiters > 0
+      ? params.counters.flowSensorTotalLiters
+      : obsLiters;
+  const effectiveFlushCycles =
+    params.counters.flushCycleCount > 0
+      ? params.counters.flushCycleCount
+      : obsFlushes;
 
   const specs: RulSpec[] = [
     {
       key: 'flowSensorTotalLiters',
       label: 'Water Flow Meter',
-      partNumber: 'Water Usage Sensor',
+      partNumber: 'YF-S201 Flow Sensor',
       unit: 'L',
-      currentValue: roundTo(params.counters.flowSensorTotalLiters, 1),
+      currentValue: roundTo(effectiveFlowLiters, 1),
       ratedLimit: 500,
       observedBurnPerDay: obsLiters / safeWindowDays,
       fallbackBurnPerDay: 10,
       actionPrefix: 'Clean and check water flow meter',
     },
     {
-      key: 'pumpTotalLiters',
+      key: 'flushCycleCount',
       label: 'Water Flush Pump',
-      partNumber: 'Main Water Pump',
-      unit: 'L',
-      currentValue: roundTo(params.counters.pumpTotalLiters, 1),
-      ratedLimit: 500,
-      observedBurnPerDay: obsLiters / safeWindowDays,
-      fallbackBurnPerDay: 10,
+      partNumber: 'Submersible Flush Pump',
+      unit: 'flushes',
+      currentValue: Math.round(effectiveFlushCycles),
+      ratedLimit: 1000,
+      observedBurnPerDay: obsFlushes / safeWindowDays,
+      fallbackBurnPerDay: 15,
       actionPrefix: 'Clean pump filter and check seals',
     },
   ];
@@ -234,11 +250,13 @@ export function computeComponentRulPredictions(params: {
       estimatedDaysRemaining,
       predictedServiceDate,
       status,
+      hasTelemetry: spec.currentValue > 0,
       recommendation: componentRecommendation(
         status,
         spec.actionPrefix,
         estimatedDaysRemaining,
         spec.currentValue,
+        spec.unit,
       ),
     };
   });
@@ -264,8 +282,9 @@ export function detectTelemetryDrift(params: {
       return Math.min(2.0, Math.max(0.01, rate));
     });
 
-  let pumpBaseline = 0.25;
-  let pumpRecent = 0.25;
+  const hasPumpData = flowRates.length > 0;
+  let pumpBaseline = 0;
+  let pumpRecent = 0;
   let pumpSlope = 0;
 
   if (flowRates.length >= 4) {
@@ -277,7 +296,7 @@ export function detectTelemetryDrift(params: {
     pumpRecent =
       secondHalf.reduce((sum, val) => sum + val, 0) / secondHalf.length;
     pumpSlope = computeLinearSlope(flowRates);
-  } else if (flowRates.length > 0) {
+  } else if (hasPumpData) {
     const avg = flowRates.reduce((sum, val) => sum + val, 0) / flowRates.length;
     pumpBaseline = avg;
     pumpRecent = avg;
@@ -285,31 +304,26 @@ export function detectTelemetryDrift(params: {
   }
 
   const pumpDriftPct =
-    pumpBaseline > 0
+    hasPumpData && pumpBaseline > 0
       ? roundTo(((pumpRecent - pumpBaseline) / pumpBaseline) * 100, 1)
       : 0;
 
   let pumpStatus: PredictiveHealthStatus = 'healthy';
-  if (
-    (flowRates.length > 0 && pumpRecent < 0.12) ||
-    pumpDriftPct <= -30
-  ) {
-    pumpStatus = 'critical';
-  } else if (
-    (flowRates.length > 0 && pumpRecent < 0.16) ||
-    pumpDriftPct <= -15
-  ) {
-    pumpStatus = 'warning';
-  } else if (pumpDriftPct <= -8) {
-    pumpStatus = 'watch';
+  if (hasPumpData) {
+    if (pumpRecent < 0.12 || pumpDriftPct <= -30) {
+      pumpStatus = 'critical';
+    } else if (pumpRecent < 0.16 || pumpDriftPct <= -15) {
+      pumpStatus = 'warning';
+    } else if (pumpDriftPct <= -8) {
+      pumpStatus = 'watch';
+    }
   }
 
-  const pumpSummary =
-    flowRates.length === 0
-      ? 'Waiting for recent flush records; normal flow speed is 0.25 L/s.'
-      : pumpStatus === 'healthy'
-        ? `Water flow speed is steady (${roundTo(pumpRecent, 2)} L/s vs ${roundTo(pumpBaseline, 2)} L/s normal).`
-        : `Water flow is slowing down (${pumpDriftPct}% change from normal). Clean the pump filter before a low-water problem occurs.`;
+  const pumpSummary = !hasPumpData
+    ? 'No timed flush samples recorded in this window yet; flow efficiency will calculate once flush telemetry arrives.'
+    : pumpStatus === 'healthy'
+      ? `Water flow speed is steady (${roundTo(pumpRecent, 2)} L/s vs ${roundTo(pumpBaseline, 2)} L/s baseline across ${flowRates.length} ${flowRates.length === 1 ? 'flush' : 'flushes'}).`
+      : `Water flow is slowing down (${pumpDriftPct}% change from baseline). Clean the pump filter before a low-water problem occurs.`;
 
   const orderedUltrasonic = [...params.ultrasonicSamples].sort(
     (a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0),
@@ -318,36 +332,41 @@ export function detectTelemetryDrift(params: {
     params.ultrasonicConsecutiveFailures,
   );
   const totalEchoSamples = orderedUltrasonic.length;
+  const hasUltrasonicData = totalEchoSamples > 0 || consecutiveFails > 0;
   const timeoutCount = orderedUltrasonic.filter(
     (r) => !Number.isFinite(r.value) || r.value < 0 || r.value > 400,
   ).length;
   const timeoutRatePct =
     totalEchoSamples > 0 ? (timeoutCount / totalEchoSamples) * 100 : 0;
-  const recentStability =
-    totalEchoSamples > 0
+  const baselineStability = hasUltrasonicData ? 99.0 : 0;
+  const recentStability = !hasUltrasonicData
+    ? 0
+    : totalEchoSamples > 0
       ? Math.max(0, Math.min(100, roundTo(100 - timeoutRatePct, 1)))
-      : consecutiveFails > 0
-        ? Math.max(0, roundTo(100 - consecutiveFails * 3, 1))
-        : 99.5;
-  const baselineStability = 99.0;
-  const ultrasonicDriftPct = roundTo(recentStability - baselineStability, 1);
+      : Math.max(0, roundTo(100 - consecutiveFails * 3, 1));
+  const ultrasonicDriftPct = hasUltrasonicData
+    ? roundTo(recentStability - baselineStability, 1)
+    : 0;
   const stabilitySeries = orderedUltrasonic.map((r) =>
     r.value < 0 || r.value > 400 ? 0 : 100,
   );
   const ultrasonicSlope = computeLinearSlope(stabilitySeries);
 
   let ultrasonicStatus: PredictiveHealthStatus = 'healthy';
-  if (consecutiveFails >= 8 || recentStability < 80) {
-    ultrasonicStatus = 'critical';
-  } else if (consecutiveFails >= 5 || recentStability < 90) {
-    ultrasonicStatus = 'warning';
-  } else if (consecutiveFails >= 2 || recentStability < 96) {
-    ultrasonicStatus = 'watch';
+  if (hasUltrasonicData) {
+    if (consecutiveFails >= 8 || recentStability < 80) {
+      ultrasonicStatus = 'critical';
+    } else if (consecutiveFails >= 5 || recentStability < 90) {
+      ultrasonicStatus = 'warning';
+    } else if (consecutiveFails >= 2 || recentStability < 96) {
+      ultrasonicStatus = 'watch';
+    }
   }
 
-  const ultrasonicSummary =
-    ultrasonicStatus === 'healthy'
-      ? `User sensor is reading reliably (${recentStability}% accuracy, ${consecutiveFails}/10 missed readings).`
+  const ultrasonicSummary = !hasUltrasonicData
+    ? 'No ultrasonic sensor readings recorded in this window yet; accuracy will calculate once echo telemetry arrives.'
+    : ultrasonicStatus === 'healthy'
+      ? `User sensor is reading reliably (${recentStability}% accuracy across ${totalEchoSamples} readings, ${consecutiveFails}/10 missed in a row).`
       : `Sensor missed ${timeoutCount} recent readings (${consecutiveFails}/10 in a row). Wipe the sensor lens to clear moisture or dust.`;
 
   return [
@@ -362,6 +381,8 @@ export function detectTelemetryDrift(params: {
       reactiveThresholdLabel: 'Alert triggers if water per flush drops below 0.80 L',
       status: pumpStatus,
       diagnosticSummary: pumpSummary,
+      hasData: hasPumpData,
+      sampleCount: flowRates.length,
     },
     {
       sensorKey: 'ultrasonic_echo_stability',
@@ -374,27 +395,109 @@ export function detectTelemetryDrift(params: {
       reactiveThresholdLabel: 'Alert triggers after 10 missed readings in a row',
       status: ultrasonicStatus,
       diagnosticSummary: ultrasonicSummary,
+      hasData: hasUltrasonicData,
+      sampleCount: totalEchoSamples,
     },
   ];
 }
 
-function holtForecast(values: number[], alpha = 0.45, beta = 0.25): {
-  level: number;
-  trend: number;
-} {
-  if (values.length === 0) return { level: 0, trend: 0 };
-  if (values.length === 1) return { level: values[0], trend: 0 };
+export interface LinearRegressionFit {
+  slope: number;
+  intercept: number;
+  rSquared: number | null;
+  correlationR: number | null;
+  rmse: number;
+  sampleSize: number;
+}
 
-  let level = values[0];
-  let trend = values[1] - values[0];
-
-  for (let i = 1; i < values.length; i++) {
-    const prevLevel = level;
-    level = alpha * values[i] + (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+/**
+ * Fits an Ordinary Least Squares (OLS) simple linear regression model
+ * ŷ = m·x + b over sequential 1-based day indices x = 1..n.
+ */
+export function fitLinearRegression(values: number[]): LinearRegressionFit {
+  const n = values.length;
+  if (n === 0) {
+    return {
+      slope: 0,
+      intercept: 0,
+      rSquared: null,
+      correlationR: null,
+      rmse: 0,
+      sampleSize: 0,
+    };
+  }
+  if (n === 1) {
+    return {
+      slope: 0,
+      intercept: values[0],
+      rSquared: null,
+      correlationR: null,
+      rmse: 0,
+      sampleSize: 1,
+    };
   }
 
-  return { level, trend };
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i + 1;
+    sumY += values[i];
+  }
+  const meanX = sumX / n;
+  const meanY = sumY / n;
+
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = i + 1 - meanX;
+    const dy = values[i] - meanY;
+    sxx += dx * dx;
+    syy += dy * dy;
+    sxy += dx * dy;
+  }
+
+  const slope = sxx > 0 ? sxy / sxx : 0;
+  const intercept = meanY - slope * meanX;
+
+  let sse = 0;
+  for (let i = 0; i < n; i++) {
+    const predicted = slope * (i + 1) + intercept;
+    const residual = values[i] - predicted;
+    sse += residual * residual;
+  }
+  const rmse = Math.sqrt(sse / n);
+
+  // R² requires at least 3 points (df = n - 2 >= 1) and non-zero target variance
+  let rSquared: number | null = null;
+  let correlationR: number | null = null;
+  if (n >= 3 && syy > 0 && sxx > 0) {
+    const rawR2 = 1 - sse / syy;
+    rSquared = Math.max(0, Math.min(1, rawR2));
+    const rawR = sxy / Math.sqrt(sxx * syy);
+    correlationR = Math.max(-1, Math.min(1, rawR));
+  }
+
+  return {
+    slope,
+    intercept,
+    rSquared,
+    correlationR,
+    rmse,
+    sampleSize: n,
+  };
+}
+
+function formatRegressionEquation(
+  slope: number,
+  intercept: number,
+  unitSuffix = '',
+): string {
+  const m = roundTo(slope, 2);
+  const b = roundTo(intercept, 2);
+  const sign = b >= 0 ? '+' : '-';
+  const suffix = unitSuffix ? ` ${unitSuffix}` : '';
+  return `ŷ = ${m.toFixed(2)}x ${sign} ${Math.abs(b).toFixed(2)}${suffix}`;
 }
 
 function formatShortDateLabel(isoDate: string): string {
@@ -409,7 +512,7 @@ function formatShortDateLabel(isoDate: string): string {
 
 /**
  * Generates a 7-day demand forecast for flush volume and water consumption
- * using Holt's double exponential smoothing.
+ * using Ordinary Least Squares (OLS) simple linear regression (ŷ = m·x + b).
  */
 export function forecastDailySeries(params: {
   historicalDaily: HistoricalDailyPoint[];
@@ -420,6 +523,7 @@ export function forecastDailySeries(params: {
   next7DaysWaterLiters: number;
   dailyFlushTrendSlope: number;
   series: DailyForecastPoint[];
+  interpretation: UsageForecastInterpretation;
 } {
   const horizon = Math.max(1, Math.min(30, Math.round(params.horizonDays ?? 7)));
   const sorted = [...params.historicalDaily].sort((a, b) =>
@@ -436,9 +540,10 @@ export function forecastDailySeries(params: {
       : nowMs;
   const anchorMs = Number.isFinite(lastDateMs) ? lastDateMs : nowMs;
 
-  const hasNonZeroActivity = sorted.some(
+  const activeDaysObserved = sorted.filter(
     (d) => d.flushCount > 0 || d.waterLiters > 0,
-  );
+  ).length;
+  const hasNonZeroActivity = activeDaysObserved > 0;
   const flushValues = hasNonZeroActivity
     ? sorted.map((d) => Math.max(0, d.flushCount))
     : [12, 14, 13];
@@ -446,26 +551,26 @@ export function forecastDailySeries(params: {
     ? sorted.map((d) => Math.max(0, d.waterLiters))
     : [18.0, 21.0, 19.5];
 
-  const flushModel = holtForecast(flushValues);
-  const waterModel = holtForecast(waterValues);
+  const flushModel = fitLinearRegression(flushValues);
+  const waterModel = fitLinearRegression(waterValues);
 
   const series: DailyForecastPoint[] = [];
   let next7DaysFlushes = 0;
   let next7DaysWaterLiters = 0;
+  const baseN = flushValues.length;
 
   for (let h = 1; h <= horizon; h++) {
     const targetIso = new Date(anchorMs + h * MS_PER_DAY)
       .toISOString()
       .slice(0, 10);
-    // Dampen extreme trend slopes slightly over the horizon so 7-day totals stay realistic
-    const dampedStep = h * (1 - 0.04 * (h - 1));
+    const futureX = baseN + h;
     const predFlushes = Math.max(
       0,
-      Math.round(flushModel.level + dampedStep * flushModel.trend),
+      Math.round(flushModel.slope * futureX + flushModel.intercept),
     );
     const predWater = Math.max(
       0,
-      roundTo(waterModel.level + dampedStep * waterModel.trend, 1),
+      roundTo(waterModel.slope * futureX + waterModel.intercept, 1),
     );
 
     next7DaysFlushes += predFlushes;
@@ -479,11 +584,195 @@ export function forecastDailySeries(params: {
     });
   }
 
+  const roundedWater = roundTo(next7DaysWaterLiters, 1);
+  const slope = roundTo(flushModel.slope, 2);
+  const intercept = roundTo(flushModel.intercept, 2);
+  const waterSlope = roundTo(waterModel.slope, 2);
+  const waterIntercept = roundTo(waterModel.intercept, 2);
+  const usedBaselineFallback = !hasNonZeroActivity;
+
+  const rSquared = usedBaselineFallback
+    ? null
+    : flushModel.rSquared !== null
+      ? roundTo(flushModel.rSquared, 3)
+      : null;
+  const waterRSquared = usedBaselineFallback
+    ? null
+    : waterModel.rSquared !== null
+      ? roundTo(waterModel.rSquared, 3)
+      : null;
+  const correlationR = usedBaselineFallback
+    ? null
+    : flushModel.correlationR !== null
+      ? roundTo(flushModel.correlationR, 3)
+      : null;
+  const rmse = usedBaselineFallback ? 0 : roundTo(flushModel.rmse, 2);
+
+  const fitQuality: LinearRegressionStats['fitQuality'] = usedBaselineFallback
+    ? 'insufficient'
+    : flushModel.sampleSize < 3
+      ? 'insufficient'
+      : rSquared === null
+        ? 'constant'
+        : rSquared >= 0.7
+          ? 'strong'
+          : rSquared >= 0.4
+            ? 'moderate'
+            : 'weak';
+
+  const fitLabel = usedBaselineFallback
+    ? 'Default baseline'
+    : fitQuality === 'insufficient'
+      ? 'Needs more days'
+      : fitQuality === 'constant'
+        ? 'Steady baseline'
+        : fitQuality === 'strong'
+          ? 'Strong fit'
+          : fitQuality === 'moderate'
+            ? 'Moderate fit'
+            : 'Low fit';
+
+  const regression: LinearRegressionStats = {
+    slope,
+    intercept,
+    waterSlope,
+    waterIntercept,
+    rSquared,
+    waterRSquared,
+    correlationR,
+    rmse,
+    sampleSize: usedBaselineFallback ? 0 : flushModel.sampleSize,
+    equation: formatRegressionEquation(slope, intercept),
+    waterEquation: formatRegressionEquation(waterSlope, waterIntercept, 'L'),
+    fitQuality,
+    fitLabel,
+  };
+
+  let peakDay: DailyForecastPoint | null = null;
+  let lowDay: DailyForecastPoint | null = null;
+  for (const pt of series) {
+    if (!peakDay || pt.predictedFlushes > peakDay.predictedFlushes) {
+      peakDay = pt;
+    }
+    if (!lowDay || pt.predictedFlushes < lowDay.predictedFlushes) {
+      lowDay = pt;
+    }
+  }
+
+  const avgDailyFlushes = roundTo(next7DaysFlushes / horizon, 1);
+  const avgDailyWaterLiters = roundTo(roundedWater / horizon, 1);
+  const avgLitersPerFlush =
+    next7DaysFlushes > 0 ? roundTo(roundedWater / next7DaysFlushes, 2) : 0;
+
+  const standardToiletBaselineLiters = next7DaysFlushes * 6.0;
+  const estimatedWaterSavedLiters = roundTo(
+    standardToiletBaselineLiters - roundedWater,
+    1,
+  );
+  const estimatedSavingsPercent =
+    standardToiletBaselineLiters > 0
+      ? roundTo(
+          (estimatedWaterSavedLiters / standardToiletBaselineLiters) * 100,
+          1,
+        )
+      : 0;
+
+  const trendDirection: UsageForecastInterpretation['trendDirection'] =
+    slope >= 0.5 ? 'increasing' : slope <= -0.5 ? 'decreasing' : 'stable';
+  const trendLabel =
+    trendDirection === 'increasing'
+      ? 'Usage Rising'
+      : trendDirection === 'decreasing'
+        ? 'Usage Slowing'
+        : 'Usage Steady';
+
+  const confidenceLevel: UsageForecastInterpretation['confidenceLevel'] =
+    usedBaselineFallback
+      ? 'baseline'
+      : activeDaysObserved < 3 || flushModel.sampleSize < 3
+        ? 'low'
+        : fitQuality === 'weak'
+          ? 'low'
+          : activeDaysObserved >= 6 &&
+              (fitQuality === 'strong' || fitQuality === 'constant')
+            ? 'high'
+            : 'moderate';
+
+  const confidenceLabel =
+    confidenceLevel === 'baseline'
+      ? 'Starting Estimate (No recent logs)'
+      : confidenceLevel === 'low'
+        ? activeDaysObserved >= 3 && fitQuality === 'weak'
+          ? 'Rough Estimate (Daily usage varies)'
+          : 'Early Estimate (Needs more days)'
+        : confidenceLevel === 'moderate'
+          ? 'Good Estimate'
+          : 'High Confidence';
+
+  const firstDay = series[0] ?? null;
+  const trendNarrative = usedBaselineFallback
+    ? `No recent flush records were found yet, so this ${horizon}-day forecast uses a starting baseline of about ${avgDailyFlushes.toFixed(1)} flushes/day until live usage builds up.`
+    : trendDirection === 'increasing' && firstDay && peakDay
+      ? `Restroom use is expected to grow by about +${slope.toFixed(1)} flushes each day — rising from ${firstDay.predictedFlushes} flushes on ${firstDay.label} to a busiest day of ${peakDay.predictedFlushes} flushes on ${peakDay.label}.`
+      : trendDirection === 'decreasing' && firstDay && lowDay
+        ? `Restroom use is expected to ease by ${slope.toFixed(1)} flushes each day — dropping from ${firstDay.predictedFlushes} flushes on ${firstDay.label} down to ${lowDay.predictedFlushes} flushes on ${lowDay.label}.`
+        : lowDay && peakDay
+          ? `Restroom use is expected to stay steady around ${avgDailyFlushes.toFixed(1)} flushes/day (ranging between ${lowDay.predictedFlushes} and ${peakDay.predictedFlushes} flushes a day).`
+          : `Restroom use is expected to average about ${avgDailyFlushes.toFixed(1)} flushes/day over the next ${horizon} days.`;
+
+  const waterNarrative =
+    next7DaysFlushes === 0
+      ? 'Expected water use is 0.0 L since no flushes were logged in this period.'
+      : avgLitersPerFlush > 6.0
+        ? `Expected water use is ${roundedWater.toFixed(1)} L (~${avgLitersPerFlush.toFixed(2)} L per flush), which is ${Math.abs(estimatedWaterSavedLiters).toFixed(1)} L above standard 6.0 L toilets — check flush timer and water flow settings.`
+        : `Expected water use is ${roundedWater.toFixed(1)} L (~${avgLitersPerFlush.toFixed(2)} L per flush), saving about ${estimatedWaterSavedLiters.toFixed(1)} L (${estimatedSavingsPercent.toFixed(1)}%) compared to standard 6.0 L toilets.`;
+
+  const actionRecommendation = usedBaselineFallback
+    ? 'Keep the unit running for a few operating days so the forecast can learn real restroom traffic.'
+    : avgLitersPerFlush > 6.0 && peakDay
+      ? `Check pump flush duration and flow sensor calibration before ${peakDay.label} to avoid extra water use.`
+      : activeDaysObserved < 3 && peakDay
+        ? `Only ${activeDaysObserved} active ${activeDaysObserved === 1 ? 'day has' : 'days have'} been logged so far, so this estimate is still early. Keep supplies stocked before ${peakDay.label} while more daily data is collected.`
+        : fitQuality === 'weak' && peakDay
+          ? `Daily restroom traffic has been uneven lately, so actual counts may vary. Check supplies ahead of ${peakDay.label} and review again once more days are logged.`
+          : trendDirection === 'increasing' && peakDay
+            ? `Restock supplies and do a quick check before ${peakDay.label}, which is expected to be the busiest day (${peakDay.predictedFlushes} flushes).`
+            : trendDirection === 'decreasing'
+              ? 'Lighter restroom traffic is expected — a good window for routine cleaning, wiping sensors, and checking valves.'
+              : 'Steady usage is expected — keep up regular daily cleaning and routine checks.';
+
+  const basisPart = usedBaselineFallback
+    ? 'Using default baseline'
+    : `Based on ${flushModel.sampleSize} ${flushModel.sampleSize === 1 ? 'day' : 'days'} (${activeDaysObserved} with activity)`;
+
+  const interpretation: UsageForecastInterpretation = {
+    trendDirection,
+    trendLabel,
+    avgDailyFlushes,
+    avgDailyWaterLiters,
+    avgLitersPerFlush,
+    estimatedWaterSavedLiters,
+    estimatedSavingsPercent,
+    peakDay,
+    lowDay,
+    activeDaysObserved,
+    totalDaysObserved: sorted.length,
+    usedBaselineFallback,
+    confidenceLevel,
+    confidenceLabel,
+    modelSummary: `Linear Regression · ${basisPart}`,
+    trendNarrative,
+    waterNarrative,
+    actionRecommendation,
+    regression,
+  };
+
   return {
     next7DaysFlushes,
-    next7DaysWaterLiters: roundTo(next7DaysWaterLiters, 1),
-    dailyFlushTrendSlope: roundTo(flushModel.trend, 2),
+    next7DaysWaterLiters: roundedWater,
+    dailyFlushTrendSlope: slope,
     series,
+    interpretation,
   };
 }
 
@@ -699,6 +988,7 @@ export function buildPredictiveMaintenanceSummary(input: {
         componentRul.length
       : 0;
   const driftPenalty = driftIndicators.reduce((penalty, indicator) => {
+    if (indicator.hasData === false) return penalty;
     if (indicator.status === 'critical') return penalty + 18;
     if (indicator.status === 'warning') return penalty + 10;
     if (indicator.status === 'watch') return penalty + 4;

@@ -1,5 +1,6 @@
 // app/api/analytics/system-performance/route.ts
 import { NextResponse } from 'next/server';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { enumerateIsoDateRange, validateIsoDateRange } from '@/lib/date-utils';
@@ -11,6 +12,7 @@ import {
   type UltrasonicSample,
 } from '@/lib/predictive-maintenance';
 import {
+  getCachedAnalyticsTelemetry,
   getRuntimeCachedValue,
   getStaleRuntimeCachedValue,
   isFirestoreQuotaCircuitOpen,
@@ -24,6 +26,59 @@ interface DeviceDoc {
   name: string;
   status: 'online' | 'offline';
   lastSeen: unknown;
+}
+
+function computeFleetSnapshot(
+  devicesList: DeviceDoc[],
+  requestedDeviceId: string | null,
+  fiveMinAgoMillis: number,
+) {
+  const requestedDevices = requestedDeviceId
+    ? devicesList.filter((d) => d.id === requestedDeviceId)
+    : [];
+  const activeDevices = devicesList.filter(
+    (d) => toMillisSafe(d.lastSeen) !== null,
+  );
+  const hardwareDevices = requestedDeviceId
+    ? requestedDevices.length > 0
+      ? requestedDevices
+      : activeDevices.length > 0
+        ? activeDevices
+        : devicesList
+    : activeDevices.length > 0
+      ? activeDevices
+      : devicesList;
+
+  const totalCount = hardwareDevices.length;
+  const defaultHardwareDevice =
+    hardwareDevices.find((d) => d.id === DEFAULT_DEVICE_ID) ??
+    devicesList.find((d) => d.id === DEFAULT_DEVICE_ID);
+  const primaryDeviceId =
+    requestedDeviceId ??
+    defaultHardwareDevice?.id ??
+    hardwareDevices[0]?.id ??
+    devicesList[0]?.id ??
+    DEFAULT_DEVICE_ID;
+  const onlineCount = hardwareDevices.filter((d) => {
+    const lastSeenMillis = toMillisSafe(d.lastSeen);
+    return lastSeenMillis !== null && lastSeenMillis >= fiveMinAgoMillis;
+  }).length;
+  const liveSnapshotPercent =
+    totalCount === 0
+      ? 0
+      : Math.round((onlineCount / totalCount) * 10000) / 100;
+  const scopedDeviceIds = new Set(hardwareDevices.map((d) => d.id));
+  if (requestedDeviceId) {
+    scopedDeviceIds.add(requestedDeviceId);
+  }
+
+  return {
+    totalCount,
+    primaryDeviceId,
+    onlineCount,
+    liveSnapshotPercent,
+    scopedDeviceIds,
+  };
 }
 
 function toMillisSafe(value: unknown): number | null {
@@ -50,7 +105,7 @@ function toMillisSafe(value: unknown): number | null {
 }
 
 const PHT_OFFSET_MS = 8 * 3_600_000;
-const PERF_CACHE_TTL_MS = 30_000;
+const PERF_CACHE_TTL_MS = 120_000;
 
 function toPhtIsoDate(ms: number): string {
   return new Date(ms + PHT_OFFSET_MS).toISOString().slice(0, 10);
@@ -81,6 +136,7 @@ async function safeQueryGet(
 }
 
 interface QueryLikeCollection {
+  where?: (field: string, op: string, value: unknown) => QueryLikeCollection;
   orderBy?: (field: string, dir?: 'asc' | 'desc') => QueryLikeCollection;
   limit?: (n: number) => QueryLikeCollection;
   get?: () => Promise<{
@@ -91,7 +147,8 @@ interface QueryLikeCollection {
 async function safeGetCollectionDocs(
   collectionName: string,
   orderByField?: string,
-  limitCount = 400,
+  limitCount = 500,
+  timeRange?: { fromTs: Timestamp; toTs: Timestamp } | null,
 ): Promise<Array<Record<string, unknown>>> {
   if (isFirestoreQuotaCircuitOpen()) {
     return [];
@@ -100,6 +157,31 @@ async function safeGetCollectionDocs(
   try {
     const colRef = adminDb.collection(collectionName) as unknown as QueryLikeCollection;
     if (!colRef) return [];
+
+    if (orderByField && timeRange && typeof colRef.where === 'function') {
+      try {
+        let q = colRef.where(orderByField, '>=', timeRange.fromTs);
+        if (typeof q?.where === 'function') {
+          q = q.where(orderByField, '<=', timeRange.toTs);
+        }
+        if (typeof q?.orderBy === 'function') {
+          q = q.orderBy(orderByField, 'desc');
+        }
+        if (typeof q?.limit === 'function') {
+          q = q.limit(limitCount);
+        }
+        if (typeof q?.get === 'function') {
+          const snap = await q.get();
+          return (snap?.docs ?? []).map((doc) => ({ id: doc.id, ...doc.data() }));
+        }
+      } catch (rangeErr) {
+        if (isQuotaExceededError(rangeErr)) {
+          markFirestoreQuotaExhausted();
+          return [];
+        }
+        // Fallback below if range query is unsupported by a partial mock or index
+      }
+    }
 
     if (orderByField && typeof colRef.orderBy === 'function') {
       try {
@@ -251,6 +333,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const from = searchParams.get('from');
     const to = searchParams.get('to') ?? from;
     const requestedDeviceId = searchParams.get('deviceId')?.trim() || null;
+    const includeCampusRisk = searchParams.get('includeCampusRisk') !== 'false';
 
     if (from && to) {
       const rangeCheck = validateIsoDateRange(from, to, 366);
@@ -263,7 +346,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const nowMs = Date.now();
-    const cacheKey = `analytics:sysperf:${from ?? ''}:${to ?? ''}:${requestedDeviceId ?? ''}`;
+    const cacheKey = `analytics:sysperf:${from ?? ''}:${to ?? ''}:${requestedDeviceId ?? ''}:${includeCampusRisk ? '1' : '0'}`;
     const cached = getRuntimeCachedValue<Record<string, unknown>>(cacheKey);
     if (cached) {
       return NextResponse.json(cached);
@@ -281,6 +364,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     const windowFrom = from ?? sevenDaysAgoPht;
     const windowTo = to ?? todayPht;
     const windowDates = enumerateIsoDateRange(windowFrom, windowTo);
+    const windowTimeRange =
+      from && to
+        ? {
+            fromTs: Timestamp.fromDate(new Date(`${from}T00:00:00.000+08:00`)),
+            toTs: Timestamp.fromDate(new Date(`${to}T23:59:59.999+08:00`)),
+          }
+        : null;
 
     const devicesCol = adminDb.collection('devices');
     const boundedDevicesQuery =
@@ -291,7 +381,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
     const fiveMinAgoMillis = nowMs - 5 * 60 * 1000;
 
-    const devices = (snap?.docs ?? []).map((d) => {
+    let devices = (snap?.docs ?? []).map((d) => {
       const data = d.data() as Partial<DeviceDoc>;
       const docId = d.id || 'unknown-device';
       return {
@@ -300,44 +390,11 @@ export async function GET(request: Request): Promise<NextResponse> {
         name: data.name || data.id || docId,
       } as DeviceDoc;
     });
-    const requestedDevices = requestedDeviceId
-      ? devices.filter((d) => d.id === requestedDeviceId)
-      : [];
-    const activeDevices = devices.filter((d) => toMillisSafe(d.lastSeen) !== null);
-    const hardwareDevices = requestedDeviceId
-      ? requestedDevices.length > 0
-        ? requestedDevices
-        : activeDevices.length > 0
-          ? activeDevices
-          : devices
-      : activeDevices.length > 0
-        ? activeDevices
-        : devices;
 
-    const totalCount = hardwareDevices.length;
-    const primaryDeviceId =
-      requestedDeviceId ??
-      hardwareDevices[0]?.id ??
-      devices[0]?.id ??
-      DEFAULT_DEVICE_ID;
-
-    const onlineDevices = hardwareDevices.filter((d) => {
-      const lastSeenMillis = toMillisSafe(d.lastSeen);
-      return lastSeenMillis !== null && lastSeenMillis >= fiveMinAgoMillis;
-    });
-
-    const onlineCount = onlineDevices.length;
-    const liveSnapshotPercent =
-      totalCount === 0
-        ? 0
-        : Math.round((onlineCount / totalCount) * 10000) / 100;
-
-    const scopedDeviceIds = new Set(hardwareDevices.map((d) => d.id));
-    if (requestedDeviceId) {
-      scopedDeviceIds.add(requestedDeviceId);
-    }
-
-    let periodUptimePercent = liveSnapshotPercent;
+    let fleet = computeFleetSnapshot(devices, requestedDeviceId, fiveMinAgoMillis);
+    let periodUptimePercent = fleet.liveSnapshotPercent;
+    let uptimeSource: 'tracked' | 'telemetry_fallback' | 'live_snapshot' =
+      'live_snapshot';
     let dailyList: Array<{ date: string; uptimePercent: number }> = [];
 
     const uptimeQuery =
@@ -362,22 +419,111 @@ export async function GET(request: Request): Promise<NextResponse> {
     const [
       uptimeSnap,
       rawWearCounters,
-      flushDocs,
-      uvDocs,
-      lidDocs,
+      initialFlushDocs,
+      initialUvDocs,
+      initialLidDocs,
       taskDocs,
       issueReportDocs,
-      ultrasonicSamples,
+      initialUltrasonicSamples,
     ] = await Promise.all([
       uptimePromise,
-      safeGetWearCounters(primaryDeviceId),
-      safeGetCollectionDocs('flushEvents', 'timestamp', 60),
-      safeGetCollectionDocs('uvCycles', 'timestamp', 40),
-      safeGetCollectionDocs('lidEvents', 'timestamp', 60),
-      safeGetCollectionDocs('tasks', 'createdAt', 60),
-      safeGetCollectionDocs('issueReports', 'lastReportedAt', 50),
-      safeGetRecentUltrasonicSamples(primaryDeviceId, windowDates),
+      safeGetWearCounters(fleet.primaryDeviceId),
+      safeGetCollectionDocs('flushEvents', 'timestamp', 500, windowTimeRange),
+      safeGetCollectionDocs('uvCycles', 'timestamp', 500, windowTimeRange),
+      safeGetCollectionDocs('lidEvents', 'timestamp', 500, windowTimeRange),
+      includeCampusRisk
+        ? safeGetCollectionDocs('tasks', 'createdAt', 60)
+        : Promise.resolve([]),
+      includeCampusRisk
+        ? safeGetCollectionDocs('issueReports', 'lastReportedAt', 50)
+        : Promise.resolve([]),
+      safeGetRecentUltrasonicSamples(fleet.primaryDeviceId, windowDates),
     ]);
+
+    let flushDocs = initialFlushDocs;
+    let uvDocs = initialUvDocs;
+    let lidDocs = initialLidDocs;
+    let ultrasonicSamples = initialUltrasonicSamples;
+    let localUptimeDocs: Array<{
+      deviceId: string;
+      date: string;
+      onlineMinutes: number;
+      totalMinutes: number;
+    }> = [];
+    let usedLocalFallback = false;
+
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      isFirestoreQuotaCircuitOpen() &&
+      (devices.length === 0 || (flushDocs.length === 0 && ultrasonicSamples.length === 0))
+    ) {
+      const local = await getCachedAnalyticsTelemetry();
+      if (
+        local.devices.length > 0 ||
+        local.flushEvents.length > 0 ||
+        local.readings.length > 0 ||
+        local.uptimeDaily.length > 0
+      ) {
+        usedLocalFallback = true;
+        if (devices.length === 0 && local.devices.length > 0) {
+          devices = local.devices.map((d) => ({
+            id: d.id,
+            name: d.name,
+            status: d.status,
+            lastSeen: d.lastSeenMs,
+          }));
+          fleet = computeFleetSnapshot(devices, requestedDeviceId, fiveMinAgoMillis);
+          periodUptimePercent = fleet.liveSnapshotPercent;
+        }
+        if ((uptimeSnap?.docs?.length ?? 0) === 0 && local.uptimeDaily.length > 0) {
+          localUptimeDocs = local.uptimeDaily.filter(
+            (u) => u.date >= windowFrom && u.date <= windowTo,
+          );
+        }
+
+        if (flushDocs.length === 0) {
+          flushDocs = local.flushEvents.map((e) => ({
+            id: e.id,
+            deviceId: e.deviceId,
+            waterVolume: e.waterVolume,
+            duration: e.duration,
+            timestamp: e.timestampMs,
+          }));
+        }
+        if (uvDocs.length === 0) {
+          uvDocs = local.uvCycles.map((e) => ({
+            id: e.id,
+            deviceId: e.deviceId,
+            duration: e.duration,
+            completed: e.completed,
+            reason: e.reason ?? null,
+            timestamp: e.timestampMs,
+          }));
+        }
+        if (lidDocs.length === 0) {
+          lidDocs = local.lidEvents.map((e) => ({
+            id: e.id,
+            deviceId: e.deviceId,
+            status: e.status,
+            timestamp: e.timestampMs,
+          }));
+        }
+        if (ultrasonicSamples.length === 0) {
+          ultrasonicSamples = local.readings
+            .filter(
+              (r) =>
+                r.deviceId === fleet.primaryDeviceId &&
+                r.sensorType === 'ultrasonic',
+            )
+            .map((r) => ({
+              value: r.value,
+              timestampMs: r.timestamp.seconds * 1000,
+            }))
+            .sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0))
+            .slice(-40);
+        }
+      }
+    }
 
     const dailyBucketMap = new Map<
       string,
@@ -390,6 +536,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     const activeTelemetryDates = new Set<string>();
     let observedFlushes = 0;
     let observedWaterLiters = 0;
+    let cumulativeFlushCount = 0;
+    let cumulativeFlushLiters = 0;
     const flushSamples: FlushSample[] = [];
 
     for (const doc of flushDocs) {
@@ -408,6 +556,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         typeof doc.duration === 'number' && Number.isFinite(doc.duration)
           ? doc.duration
           : 0;
+
+      cumulativeFlushCount += 1;
+      cumulativeFlushLiters += waterVolume;
 
       if (duration > 0) {
         flushSamples.push({
@@ -474,27 +625,92 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
+    const dayMap = new Map<string, { onlineMinutes: number; totalMinutes: number }>();
+    const rawUptimeEntries: Array<Record<string, unknown>> = [
+      ...(uptimeSnap?.docs ?? []).map((doc) => doc.data()),
+      ...localUptimeDocs,
+    ];
+    for (const data of rawUptimeEntries) {
+      const docDeviceId =
+        typeof data.deviceId === 'string' ? data.deviceId.trim() : '';
+      if (
+        docDeviceId &&
+        fleet.scopedDeviceIds.size > 0 &&
+        !fleet.scopedDeviceIds.has(docDeviceId)
+      ) {
+        continue;
+      }
+      const date = typeof data.date === 'string' ? data.date : '';
+      if (!date) continue;
+      const existing = dayMap.get(date) ?? { onlineMinutes: 0, totalMinutes: 0 };
+      existing.onlineMinutes += Number(data.onlineMinutes ?? 0);
+      existing.totalMinutes += Number(data.totalMinutes ?? 0);
+      dayMap.set(date, existing);
+    }
+
+    let totalOnlineMinutes = 0;
+    let totalTrackedMinutes = 0;
+    let monitoredDays = 0;
+    let activeTelemetryDays = 0;
+
+    const uptimeLogs: Array<{
+      date: string;
+      uptimePercent: number | null;
+      onlineMinutes: number;
+      totalMinutes: number;
+      offlineMinutes: number;
+      status: 'tracked' | 'active_only' | 'unmonitored';
+    }> = windowDates.map((date) => {
+      const entry = dayMap.get(date);
+      if (entry && entry.totalMinutes > 0) {
+        const online = Math.max(0, Math.round(entry.onlineMinutes));
+        const total = Math.max(online, Math.round(entry.totalMinutes));
+        const offline = Math.max(0, total - online);
+        totalOnlineMinutes += online;
+        totalTrackedMinutes += total;
+        monitoredDays += 1;
+        activeTelemetryDays += 1;
+        const dayPct = Math.min(
+          100,
+          Math.max(0, Math.round((online / total) * 1000) / 10),
+        );
+        return {
+          date,
+          uptimePercent: dayPct,
+          onlineMinutes: online,
+          totalMinutes: total,
+          offlineMinutes: offline,
+          status: 'tracked',
+        };
+      }
+
+      const hasLiveToday =
+        date === todayPht &&
+        (activeTelemetryDates.has(date) || fleet.liveSnapshotPercent > 0);
+      if (hasLiveToday || activeTelemetryDates.has(date)) {
+        activeTelemetryDays += 1;
+        return {
+          date,
+          uptimePercent: 100,
+          onlineMinutes: 0,
+          totalMinutes: 0,
+          offlineMinutes: 0,
+          status: 'active_only',
+        };
+      }
+
+      return {
+        date,
+        uptimePercent: null,
+        onlineMinutes: 0,
+        totalMinutes: 0,
+        offlineMinutes: 0,
+        status: 'unmonitored',
+      };
+    });
+
     if (from && to && uptimeSnap) {
       const allDates = enumerateIsoDateRange(from, to);
-
-      const dayMap = new Map<string, { onlineMinutes: number; totalMinutes: number }>();
-      for (const doc of uptimeSnap.docs) {
-        const data = doc.data();
-        const docDeviceId =
-          typeof data.deviceId === 'string' ? data.deviceId.trim() : '';
-        if (
-          docDeviceId &&
-          scopedDeviceIds.size > 0 &&
-          !scopedDeviceIds.has(docDeviceId)
-        ) {
-          continue;
-        }
-        const date = data.date as string;
-        const existing = dayMap.get(date) ?? { onlineMinutes: 0, totalMinutes: 0 };
-        existing.onlineMinutes += Number(data.onlineMinutes ?? 0);
-        existing.totalMinutes += Number(data.totalMinutes ?? 0);
-        dayMap.set(date, existing);
-      }
 
       let totalOnline = 0;
       let totalTracked = 0;
@@ -517,9 +733,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         // For dates where minute tracking has not accumulated:
         if (date === todayPht) {
           const todayFallback =
-            activeTelemetryDates.has(date) && liveSnapshotPercent === 0
+            activeTelemetryDates.has(date) && fleet.liveSnapshotPercent === 0
               ? 100
-              : liveSnapshotPercent;
+              : fleet.liveSnapshotPercent;
           return { date, uptimePercent: todayFallback };
         }
 
@@ -528,16 +744,40 @@ export async function GET(request: Request): Promise<NextResponse> {
       });
 
       if (totalTracked > 0) {
+        uptimeSource = 'tracked';
         periodUptimePercent = Math.min(
           100,
           Math.max(0, Math.round((totalOnline / totalTracked) * 1000) / 10),
         );
       } else if (activeTelemetryDates.size > 0 && dailyList.length > 0) {
+        uptimeSource = 'telemetry_fallback';
         const sumDaily = dailyList.reduce((sum, d) => sum + d.uptimePercent, 0);
         periodUptimePercent =
           Math.round((sumDaily / dailyList.length) * 10) / 10;
       }
     }
+
+    const trackedAvailabilityPercent =
+      totalTrackedMinutes > 0
+        ? Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round((totalOnlineMinutes / totalTrackedMinutes) * 1000) / 10,
+            ),
+          )
+        : null;
+    const uptimeSummary = {
+      source: uptimeSource,
+      trackedAvailabilityPercent,
+      totalOnlineMinutes,
+      totalTrackedMinutes,
+      totalOfflineMinutes: Math.max(0, totalTrackedMinutes - totalOnlineMinutes),
+      monitoredDays,
+      activeTelemetryDays,
+      unmonitoredDays: Math.max(0, windowDates.length - activeTelemetryDays),
+      windowDays: windowDates.length,
+    };
 
     const incidents: CampusIncidentRecord[] = [];
     for (const doc of taskDocs) {
@@ -577,9 +817,31 @@ export async function GET(request: Request): Promise<NextResponse> {
       };
     });
 
+    const existingFlowCounter = Number(rawWearCounters?.flowSensorTotalLiters ?? 0);
+    const existingPumpCounter = Number(rawWearCounters?.pumpTotalLiters ?? 0);
+    const existingFlushCounter = Number(rawWearCounters?.flushCycleCount ?? 0);
+    const effectiveWearCounters: Record<string, unknown> | null =
+      rawWearCounters || cumulativeFlushLiters > 0 || cumulativeFlushCount > 0
+        ? {
+            ...(rawWearCounters ?? {}),
+            flowSensorTotalLiters:
+              Number.isFinite(existingFlowCounter) && existingFlowCounter > 0
+                ? existingFlowCounter
+                : cumulativeFlushLiters,
+            pumpTotalLiters:
+              Number.isFinite(existingPumpCounter) && existingPumpCounter > 0
+                ? existingPumpCounter
+                : cumulativeFlushLiters,
+            flushCycleCount:
+              Number.isFinite(existingFlushCounter) && existingFlushCounter > 0
+                ? existingFlushCounter
+                : cumulativeFlushCount,
+          }
+        : null;
+
     const predictiveMaintenance = buildPredictiveMaintenanceSummary({
-      deviceId: primaryDeviceId,
-      rawCounters: rawWearCounters,
+      deviceId: fleet.primaryDeviceId,
+      rawCounters: effectiveWearCounters,
       windowDays: windowDates.length,
       observedWindowTotals: {
         flushes: observedFlushes,
@@ -598,10 +860,13 @@ export async function GET(request: Request): Promise<NextResponse> {
       success: true,
       data: {
         uptimePercent: periodUptimePercent,
-        liveSnapshotPercent,
-        onlineCount,
-        totalCount,
+        uptimeSource,
+        liveSnapshotPercent: fleet.liveSnapshotPercent,
+        onlineCount: fleet.onlineCount,
+        totalCount: fleet.totalCount,
         daily: dailyList,
+        uptimeLogs,
+        uptimeSummary,
         devices: devices.map((d) => {
           const lastSeenMillis = toMillisSafe(d.lastSeen);
           return {
@@ -622,7 +887,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     };
 
     if (isFirestoreQuotaCircuitOpen()) {
-      const stale = getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
+      const stale = usedLocalFallback
+        ? null
+        : getStaleRuntimeCachedValue<Record<string, unknown>>(cacheKey);
       if (stale) {
         return NextResponse.json({ ...stale, degraded: true });
       }

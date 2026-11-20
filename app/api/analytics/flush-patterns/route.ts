@@ -5,6 +5,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { requireSupervisorOrAdmin, verifyAuthToken } from '@/lib/auth-helpers';
 import { Timestamp } from 'firebase-admin/firestore';
 import {
+  getCachedAnalyticsTelemetry,
   getRuntimeCachedValue,
   getStaleRuntimeCachedValue,
   isFirestoreQuotaCircuitOpen,
@@ -13,7 +14,7 @@ import {
   setRuntimeCachedValue,
 } from '@/lib/local-runtime-cache';
 
-const FLUSH_PATTERNS_CACHE_TTL_MS = 30_000;
+const FLUSH_PATTERNS_CACHE_TTL_MS = 120_000;
 
 interface PatternBucket {
   label: string;
@@ -41,6 +42,81 @@ function buildEmptyFlushPatterns(): {
       count: 0,
     })),
   };
+}
+
+function buildPatternsFromRecords(
+  records: Array<Record<string, unknown>>,
+  from: string | null,
+  to: string | null,
+): { byDay: PatternBucket[]; byHour: PatternBucket[] } {
+  const byDay = new Array<number>(7).fill(0);
+  const byHour = new Array<number>(24).fill(0);
+
+  for (const d of records) {
+    const rawTs = d.timestamp ?? d.createdAt;
+    const dateObj = parseTimestampToDate(rawTs);
+    if (!dateObj) continue;
+
+    // Shift timestamp to Philippine Standard Time (UTC+8)
+    const phMillis = dateObj.getTime() + 8 * 60 * 60 * 1000;
+    const phDate = new Date(phMillis);
+
+    // In-memory date filter in Philippine Time (Asia/Manila, UTC+8)
+    if (from) {
+      const phDateStr = phDate.toISOString().slice(0, 10);
+      if (phDateStr < from || phDateStr > to!) {
+        continue;
+      }
+    }
+
+    const dayIndex = phDate.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+    const hourIndex = phDate.getUTCHours(); // 0 .. 23
+
+    if (dayIndex >= 0 && dayIndex < 7) {
+      byDay[dayIndex] += 1;
+    }
+    if (hourIndex >= 0 && hourIndex < 24) {
+      byHour[hourIndex] += 1;
+    }
+  }
+
+  return {
+    byDay: byDay.map((count, i) => ({
+      label: DAY_NAMES[i] ?? `Day ${i}`,
+      count,
+    })),
+    byHour: byHour.map((count, i) => ({
+      label: `${String(i).padStart(2, '0')}:00`,
+      count,
+    })),
+  };
+}
+
+async function resolveFlushPatternsQuotaFallback(
+  cacheKey: string,
+  from: string | null,
+  to: string | null,
+): Promise<{ byDay: PatternBucket[]; byHour: PatternBucket[] }> {
+  const stale = getStaleRuntimeCachedValue<{
+    byDay: PatternBucket[];
+    byHour: PatternBucket[];
+  }>(cacheKey);
+  if (stale) {
+    return stale;
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return buildEmptyFlushPatterns();
+  }
+  const local = await getCachedAnalyticsTelemetry();
+  const source =
+    local.flushEvents.length > 0
+      ? local.flushEvents.map((e) => ({ timestamp: e.timestampMs }))
+      : local.lidEvents
+          .filter((e) => e.status === 'open')
+          .map((e) => ({ timestamp: e.timestampMs }));
+  return source.length > 0
+    ? buildPatternsFromRecords(source, from, to)
+    : buildEmptyFlushPatterns();
 }
 
 interface HasToDate {
@@ -133,13 +209,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     if (isFirestoreQuotaCircuitOpen()) {
-      const stale = getStaleRuntimeCachedValue<{
-        byDay: PatternBucket[];
-        byHour: PatternBucket[];
-      }>(cacheKey);
+      const fallback = await resolveFlushPatternsQuotaFallback(cacheKey, from, to);
       return NextResponse.json({
         success: true,
-        data: stale ?? buildEmptyFlushPatterns(),
+        data: fallback,
         degraded: true,
       });
     }
@@ -196,62 +269,21 @@ export async function GET(request: Request): Promise<NextResponse> {
       if (isQuotaExceededError(queryError)) {
         markFirestoreQuotaExhausted();
         console.warn('[Analytics] flush-patterns quota exceeded; returning fallback');
-        const stale = getStaleRuntimeCachedValue<{
-          byDay: PatternBucket[];
-          byHour: PatternBucket[];
-        }>(cacheKey);
+        const fallback = await resolveFlushPatternsQuotaFallback(cacheKey, from, to);
         return NextResponse.json({
           success: true,
-          data: stale ?? buildEmptyFlushPatterns(),
+          data: fallback,
           degraded: true,
         });
       }
       throw queryError;
     }
 
-    const byDay = new Array<number>(7).fill(0);
-    const byHour = new Array<number>(24).fill(0);
-
-    for (const doc of snap.docs) {
-      const d = doc.data() as Record<string, unknown>;
-      const rawTs = d.timestamp ?? d.createdAt;
-      const dateObj = parseTimestampToDate(rawTs);
-      if (!dateObj) continue;
-
-      // Shift timestamp to Philippine Standard Time (UTC+8)
-      const phMillis = dateObj.getTime() + 8 * 60 * 60 * 1000;
-      const phDate = new Date(phMillis);
-
-      // In-memory date filter in Philippine Time (Asia/Manila, UTC+8)
-      if (from) {
-        const phDateStr = phDate.toISOString().slice(0, 10);
-        if (phDateStr < from || phDateStr > to!) {
-          continue;
-        }
-      }
-
-      const dayIndex = phDate.getUTCDay(); // 0 = Sunday ... 6 = Saturday
-      const hourIndex = phDate.getUTCHours(); // 0 .. 23
-
-      if (dayIndex >= 0 && dayIndex < 7) {
-        byDay[dayIndex] += 1;
-      }
-      if (hourIndex >= 0 && hourIndex < 24) {
-        byHour[hourIndex] += 1;
-      }
-    }
-
-    const byDayResult: PatternBucket[] = byDay.map((count, i) => ({
-      label: DAY_NAMES[i] ?? `Day ${i}`,
-      count,
-    }));
-
-    const byHourResult: PatternBucket[] = byHour.map((count, i) => ({
-      label: `${String(i).padStart(2, '0')}:00`,
-      count,
-    }));
-
-    const patternsData = { byDay: byDayResult, byHour: byHourResult };
+    const patternsData = buildPatternsFromRecords(
+      snap.docs.map((doc) => doc.data() as Record<string, unknown>),
+      from,
+      to,
+    );
     setRuntimeCachedValue(cacheKey, patternsData, FLUSH_PATTERNS_CACHE_TTL_MS);
 
     return NextResponse.json({

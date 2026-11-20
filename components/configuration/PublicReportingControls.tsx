@@ -22,7 +22,7 @@ export function PublicReportingControls({
   siteUrl,
   onUpdated,
 }: {
-  user: User;
+  user: User | null;
   role: UserRole | null;
   device: DeviceForQr;
   siteUrl: string;
@@ -49,6 +49,10 @@ export function PublicReportingControls({
   const toggle = async () => {
     if (saving) return;
     const enabled = !device.publicReportingEnabled;
+    if (!user) {
+      onUpdated(enabled);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {

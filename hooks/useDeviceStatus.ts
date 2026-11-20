@@ -109,6 +109,12 @@ export function useDeviceStatus(deviceId = DEFAULT_DEVICE_ID) {
 
     void fetchStatus(true);
     const intervalId = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
       void fetchStatus(false);
     }, 10_000);
 

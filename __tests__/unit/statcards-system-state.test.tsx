@@ -43,6 +43,10 @@ const { useSystemState: actualUseSystemState } = jest.requireActual<
   typeof import('@/hooks/useSystemState')
 >('@/hooks/useSystemState');
 
+const { useSensorData: actualUseSensorData } = jest.requireActual<
+  typeof import('@/hooks/useSensorData')
+>('@/hooks/useSensorData');
+
 describe('StatCards Reactive Operating State', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -169,6 +173,23 @@ describe('StatCards Reactive Operating State', () => {
     expect(screen.getByText('Waiting for user')).toBeTruthy();
   });
 
+  it('falls back to Standby (20%) and No Flow when waterFlowUpdatedAt is stale (> 15s old)', () => {
+    mockUseSensorData.mockReturnValue({
+      ultrasonicDistance: 80,
+      waterFlowRate: 1.45,
+      waterFlowUpdatedAt: Date.now() - 30_000,
+      loading: false,
+    });
+
+    render(<StatCards />);
+
+    expect(screen.getByText('Standby')).toBeTruthy();
+    expect(screen.getByText('Ready')).toBeTruthy();
+    expect(screen.getByText('No Flow')).toBeTruthy();
+    expect(screen.getByText('0.0')).toBeTruthy();
+    expect(screen.queryByText('Flushing')).toBeNull();
+  });
+
   it('renders skeleton loading in Card 4 when sensorLoading is true', () => {
     mockUseSensorData.mockReturnValue({
       ultrasonicDistance: null,
@@ -284,6 +305,28 @@ describe('useSystemState staleness verification', () => {
     expect(result.current.systemState).toBe('standby');
   });
 
+  it('does NOT trigger flushing on a fresh zero-flow (0 L) waterflow reading', async () => {
+    const freshTimestampSeconds = Math.floor((Date.now() - 2000) / 1000);
+    mockApiFetch.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          sensorType: 'waterflow',
+          value: 0,
+          timestamp: { _seconds: freshTimestampSeconds },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => actualUseSystemState('toilet-01'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.systemState).toBe('standby');
+  });
+
   it('sets uv_active when a fresh uv sensor reading is received', async () => {
     const freshTimestampSeconds = Math.floor((Date.now() - 2000) / 1000);
     mockApiFetch.mockResolvedValueOnce({
@@ -302,5 +345,95 @@ describe('useSystemState staleness verification', () => {
     await waitFor(() => {
       expect(result.current.systemState).toBe('uv_active');
     });
+  });
+});
+
+describe('useSensorData waterflow staleness verification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({
+      user: { uid: 'operator-1' },
+      loading: false,
+    });
+    mockUsePresentationMode.mockReturnValue(false);
+  });
+
+  it('zeros out stale waterflow readings (> 15s old) while keeping ultrasonic distance', async () => {
+    const staleFlowSeconds = Math.floor((Date.now() - 120_000) / 1000);
+    const freshUltraSeconds = Math.floor((Date.now() - 2_000) / 1000);
+    mockApiFetch.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          sensorType: 'waterflow',
+          value: 1.65,
+          unit: 'L',
+          timestamp: { _seconds: staleFlowSeconds },
+        },
+        {
+          sensorType: 'ultrasonic',
+          value: 74,
+          unit: 'cm',
+          timestamp: { _seconds: freshUltraSeconds },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => actualUseSensorData('toilet-01'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.ultrasonicDistance).toBe(74);
+    expect(result.current.waterFlowRate).toBe(0);
+    expect(result.current.waterFlowUpdatedAt).toBeNull();
+  });
+
+  it('returns active waterFlowRate and timestamp for fresh waterflow readings (<= 15s old)', async () => {
+    const freshFlowSeconds = Math.floor((Date.now() - 3_000) / 1000);
+    mockApiFetch.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          sensorType: 'waterflow',
+          value: 1.45,
+          unit: 'L',
+          timestamp: { _seconds: freshFlowSeconds },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => actualUseSensorData('toilet-01'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.waterFlowRate).toBe(1.45);
+    expect(result.current.waterFlowUpdatedAt).toBe(freshFlowSeconds * 1000);
+  });
+
+  it('zeros out waterflow readings that have no timestamp', async () => {
+    mockApiFetch.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          sensorType: 'waterflow',
+          value: 2.0,
+          unit: 'L',
+          timestamp: null,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => actualUseSensorData('toilet-01'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.waterFlowRate).toBe(0);
+    expect(result.current.waterFlowUpdatedAt).toBeNull();
   });
 });

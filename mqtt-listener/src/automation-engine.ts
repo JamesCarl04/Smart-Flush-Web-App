@@ -118,6 +118,7 @@ function taskContract(rule: AutomationRule): {
 
 export class TelemetryAutomationEngine {
   private readonly heartbeats = new Map<string, number>();
+  private readonly knownHealthyUltrasonic = new Set<string>();
   private readonly now: () => number;
   private readonly schedule: (callback: () => void, delayMs: number) => void;
 
@@ -142,9 +143,14 @@ export class TelemetryAutomationEngine {
   ): Promise<void> {
     const now = this.now();
     if (!isInvalidUltrasonic(payload)) {
-      await this.store.setInvalidUltrasonicSince(deviceId, null);
+      if (!this.knownHealthyUltrasonic.has(deviceId)) {
+        this.knownHealthyUltrasonic.add(deviceId);
+        await this.store.setInvalidUltrasonicSince(deviceId, null);
+      }
       return;
     }
+
+    this.knownHealthyUltrasonic.delete(deviceId);
 
     const heartbeatAt = this.heartbeats.get(deviceId);
     if (heartbeatAt === undefined || now - heartbeatAt > HEARTBEAT_FRESH_MS) return;
@@ -285,13 +291,29 @@ function pendingDryAttemptMillis(data: Record<string, unknown>): number[] {
   ].sort((left, right) => left - right);
 }
 
+const RULES_CACHE_TTL_MS = 60_000;
+
 class FirestoreAutomationStore implements AutomationStore {
+  private cachedRules: AutomationRule[] | null = null;
+  private cachedRulesExpiresAtMs = 0;
+  private readonly invalidUltrasonicByDevice = new Map<string, number | null>();
+
   async getEnabledRules(): Promise<AutomationRule[]> {
+    if (this.cachedRules && Date.now() < this.cachedRulesExpiresAtMs) {
+      return this.cachedRules;
+    }
     const snapshot = await adminDb.collection('automationRules').where('enabled', '==', true).get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AutomationRule));
+    const rules = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AutomationRule));
+    this.cachedRules = rules;
+    this.cachedRulesExpiresAtMs = Date.now() + RULES_CACHE_TTL_MS;
+    return rules;
   }
 
   async getRule(id: string): Promise<AutomationRule | null> {
+    if (this.cachedRules && Date.now() < this.cachedRulesExpiresAtMs) {
+      const hit = this.cachedRules.find((rule) => rule.id === id);
+      if (hit) return hit;
+    }
     const doc = await adminDb.collection('automationRules').doc(id).get();
     return doc.exists ? ({ id: doc.id, ...doc.data() } as AutomationRule) : null;
   }
@@ -532,11 +554,23 @@ class FirestoreAutomationStore implements AutomationStore {
   }
 
   async getInvalidUltrasonicSince(deviceId: string): Promise<number | null> {
+    if (this.invalidUltrasonicByDevice.has(deviceId)) {
+      return this.invalidUltrasonicByDevice.get(deviceId) ?? null;
+    }
     const snapshot = await this.runtimeStateRef(deviceId).get();
-    return timestampMillis(snapshot.data()?.invalidUltrasonicSince);
+    const value = timestampMillis(snapshot.data()?.invalidUltrasonicSince);
+    this.invalidUltrasonicByDevice.set(deviceId, value);
+    return value;
   }
 
   async setInvalidUltrasonicSince(deviceId: string, value: number | null): Promise<void> {
+    if (
+      this.invalidUltrasonicByDevice.has(deviceId) &&
+      this.invalidUltrasonicByDevice.get(deviceId) === value
+    ) {
+      return;
+    }
+    this.invalidUltrasonicByDevice.set(deviceId, value);
     await this.runtimeStateRef(deviceId).set({
       invalidUltrasonicSince: value === null ? null : Timestamp.fromMillis(value),
       invalidUltrasonicUpdatedAt: Timestamp.now(),

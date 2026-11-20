@@ -2,7 +2,10 @@
 // Minute-by-minute device uptime aggregator for calculating real historical daily SLA.
 import { adminDb } from './firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { getInMemoryDeviceHeartbeats } from './local-runtime-cache';
+import {
+  getInMemoryDeviceHeartbeats,
+  recordLocalUptimeTick,
+} from './local-runtime-cache';
 
 const TICK_INTERVAL_MS = 60_000; // 1 minute
 const FIVE_MIN_MS = 5 * 60 * 1000;
@@ -65,20 +68,40 @@ function mergeInMemoryHeartbeats(): void {
 
 function filterActiveHardwareEntries(
   entries: Array<[string, number]>,
+  sessionFloorMs: number,
 ): Array<[string, number]> {
-  const active = entries.filter(([, lastSeenMs]) => lastSeenMs > 0);
-  return active.length > 0 ? active : entries;
+  // Only track devices that have actually sent a live heartbeat during today's PHT session
+  // (or are still within the 5-minute online window across midnight).
+  return entries.filter(([, lastSeenMs]) => lastSeenMs >= sessionFloorMs);
 }
 
 export async function recordUptimeTick(now = new Date()): Promise<void> {
   const isTestEnv = process.env.NODE_ENV === 'test';
   const nowMs = now.getTime();
-  if (!isTestEnv && Date.now() < uptimeQuotaBackoffUntilMs) {
-    return;
-  }
-
   const dateStr = todayKey(now);
   const thresholdMs = nowMs - FIVE_MIN_MS;
+  const todayStartPhtMs = Date.parse(`${dateStr}T00:00:00.000+08:00`);
+  const sessionFloorMs = Math.min(todayStartPhtMs, thresholdMs);
+
+  if (!isTestEnv && Date.now() < uptimeQuotaBackoffUntilMs) {
+    // Firestore quota backoff active — still mirror real minute ticks locally from heartbeats
+    mergeInMemoryHeartbeats();
+    const localEntries = filterActiveHardwareEntries(
+      Array.from(cachedDeviceLastSeenMs.entries()),
+      sessionFloorMs,
+    );
+    if (typeof recordLocalUptimeTick === 'function') {
+      for (const [deviceId, lastSeenMillis] of localEntries) {
+        void recordLocalUptimeTick({
+          deviceId,
+          date: dateStr,
+          isOnline: lastSeenMillis >= thresholdMs,
+          nowMs,
+        });
+      }
+    }
+    return;
+  }
 
   try {
     let entries: Array<[string, number]>;
@@ -104,7 +127,7 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
             ),
           ],
         );
-        entries = filterActiveHardwareEntries(rawEntries);
+        entries = filterActiveHardwareEntries(rawEntries, sessionFloorMs);
       } else {
         for (const doc of devicesSnap.docs) {
           const parsed = parseLastSeenMillis(doc.data().lastSeen);
@@ -115,12 +138,14 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
         lastDeviceCacheRefreshMs = nowMs;
         entries = filterActiveHardwareEntries(
           Array.from(cachedDeviceLastSeenMs.entries()),
+          sessionFloorMs,
         );
       }
     } else {
       mergeInMemoryHeartbeats();
       entries = filterActiveHardwareEntries(
         Array.from(cachedDeviceLastSeenMs.entries()),
+        sessionFloorMs,
       );
     }
 
@@ -132,6 +157,14 @@ export async function recordUptimeTick(now = new Date()): Promise<void> {
 
     for (const [deviceId, lastSeenMillis] of entries) {
       const isOnline = lastSeenMillis >= thresholdMs;
+      if (!isTestEnv && typeof recordLocalUptimeTick === 'function') {
+        void recordLocalUptimeTick({
+          deviceId,
+          date: dateStr,
+          isOnline,
+          nowMs,
+        });
+      }
       const dailyDocRef = adminDb
         .collection('deviceUptimeDaily')
         .doc(`${deviceId}_${dateStr}`);

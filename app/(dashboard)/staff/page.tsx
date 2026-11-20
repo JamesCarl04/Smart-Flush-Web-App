@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
@@ -85,8 +86,89 @@ const INITIAL_FORM: NewStaffForm = {
   sendPasswordReset: true,
 };
 
+const PRESENTATION_STAFF: StaffMember[] = [
+  {
+    id: 'demo-admin-1',
+    uid: 'demo-admin-1',
+    displayName: 'Facility Administrator',
+    email: 'admin@sdca.edu.ph',
+    role: 'admin',
+    building: 'SDCA Annex Building',
+    shift: 'all',
+    active: true,
+    isAvailable: true,
+    currentTaskId: null,
+    isOnline: true,
+    status: 'available',
+  },
+  {
+    id: 'demo-sup-1',
+    uid: 'demo-sup-1',
+    displayName: 'Ramon Dela Cruz',
+    email: 'r.delacruz@sdca.edu.ph',
+    role: 'supervisor',
+    building: 'SDCA Annex Building',
+    shift: '1st',
+    active: true,
+    isAvailable: true,
+    currentTaskId: null,
+    isOnline: true,
+    status: 'available',
+  },
+  {
+    id: 'demo-tech-1',
+    uid: 'demo-tech-1',
+    displayName: 'Alex Rivera',
+    email: 'alex.rivera@sdca.edu.ph',
+    role: 'technician',
+    building: 'SDCA Annex Building',
+    shift: '1st',
+    active: true,
+    isAvailable: false,
+    currentTaskId: 'demo-task-2',
+    activeTask: {
+      id: 'demo-task-2',
+      location: '4th Floor • Men\'s Restroom Stall 1',
+      message: 'UV cycle complete. Manual cleaning required.',
+      status: 'acknowledged',
+      triggerType: 'uv_complete',
+    },
+    isOnline: true,
+    status: 'on_task',
+  },
+  {
+    id: 'demo-tech-2',
+    uid: 'demo-tech-2',
+    displayName: 'Elena Santos',
+    email: 'elena.santos@sdca.edu.ph',
+    role: 'technician',
+    building: 'SDCA Annex Building',
+    shift: '1st',
+    active: true,
+    isAvailable: true,
+    currentTaskId: null,
+    isOnline: true,
+    status: 'available',
+  },
+  {
+    id: 'demo-tech-3',
+    uid: 'demo-tech-3',
+    displayName: 'Marco Cruz',
+    email: 'marco.cruz@sdca.edu.ph',
+    role: 'technician',
+    building: 'SDCA Annex Building',
+    shift: '2nd',
+    active: true,
+    isAvailable: true,
+    currentTaskId: null,
+    isOnline: false,
+    status: 'offline',
+  },
+];
+
 export default function StaffManagementPage() {
   const { user, role, roleLoading } = useAuth();
+  const presentationMode = usePresentationMode();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -125,6 +207,11 @@ export default function StaffManagementPage() {
 
   // Fetch staff personnel
   const loadStaff = useCallback(async (isSilent: boolean = false) => {
+    if (presentationMode) {
+      setStaffList((prev) => (prev.length > 0 ? prev : PRESENTATION_STAFF));
+      setLoading(false);
+      return;
+    }
     if (!user || role !== 'admin') return;
     if (!isSilent) {
       setLoading(true);
@@ -149,9 +236,13 @@ export default function StaffManagementPage() {
         setLoading(false);
       }
     }
-  }, [role, user]);
+  }, [presentationMode, role, user]);
 
   useEffect(() => {
+    if (presentationMode) {
+      void loadStaff();
+      return;
+    }
     if (!roleLoading && role === 'admin') {
       void loadStaff();
       const intervalId = setInterval(() => {
@@ -161,7 +252,7 @@ export default function StaffManagementPage() {
         clearInterval(intervalId);
       };
     }
-  }, [loadStaff, role, roleLoading]);
+  }, [loadStaff, presentationMode, role, roleLoading]);
 
   // Prevent background page and main container scrolling while modal is open
   useEffect(() => {
@@ -590,7 +681,7 @@ export default function StaffManagementPage() {
   };
 
   // Guard for role loading or unauthorized access
-  if (roleLoading) {
+  if (roleLoading && !presentationMode) {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center p-8 text-center" aria-live="polite">
         <div className="loading loading-spinner loading-lg text-[#B5121B]" />
@@ -601,7 +692,7 @@ export default function StaffManagementPage() {
     );
   }
 
-  if (role !== 'admin') {
+  if (role !== 'admin' && !presentationMode) {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900 shadow-sm">
         <div className="mb-4 rounded-full bg-red-50 p-4 text-[#B5121B] dark:bg-red-950/50 dark:text-red-400">

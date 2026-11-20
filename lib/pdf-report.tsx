@@ -1,5 +1,7 @@
 // lib/pdf-report.tsx
 // Server-safe PDF generation without relying on React renderers.
+import { generateUvLabReportPDFBuffer } from '@/lib/uv-lab-pdf';
+import type { UvCycleReportExportData } from '@/lib/uv-cycle-analytics';
 
 export interface FlushEventRow {
   id: string;
@@ -228,7 +230,7 @@ function buildReportLines(
   } else {
     for (const cycle of uvCycles.slice(0, 50)) {
       lines.push({
-        text: `${cycle.timestamp.slice(0, 16)}  ${cycle.deviceId}  ${cycle.completed ? 'Completed' : 'Failed'}  ${cycle.duration}s`,
+        text: `${cycle.timestamp.slice(0, 19)}  ${cycle.deviceId}  ${cycle.completed ? 'Completed' : 'Interrupted'}  ${cycle.duration}s`,
         fontSize: 10,
       });
     }
@@ -369,10 +371,13 @@ function buildSupervisorAuditReportLines(
   return lines;
 }
 
-function paginateLines(lines: PdfLine[]): PositionedLine[][] {
+function paginateLines(
+  lines: PdfLine[],
+  firstPageStartY: number = TOP_MARGIN_Y,
+): PositionedLine[][] {
   const pages: PositionedLine[][] = [[]];
   let pageIndex = 0;
-  let currentY = TOP_MARGIN_Y;
+  let currentY = firstPageStartY;
 
   for (const line of lines) {
     const wrappedLines = wrapText(line.text, line.fontSize >= 14 ? 64 : 90);
@@ -400,8 +405,11 @@ function paginateLines(lines: PdfLine[]): PositionedLine[][] {
   return pages;
 }
 
-function buildContentStream(lines: PositionedLine[]): string {
-  return lines
+function buildContentStream(
+  lines: PositionedLine[],
+  extraGraphics = '',
+): string {
+  const textStream = lines
     .map((line) => {
       const text = escapePdfText(line.text);
       return [
@@ -413,9 +421,14 @@ function buildContentStream(lines: PositionedLine[]): string {
       ].join('\n');
     })
     .join('\n');
+
+  return extraGraphics ? `${extraGraphics}\n${textStream}` : textStream;
 }
 
-function buildPdfBuffer(pages: PositionedLine[][]): Uint8Array {
+function buildPdfBuffer(
+  pages: PositionedLine[][],
+  pageGraphics?: Map<number, string>,
+): Uint8Array {
   const objects = new Map<number, string>();
   const pageObjectNumbers: number[] = [];
   const maxObjectNumber = 3 + pages.length * 2;
@@ -427,14 +440,18 @@ function buildPdfBuffer(pages: PositionedLine[][]): Uint8Array {
   );
 
   let objectNumber = 4;
-  for (const pageLines of pages) {
+  for (let pageIdx = 0; pageIdx < pages.length; pageIdx += 1) {
+    const pageLines = pages[pageIdx];
     const pageObjectNumber = objectNumber;
     const contentObjectNumber = objectNumber + 1;
     objectNumber += 2;
 
     pageObjectNumbers.push(pageObjectNumber);
 
-    const contentStream = buildContentStream(pageLines);
+    const contentStream = buildContentStream(
+      pageLines,
+      pageGraphics?.get(pageIdx) ?? '',
+    );
     const contentLength = Buffer.byteLength(contentStream, 'utf8');
 
     objects.set(
@@ -476,6 +493,12 @@ function buildPdfBuffer(pages: PositionedLine[][]): Uint8Array {
   pdf += `trailer\n<< /Size ${maxObjectNumber + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
 
   return Uint8Array.from(Buffer.from(pdf, 'utf8'));
+}
+
+export async function generateUvCyclePDFBuffer(
+  report: UvCycleReportExportData,
+): Promise<Uint8Array> {
+  return generateUvLabReportPDFBuffer(report);
 }
 
 export async function generatePDFBuffer(

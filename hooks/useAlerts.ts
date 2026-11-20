@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { apiFetch } from '@/lib/api-client';
 
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
@@ -24,13 +25,61 @@ interface AlertDoc {
   acknowledged: boolean;
 }
 
+function createPresentationAlerts(): AlertEvent[] {
+  const now = Date.now();
+  return [
+    {
+      id: 'demo-alert-1',
+      title: 'water_overuse',
+      description:
+        'SDCA Annex 4F Smart Unit (toilet-01) recorded 4.8 L/min sustained flow — exceeds 4.0 L/min threshold.',
+      severity: 'high',
+      timestamp: new Date(now - 9 * 60_000),
+      acknowledged: false,
+    },
+    {
+      id: 'demo-alert-2',
+      title: 'maintenance_due',
+      description:
+        'Routine inspection interval reached (250 flush cycles since last deep sanitization check).',
+      severity: 'medium',
+      timestamp: new Date(now - 38 * 60_000),
+      acknowledged: false,
+    },
+    {
+      id: 'demo-alert-3',
+      title: 'uv_cycle_failed',
+      description:
+        'UV-C sanitation cycle interrupted early by occupancy re-entry; automatic retry succeeded.',
+      severity: 'low',
+      timestamp: new Date(now - 2.5 * 3_600_000),
+      acknowledged: true,
+    },
+    {
+      id: 'demo-alert-4',
+      title: 'ultrasonic_sensor_fault',
+      description:
+        'Brief HC-SR04 echo spike filtered out by median calibration buffer — nominal readings restored.',
+      severity: 'low',
+      timestamp: new Date(now - 6 * 3_600_000),
+      acknowledged: true,
+    },
+  ];
+}
+
 export function useAlerts() {
   const { user } = useAuth();
+  const presentationMode = usePresentationMode();
   const [alerts, setAlerts] = useState<AlertEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAlerts = useCallback(
     async (isInitial = false) => {
+      if (presentationMode) {
+        setAlerts((prev) => (prev.length > 0 ? prev : createPresentationAlerts()));
+        setLoading(false);
+        return;
+      }
       if (!user) return;
       try {
         if (isInitial) {
@@ -62,19 +111,26 @@ export function useAlerts() {
         }
       }
     },
-    [user],
+    [presentationMode, user],
   );
 
   useEffect(() => {
     void fetchAlerts(true);
+    if (presentationMode) return;
     const interval = window.setInterval(() => {
       void fetchAlerts(false);
     }, 10_000);
 
     return () => window.clearInterval(interval);
-  }, [fetchAlerts]);
+  }, [fetchAlerts, presentationMode]);
 
   const acknowledgeAlerts = async (ids: string[]) => {
+    if (presentationMode && ids.length > 0) {
+      setAlerts((prev) =>
+        prev.map((a) => (ids.includes(a.id) ? { ...a, acknowledged: true } : a)),
+      );
+      return true;
+    }
     if (!user || ids.length === 0) return false;
 
     try {
@@ -93,6 +149,14 @@ export function useAlerts() {
   };
 
   const acknowledgeAlert = async (id: string | 'ALL') => {
+    if (presentationMode) {
+      setAlerts((prev) =>
+        prev.map((a) =>
+          id === 'ALL' || a.id === id ? { ...a, acknowledged: true } : a,
+        ),
+      );
+      return true;
+    }
     if (!user) return false;
     try {
       if (id === 'ALL') {

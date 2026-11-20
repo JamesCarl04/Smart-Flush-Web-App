@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useDeviceStatus } from '@/hooks/useDeviceStatus';
 import { useSystemState } from '@/hooks/useSystemState';
+import { ACTIVE_WATERFLOW_THRESHOLD } from '@/lib/device-constants';
+import { isFreshSensorReadingTimestamp } from '@/lib/sensor-freshness';
 import {
   ArrowUpCircle,
   Droplets,
@@ -112,6 +114,7 @@ export function StatCards() {
   const {
     ultrasonicDistance,
     waterFlowRate,
+    waterFlowUpdatedAt,
     loading: sensorLoading,
   } = useSensorData();
 
@@ -171,11 +174,18 @@ export function StatCards() {
   }, [connected, distanceVal, isSensorValid]);
 
   // Flow Rate Calculations (0 - 10.0 L/min range)
-  const flowVal =
+  const rawFlowVal =
     waterFlowRate != null && !isNaN(Number(waterFlowRate))
       ? Number(waterFlowRate)
       : 0;
-  const isFlowActive = connected && flowVal > 0.05;
+  // When a timestamp is present from live telemetry, expire active flow after
+  // SENSOR_EVENT_FRESHNESS_MS even between 15s API polls so Mode never sticks.
+  const isWaterFlowFresh =
+    waterFlowUpdatedAt === undefined
+      ? true
+      : isFreshSensorReadingTimestamp(waterFlowUpdatedAt, now);
+  const flowVal = isWaterFlowFresh ? rawFlowVal : 0;
+  const isFlowActive = connected && flowVal > ACTIVE_WATERFLOW_THRESHOLD;
   const flowMeterPercent = useMemo(() => {
     if (!connected) return 0;
     // 0 - 10 L/min scale mapped to 0-100%

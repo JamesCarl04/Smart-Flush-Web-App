@@ -178,6 +178,7 @@ export interface ComponentRulPrediction {
   predictedServiceDate: string;
   status: PredictiveHealthStatus;
   recommendation: string;
+  hasTelemetry?: boolean;
 }
 
 export interface SensorDriftIndicator {
@@ -191,6 +192,8 @@ export interface SensorDriftIndicator {
   reactiveThresholdLabel: string;
   status: PredictiveHealthStatus;
   diagnosticSummary: string;
+  hasData?: boolean;
+  sampleCount?: number;
 }
 
 export interface DailyForecastPoint {
@@ -198,6 +201,44 @@ export interface DailyForecastPoint {
   label: string;
   predictedFlushes: number;
   predictedWaterLiters: number;
+}
+
+export interface LinearRegressionStats {
+  slope: number;
+  intercept: number;
+  waterSlope: number;
+  waterIntercept: number;
+  rSquared: number | null;
+  waterRSquared: number | null;
+  correlationR: number | null;
+  rmse: number;
+  sampleSize: number;
+  equation: string;
+  waterEquation: string;
+  fitQuality: 'strong' | 'moderate' | 'weak' | 'constant' | 'insufficient';
+  fitLabel: string;
+}
+
+export interface UsageForecastInterpretation {
+  trendDirection: 'increasing' | 'stable' | 'decreasing';
+  trendLabel: string;
+  avgDailyFlushes: number;
+  avgDailyWaterLiters: number;
+  avgLitersPerFlush: number;
+  estimatedWaterSavedLiters: number;
+  estimatedSavingsPercent: number;
+  peakDay: DailyForecastPoint | null;
+  lowDay: DailyForecastPoint | null;
+  activeDaysObserved: number;
+  totalDaysObserved: number;
+  usedBaselineFallback: boolean;
+  confidenceLevel: 'baseline' | 'low' | 'moderate' | 'high';
+  confidenceLabel: string;
+  modelSummary: string;
+  trendNarrative: string;
+  waterNarrative: string;
+  actionRecommendation: string;
+  regression?: LinearRegressionStats;
 }
 
 export interface RestroomRiskScore {
@@ -233,6 +274,7 @@ export interface PredictiveMaintenanceSummary {
     next7DaysWaterLiters: number;
     dailyFlushTrendSlope: number;
     series: DailyForecastPoint[];
+    interpretation?: UsageForecastInterpretation;
   };
   campusRisk: RestroomRiskScore[];
 }

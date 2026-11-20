@@ -9,6 +9,7 @@ import {
   computeCampusRestroomRiskScores,
   computeComponentRulPredictions,
   detectTelemetryDrift,
+  fitLinearRegression,
   forecastDailySeries,
   normalizeWearCounters,
   resolveRoomIdFromDeviceId,
@@ -72,17 +73,24 @@ describe('Predictive Maintenance Statistical Engine', () => {
       const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
       expect(flow?.currentValue).toBe(450);
       expect(flow?.ratedLimit).toBe(500);
+      expect(flow?.unit).toBe('L');
       expect(flow?.wearPercent).toBe(90);
       expect(flow?.dailyBurnRate).toBe(30);
       expect(flow?.estimatedDaysRemaining).toBe(2);
       expect(flow?.predictedServiceDate).toBe('2026-11-17');
       expect(flow?.status).toBe('critical');
+      expect(flow?.hasTelemetry).toBe(true);
 
-      const pump = predictions.find((c) => c.key === 'pumpTotalLiters');
-      expect(pump?.dailyBurnRate).toBe(30);
-      expect(pump?.estimatedDaysRemaining).toBe(13);
-      // 13 days <= 21d triggers proactive warning even though wear is 20%
+      const pump = predictions.find((c) => c.key === 'flushCycleCount');
+      expect(pump?.currentValue).toBe(850);
+      expect(pump?.ratedLimit).toBe(1000);
+      expect(pump?.unit).toBe('flushes');
+      expect(pump?.wearPercent).toBe(85);
+      expect(pump?.dailyBurnRate).toBe(20);
+      expect(pump?.estimatedDaysRemaining).toBe(8);
+      // 8 days <= 21d and 85% >= 70% triggers proactive warning
       expect(pump?.status).toBe('warning');
+      expect(pump?.hasTelemetry).toBe(true);
     });
 
     it('prevents division by zero and uses fallback burn rates when window activity is zero', () => {
@@ -93,17 +101,65 @@ describe('Predictive Maintenance Statistical Engine', () => {
       });
 
       expect(predictions).toHaveLength(2);
+      const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
+      const pump = predictions.find((c) => c.key === 'flushCycleCount');
       for (const item of predictions) {
         expect(item.dailyBurnRate).toBeGreaterThan(0);
         expect(Number.isFinite(item.estimatedDaysRemaining)).toBe(true);
         expect(item.wearPercent).toBe(0);
         expect(item.status).toBe('healthy');
-        expect(item.recommendation).toContain('No water usage recorded yet');
+        expect(item.hasTelemetry).toBe(false);
       }
+      expect(flow?.recommendation).toContain('No water usage recorded yet');
+      expect(pump?.recommendation).toContain('No flush cycles recorded yet');
+    });
+
+    it('falls back to observedWindowTotals for liters (flow meter) and flushes (flush pump) when wear counters are zero/missing', () => {
+      const predictions = computeComponentRulPredictions({
+        counters: normalizeWearCounters(null),
+        windowDays: 8,
+        observedWindowTotals: {
+          flushes: 14, // 1.75 flushes/day
+          waterLiters: 76.08, // 9.51 L/day
+        },
+        nowMs: FIXED_NOW_MS,
+      });
+
+      expect(predictions).toHaveLength(2);
+      const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
+      expect(flow?.currentValue).toBe(76.1);
+      expect(flow?.wearPercent).toBe(15.2);
+      expect(flow?.dailyBurnRate).toBe(9.51);
+      expect(flow?.estimatedDaysRemaining).toBe(45);
+      expect(flow?.recommendation).not.toContain('No water usage recorded yet');
+
+      const pump = predictions.find((c) => c.key === 'flushCycleCount');
+      expect(pump?.currentValue).toBe(14);
+      expect(pump?.wearPercent).toBe(1.4);
+      expect(pump?.dailyBurnRate).toBe(1.75);
+      expect(pump?.estimatedDaysRemaining).toBe(365);
+      expect(pump?.recommendation).not.toContain('No flush cycles recorded yet');
     });
   });
 
   describe('detectTelemetryDrift', () => {
+    it('reports hasData: false without fabricating 0.25 L/s or 99.5% readings when telemetry is absent', () => {
+      const indicators = detectTelemetryDrift({
+        flushSamples: [],
+        ultrasonicSamples: [],
+        ultrasonicConsecutiveFailures: 0,
+      });
+
+      expect(indicators).toHaveLength(2);
+      for (const item of indicators) {
+        expect(item.hasData).toBe(false);
+        expect(item.sampleCount).toBe(0);
+        expect(item.baselineValue).toBe(0);
+        expect(item.recentValue).toBe(0);
+        expect(item.driftPercent).toBe(0);
+        expect(item.status).toBe('healthy');
+      }
+    });
     it('flags early pump flow-rate degradation before reactive 0.80L/0.30L thresholds', () => {
       const flushSamples = [
         { waterVolume: 1.8, duration: 6, timestampMs: 1_000 },
@@ -156,8 +212,20 @@ describe('Predictive Maintenance Statistical Engine', () => {
     });
   });
 
-  describe('forecastDailySeries', () => {
-    it('projects 7 non-negative forecast days following the historical trend', () => {
+  describe('fitLinearRegression & forecastDailySeries (OLS)', () => {
+    it('computes exact OLS slope, intercept, R², Pearson r, and RMSE over 1-based day indices', () => {
+      // x = [1, 2, 3, 4], y = [15, 18, 22, 25] -> m = 3.4, b = 11.5, R² = 289/290 ≈ 0.9966
+      const fit = fitLinearRegression([15, 18, 22, 25]);
+
+      expect(fit.sampleSize).toBe(4);
+      expect(fit.slope).toBeCloseTo(3.4, 4);
+      expect(fit.intercept).toBeCloseTo(11.5, 4);
+      expect(fit.rSquared).toBeCloseTo(289 / 290, 4);
+      expect(fit.correlationR).toBeCloseTo(17 / Math.sqrt(290), 4);
+      expect(fit.rmse).toBeCloseTo(Math.sqrt(0.05), 4);
+    });
+
+    it('projects 7 non-negative forecast days following the OLS linear regression trend', () => {
       const forecast = forecastDailySeries({
         historicalDaily: [
           { date: '2026-11-10', flushCount: 15, waterLiters: 22.5 },
@@ -172,9 +240,146 @@ describe('Predictive Maintenance Statistical Engine', () => {
       expect(forecast.series).toHaveLength(7);
       expect(forecast.series[0].date).toBe('2026-11-14');
       expect(forecast.series[6].date).toBe('2026-11-20');
-      expect(forecast.dailyFlushTrendSlope).toBeGreaterThan(0);
-      expect(forecast.next7DaysFlushes).toBeGreaterThan(150);
-      expect(forecast.next7DaysWaterLiters).toBeGreaterThan(200);
+      expect(forecast.dailyFlushTrendSlope).toBeCloseTo(3.4, 2);
+      // x = 5: 3.4*5 + 11.5 = 28.5 -> 29; x = 11: 3.4*11 + 11.5 = 48.9 -> 49
+      expect(forecast.series[0].predictedFlushes).toBe(29);
+      expect(forecast.series[6].predictedFlushes).toBe(49);
+      expect(forecast.next7DaysFlushes).toBeGreaterThan(250);
+      expect(forecast.next7DaysWaterLiters).toBeGreaterThan(380);
+
+      expect(forecast.interpretation.trendDirection).toBe('increasing');
+      expect(forecast.interpretation.trendLabel).toBe('Usage Rising');
+      expect(forecast.interpretation.confidenceLevel).toBe('moderate');
+      expect(forecast.interpretation.activeDaysObserved).toBe(4);
+      expect(forecast.interpretation.usedBaselineFallback).toBe(false);
+      expect(forecast.interpretation.avgLitersPerFlush).toBeCloseTo(1.5, 1);
+      expect(forecast.interpretation.estimatedWaterSavedLiters).toBeGreaterThan(0);
+      expect(forecast.interpretation.estimatedSavingsPercent).toBeGreaterThan(70);
+      expect(forecast.interpretation.peakDay?.date).toBe('2026-11-20');
+      expect(forecast.interpretation.modelSummary).toContain(
+        'Linear Regression',
+      );
+      expect(forecast.interpretation.modelSummary).toContain(
+        '4 days (4 with activity)',
+      );
+      expect(forecast.interpretation.regression).toBeDefined();
+      expect(forecast.interpretation.regression?.equation).toBe(
+        'ŷ = 3.40x + 11.50',
+      );
+      expect(forecast.interpretation.regression?.rSquared).toBeCloseTo(0.997, 3);
+      expect(forecast.interpretation.regression?.fitQuality).toBe('strong');
+      expect(forecast.interpretation.regression?.rmse).toBeCloseTo(0.22, 2);
+      expect(forecast.interpretation.trendNarrative).toContain('+3.4 flushes');
+      expect(forecast.interpretation.waterNarrative).toContain(
+        'standard 6.0 L toilets',
+      );
+      expect(forecast.interpretation.actionRecommendation).toContain('Nov 20');
+    });
+
+    it('flags low confidence and omits R² when fewer than 3 days exist (df <= 0)', () => {
+      const forecast = forecastDailySeries({
+        historicalDaily: [
+          { date: '2026-11-18', flushCount: 14, waterLiters: 66.5 },
+          { date: '2026-11-19', flushCount: 21, waterLiters: 99.8 },
+        ],
+        horizonDays: 7,
+        nowMs: FIXED_NOW_MS,
+      });
+
+      expect(forecast.interpretation.activeDaysObserved).toBe(2);
+      expect(forecast.interpretation.confidenceLevel).toBe('low');
+      expect(forecast.interpretation.confidenceLabel).toBe(
+        'Early Estimate (Needs more days)',
+      );
+      expect(forecast.interpretation.regression?.rSquared).toBeNull();
+      expect(forecast.interpretation.regression?.fitQuality).toBe('insufficient');
+      expect(forecast.interpretation.actionRecommendation).toContain(
+        'Only 2 active days',
+      );
+    });
+
+    it('flags low confidence when daily variance yields a weak R² fit', () => {
+      const forecast = forecastDailySeries({
+        historicalDaily: [
+          { date: '2026-11-10', flushCount: 5, waterLiters: 10 },
+          { date: '2026-11-11', flushCount: 40, waterLiters: 80 },
+          { date: '2026-11-12', flushCount: 8, waterLiters: 16 },
+          { date: '2026-11-13', flushCount: 38, waterLiters: 76 },
+          { date: '2026-11-14', flushCount: 6, waterLiters: 12 },
+          { date: '2026-11-15', flushCount: 35, waterLiters: 70 },
+        ],
+        horizonDays: 7,
+        nowMs: FIXED_NOW_MS,
+      });
+
+      expect(forecast.interpretation.regression?.rSquared).not.toBeNull();
+      expect(forecast.interpretation.regression!.rSquared!).toBeLessThan(0.4);
+      expect(forecast.interpretation.regression?.fitQuality).toBe('weak');
+      expect(forecast.interpretation.confidenceLevel).toBe('low');
+      expect(forecast.interpretation.confidenceLabel).toBe(
+        'Rough Estimate (Daily usage varies)',
+      );
+      expect(forecast.interpretation.actionRecommendation).toContain(
+        'uneven lately',
+      );
+    });
+
+    it('warns on water overuse when projected consumption exceeds 6.0 L per flush', () => {
+      const forecast = forecastDailySeries({
+        historicalDaily: [
+          { date: '2026-11-10', flushCount: 20, waterLiters: 150 },
+          { date: '2026-11-11', flushCount: 20, waterLiters: 150 },
+          { date: '2026-11-12', flushCount: 20, waterLiters: 150 },
+          { date: '2026-11-13', flushCount: 20, waterLiters: 150 },
+          { date: '2026-11-14', flushCount: 20, waterLiters: 150 },
+          { date: '2026-11-15', flushCount: 20, waterLiters: 150 },
+        ],
+        horizonDays: 7,
+        nowMs: FIXED_NOW_MS,
+      });
+
+      expect(forecast.interpretation.confidenceLevel).toBe('high');
+      expect(forecast.interpretation.trendDirection).toBe('stable');
+      expect(forecast.interpretation.regression?.fitQuality).toBe('constant');
+      expect(forecast.interpretation.regression?.rSquared).toBeNull();
+      expect(forecast.interpretation.regression?.rmse).toBe(0);
+      expect(forecast.interpretation.avgLitersPerFlush).toBeGreaterThan(6.0);
+      expect(forecast.interpretation.estimatedWaterSavedLiters).toBeLessThan(0);
+      expect(forecast.interpretation.waterNarrative).toContain(
+        'above standard 6.0 L toilets',
+      );
+      expect(forecast.interpretation.actionRecommendation).toContain(
+        'flow sensor calibration',
+      );
+    });
+
+    it('clamps declining OLS forecasts safely at zero and reports declining trend narrative', () => {
+      const forecast = forecastDailySeries({
+        historicalDaily: [
+          { date: '2026-11-10', flushCount: 30, waterLiters: 45 },
+          { date: '2026-11-11', flushCount: 26, waterLiters: 39 },
+          { date: '2026-11-12', flushCount: 22, waterLiters: 33 },
+          { date: '2026-11-13', flushCount: 18, waterLiters: 27 },
+        ],
+        horizonDays: 7,
+        nowMs: FIXED_NOW_MS,
+      });
+
+      expect(forecast.dailyFlushTrendSlope).toBeCloseTo(-4.0, 2);
+      expect(forecast.interpretation.regression?.equation).toBe(
+        'ŷ = -4.00x + 34.00',
+      );
+      expect(forecast.interpretation.regression?.rSquared).toBe(1);
+      expect(forecast.series.every((p) => p.predictedFlushes >= 0)).toBe(true);
+      expect(forecast.series.every((p) => p.predictedWaterLiters >= 0)).toBe(true);
+      expect(forecast.interpretation.trendDirection).toBe('decreasing');
+      expect(forecast.interpretation.trendLabel).toBe('Usage Slowing');
+      expect(forecast.interpretation.trendNarrative).toContain(
+        'ease by -4.0 flushes',
+      );
+      expect(forecast.interpretation.actionRecommendation).toContain(
+        'Lighter restroom traffic is expected',
+      );
     });
 
     it('provides non-negative baseline fallback when historical data is empty', () => {
@@ -187,6 +392,15 @@ describe('Predictive Maintenance Statistical Engine', () => {
       expect(forecast.series).toHaveLength(7);
       expect(forecast.next7DaysFlushes).toBeGreaterThan(0);
       expect(forecast.series.every((p) => p.predictedFlushes >= 0)).toBe(true);
+      expect(forecast.interpretation.usedBaselineFallback).toBe(true);
+      expect(forecast.interpretation.confidenceLevel).toBe('baseline');
+      expect(forecast.interpretation.regression?.rSquared).toBeNull();
+      expect(forecast.interpretation.confidenceLabel).toBe(
+        'Starting Estimate (No recent logs)',
+      );
+      expect(forecast.interpretation.trendNarrative).toContain(
+        'No recent flush records',
+      );
     });
   });
 
