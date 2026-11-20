@@ -174,8 +174,8 @@ export interface ComponentRulPrediction {
   ratedLimit: number;
   wearPercent: number;
   dailyBurnRate: number;
-  estimatedDaysRemaining: number;
-  predictedServiceDate: string;
+  estimatedDaysRemaining: number | null;
+  predictedServiceDate: string | null;
   status: PredictiveHealthStatus;
   recommendation: string;
   hasTelemetry?: boolean;
@@ -263,8 +263,8 @@ export interface PredictiveMaintenanceSummary {
   overallHealthIndex: number;
   shortestRulComponent: {
     label: string;
-    estimatedDaysRemaining: number;
-    predictedServiceDate: string;
+    estimatedDaysRemaining: number | null;
+    predictedServiceDate: string | null;
     wearPercent: number;
   } | null;
   componentRul: ComponentRulPrediction[];

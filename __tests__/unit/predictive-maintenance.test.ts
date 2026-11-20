@@ -93,7 +93,7 @@ describe('Predictive Maintenance Statistical Engine', () => {
       expect(pump?.hasTelemetry).toBe(true);
     });
 
-    it('prevents division by zero and uses fallback burn rates when window activity is zero', () => {
+    it('prevents division by zero and returns null RUL dates when window activity is zero', () => {
       const predictions = computeComponentRulPredictions({
         counters: normalizeWearCounters({}),
         windowDays: 0,
@@ -104,14 +104,39 @@ describe('Predictive Maintenance Statistical Engine', () => {
       const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
       const pump = predictions.find((c) => c.key === 'flushCycleCount');
       for (const item of predictions) {
-        expect(item.dailyBurnRate).toBeGreaterThan(0);
-        expect(Number.isFinite(item.estimatedDaysRemaining)).toBe(true);
+        expect(item.dailyBurnRate).toBe(0);
+        expect(item.estimatedDaysRemaining).toBeNull();
+        expect(item.predictedServiceDate).toBeNull();
         expect(item.wearPercent).toBe(0);
         expect(item.status).toBe('healthy');
         expect(item.hasTelemetry).toBe(false);
       }
       expect(flow?.recommendation).toContain('No water usage recorded yet');
       expect(pump?.recommendation).toContain('No flush cycles recorded yet');
+    });
+
+    it('classifies high cumulative wear without fabricating a countdown when window activity is zero', () => {
+      const predictions = computeComponentRulPredictions({
+        counters: normalizeWearCounters({
+          flowSensorTotalLiters: 455, // 91% of 500 L -> critical by wearPercent
+          flushCycleCount: 750, // 75% of 1000 flushes -> warning by wearPercent
+        }),
+        windowDays: 7,
+        observedWindowTotals: { flushes: 0, waterLiters: 0 },
+        nowMs: FIXED_NOW_MS,
+      });
+
+      const flow = predictions.find((c) => c.key === 'flowSensorTotalLiters');
+      expect(flow?.dailyBurnRate).toBe(0);
+      expect(flow?.estimatedDaysRemaining).toBeNull();
+      expect(flow?.predictedServiceDate).toBeNull();
+      expect(flow?.status).toBe('critical');
+
+      const pump = predictions.find((c) => c.key === 'flushCycleCount');
+      expect(pump?.dailyBurnRate).toBe(0);
+      expect(pump?.estimatedDaysRemaining).toBeNull();
+      expect(pump?.predictedServiceDate).toBeNull();
+      expect(pump?.status).toBe('warning');
     });
 
     it('falls back to observedWindowTotals for liters (flow meter) and flushes (flush pump) when wear counters are zero/missing', () => {

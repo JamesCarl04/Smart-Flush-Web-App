@@ -111,11 +111,17 @@ export function normalizeWearCounters(
 
 function classifyRulStatus(
   wearPercent: number,
-  daysRemaining: number,
+  daysRemaining: number | null,
 ): PredictiveHealthStatus {
-  if (wearPercent >= 90 || daysRemaining <= 7) return 'critical';
-  if (wearPercent >= 70 || daysRemaining <= 21) return 'warning';
-  if (wearPercent >= 45 || daysRemaining <= 45) return 'watch';
+  if (wearPercent >= 90 || (daysRemaining !== null && daysRemaining <= 7)) {
+    return 'critical';
+  }
+  if (wearPercent >= 70 || (daysRemaining !== null && daysRemaining <= 21)) {
+    return 'warning';
+  }
+  if (wearPercent >= 45 || (daysRemaining !== null && daysRemaining <= 45)) {
+    return 'watch';
+  }
   return 'healthy';
 }
 
@@ -127,31 +133,39 @@ interface RulSpec {
   currentValue: number;
   ratedLimit: number;
   observedBurnPerDay: number;
-  fallbackBurnPerDay: number;
   actionPrefix: string;
 }
 
 function componentRecommendation(
   status: PredictiveHealthStatus,
   actionPrefix: string,
-  daysRemaining: number,
+  daysRemaining: number | null,
   currentValue: number,
   unit: string,
 ): string {
   const lowerFirst =
     actionPrefix.charAt(0).toLowerCase() + actionPrefix.slice(1);
+  const activityLabel = unit === 'L' ? 'water usage' : 'flush cycles';
   if (status === 'critical') {
-    return `${actionPrefix} immediately (about ${daysRemaining} days of life left).`;
+    return daysRemaining !== null
+      ? `${actionPrefix} immediately (about ${daysRemaining} days of life left).`
+      : `${actionPrefix} immediately (rated usage limit nearly reached).`;
   }
   if (status === 'warning') {
-    return `Schedule maintenance to ${lowerFirst} within ${daysRemaining} days.`;
+    return daysRemaining !== null
+      ? `Schedule maintenance to ${lowerFirst} within ${daysRemaining} days.`
+      : `Schedule maintenance to ${lowerFirst} soon (high cumulative wear).`;
   }
   if (status === 'watch') {
-    return `Routine check recommended in about ${daysRemaining} days.`;
+    return daysRemaining !== null
+      ? `Routine check recommended in about ${daysRemaining} days.`
+      : `Routine check recommended based on cumulative wear.`;
   }
   if (currentValue <= 0) {
-    const activityLabel = unit === 'L' ? 'water usage' : 'flush cycles';
-    return `No ${activityLabel} recorded yet; baseline service estimate (~${daysRemaining} days).`;
+    return `No ${activityLabel} recorded yet; service estimate will calculate once usage is observed.`;
+  }
+  if (daysRemaining === null) {
+    return `No recent ${activityLabel} in this window; service estimate will update when activity resumes.`;
   }
   return `Usage within rated limit (about ${daysRemaining} days until service).`;
 }
@@ -200,7 +214,6 @@ export function computeComponentRulPredictions(params: {
       currentValue: roundTo(effectiveFlowLiters, 1),
       ratedLimit: 500,
       observedBurnPerDay: obsLiters / safeWindowDays,
-      fallbackBurnPerDay: 10,
       actionPrefix: 'Clean and check water flow meter',
     },
     {
@@ -211,7 +224,6 @@ export function computeComponentRulPredictions(params: {
       currentValue: Math.round(effectiveFlushCycles),
       ratedLimit: 1000,
       observedBurnPerDay: obsFlushes / safeWindowDays,
-      fallbackBurnPerDay: 15,
       actionPrefix: 'Clean pump filter and check seals',
     },
   ];
@@ -221,21 +233,23 @@ export function computeComponentRulPredictions(params: {
       100,
       Math.max(0, roundTo((spec.currentValue / spec.ratedLimit) * 100, 1)),
     );
-    const burnRateRaw =
-      spec.observedBurnPerDay > 0
-        ? spec.observedBurnPerDay
-        : spec.fallbackBurnPerDay;
-    const dailyBurnRate = Math.max(0.01, roundTo(burnRateRaw, 2));
+    const hasObservedBurn = spec.observedBurnPerDay > 0;
+    const dailyBurnRate = hasObservedBurn
+      ? Math.max(0.01, roundTo(spec.observedBurnPerDay, 2))
+      : 0;
     const remainingCapacity = Math.max(0, spec.ratedLimit - spec.currentValue);
-    const estimatedDaysRemaining = Math.max(
-      0,
-      Math.min(365, Math.round(remainingCapacity / dailyBurnRate)),
-    );
-    const predictedServiceDate = new Date(
-      nowMs + estimatedDaysRemaining * MS_PER_DAY,
-    )
-      .toISOString()
-      .slice(0, 10);
+    const estimatedDaysRemaining = hasObservedBurn
+      ? Math.max(
+          0,
+          Math.min(365, Math.round(remainingCapacity / dailyBurnRate)),
+        )
+      : null;
+    const predictedServiceDate =
+      estimatedDaysRemaining !== null
+        ? new Date(nowMs + estimatedDaysRemaining * MS_PER_DAY)
+            .toISOString()
+            .slice(0, 10)
+        : null;
     const status = classifyRulStatus(wearPercent, estimatedDaysRemaining);
 
     return {
@@ -999,9 +1013,12 @@ export function buildPredictiveMaintenanceSummary(input: {
     Math.min(100, Math.round(100 - avgWear * 0.7 - driftPenalty)),
   );
 
-  const sortedByShortestRul = [...componentRul].sort(
-    (a, b) => a.estimatedDaysRemaining - b.estimatedDaysRemaining,
-  );
+  const sortedByShortestRul = componentRul
+    .filter(
+      (c): c is ComponentRulPrediction & { estimatedDaysRemaining: number } =>
+        c.estimatedDaysRemaining !== null,
+    )
+    .sort((a, b) => a.estimatedDaysRemaining - b.estimatedDaysRemaining);
   const shortest = sortedByShortestRul[0] ?? null;
 
   return {

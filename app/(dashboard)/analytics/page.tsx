@@ -985,14 +985,17 @@ function PredictiveMaintenanceSection({
               Next Part Due for Service
             </dt>
             <dd className="mt-1 font-mono text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {predictive?.shortestRulComponent
+              {predictive?.shortestRulComponent?.estimatedDaysRemaining !==
+                null &&
+              predictive?.shortestRulComponent?.estimatedDaysRemaining !==
+                undefined
                 ? `${predictive.shortestRulComponent.estimatedDaysRemaining} days`
                 : '--'}
             </dd>
             <dd className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-400">
-              {predictive?.shortestRulComponent
+              {predictive?.shortestRulComponent?.predictedServiceDate
                 ? `${predictive.shortestRulComponent.label} · ${predictive.shortestRulComponent.predictedServiceDate}`
-                : 'Checking part wear'}
+                : 'Awaiting usage data'}
             </dd>
           </div>
 
@@ -1249,7 +1252,11 @@ function ComponentRulCard({
   onDispatch: (message: string) => Promise<void>;
 }) {
   const style = HEALTH_STATUS_META[component.status];
-  const dispatchMsg = `Scheduled maintenance for ${component.label} on ${deviceId}: ${component.wearPercent}% used (${component.currentValue}/${component.ratedLimit} ${component.unit}), about ${component.estimatedDaysRemaining} days left (service by ${component.predictedServiceDate}). ${component.recommendation}`;
+  const rulScheduleClause =
+    component.estimatedDaysRemaining !== null && component.predictedServiceDate
+      ? `, about ${component.estimatedDaysRemaining} days left (service by ${component.predictedServiceDate})`
+      : ' (awaiting recent usage data for service date estimate)';
+  const dispatchMsg = `Scheduled maintenance for ${component.label} on ${deviceId}: ${component.wearPercent}% used (${component.currentValue}/${component.ratedLimit} ${component.unit})${rulScheduleClause}. ${component.recommendation}`;
 
   return (
     <article className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
@@ -1300,7 +1307,9 @@ function ComponentRulCard({
               Time Left
             </dt>
             <dd className="mt-1 truncate font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {component.estimatedDaysRemaining} days
+              {component.estimatedDaysRemaining !== null
+                ? `${component.estimatedDaysRemaining} days`
+                : '—'}
             </dd>
           </div>
           <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/60">
@@ -1308,7 +1317,7 @@ function ComponentRulCard({
               Service By
             </dt>
             <dd className="mt-1 truncate font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {component.predictedServiceDate}
+              {component.predictedServiceDate ?? '—'}
             </dd>
           </div>
         </dl>
