@@ -64,7 +64,6 @@ export default async function PublicReportPage({
       location: '4th Floor Restroom Zone',
       building: 'SDCA Annex Building',
       floor: '4th Floor',
-      publicReportingEnabled: true,
     };
     return (
       <PublicIssueReportForm
