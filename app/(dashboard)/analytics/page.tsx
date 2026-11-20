@@ -107,12 +107,19 @@ function ModernTooltip({
   );
 }
 
-type AnalyticsPresetDays = 0 | 6 | 29;
+type AnalyticsPresetKey = 'today' | '7d' | '30d' | '90d' | 'ytd';
 
-function buildPhtPresetRange(daysBack: AnalyticsPresetDays): DateRange {
+function buildPhtPresetRange(preset: AnalyticsPresetKey): DateRange {
   const todayIso = toPhtIsoDate();
   const todayStartMs = Date.parse(`${todayIso}T00:00:00.000+08:00`);
-  const fromIso = toPhtIsoDate(todayStartMs - daysBack * 86_400_000);
+  let fromIso: string;
+  if (preset === 'ytd') {
+    fromIso = `${todayIso.slice(0, 4)}-01-01`;
+  } else {
+    const daysBack =
+      preset === 'today' ? 0 : preset === '7d' ? 6 : preset === '30d' ? 29 : 89;
+    fromIso = toPhtIsoDate(todayStartMs - daysBack * 86_400_000);
+  }
   const { startMs, endMs } = phtDateRangeToUtcMs(fromIso, todayIso);
   return {
     from: new Date(startMs),
@@ -122,7 +129,7 @@ function buildPhtPresetRange(daysBack: AnalyticsPresetDays): DateRange {
 
 function resolveInitialDateSelection(
   searchParams: ReturnType<typeof useSearchParams>,
-): { range: DateRange; preset: AnalyticsPresetDays | null } {
+): { range: DateRange; preset: AnalyticsPresetKey | null } {
   const fromParam = searchParams.get('from')?.slice(0, 10) ?? '';
   const toParam = (searchParams.get('to') ?? fromParam).slice(0, 10);
 
@@ -133,15 +140,23 @@ function resolveInitialDateSelection(
   ) {
     const { startMs, endMs } = phtDateRangeToUtcMs(fromParam, toParam);
     const todayIso = toPhtIsoDate();
-    let preset: AnalyticsPresetDays | null = null;
+    let preset: AnalyticsPresetKey | null = null;
     if (toParam === todayIso) {
       const spanDays = Math.round(
         (Date.parse(`${toParam}T00:00:00.000Z`) -
           Date.parse(`${fromParam}T00:00:00.000Z`)) /
           86_400_000,
       );
-      if (spanDays === 0 || spanDays === 6 || spanDays === 29) {
-        preset = spanDays;
+      if (spanDays === 0) {
+        preset = 'today';
+      } else if (spanDays === 6) {
+        preset = '7d';
+      } else if (spanDays === 29) {
+        preset = '30d';
+      } else if (spanDays === 89) {
+        preset = '90d';
+      } else if (fromParam === `${todayIso.slice(0, 4)}-01-01`) {
+        preset = 'ytd';
       }
     }
     return {
@@ -151,8 +166,8 @@ function resolveInitialDateSelection(
   }
 
   return {
-    range: buildPhtPresetRange(6),
-    preset: 6,
+    range: buildPhtPresetRange('7d'),
+    preset: '7d',
   };
 }
 
@@ -177,7 +192,7 @@ function AnalyticsPageContent() {
     resolveInitialDateSelection(searchParams),
   );
   const [dateRange, setDateRange] = useState<DateRange>(initialSelection.range);
-  const [activePreset, setActivePreset] = useState<AnalyticsPresetDays | null>(
+  const [activePreset, setActivePreset] = useState<AnalyticsPresetKey | null>(
     initialSelection.preset,
   );
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
@@ -240,9 +255,9 @@ function AnalyticsPageContent() {
     window.history.replaceState({}, '', url.toString());
   }, [dateRange]);
 
-  const setPresetRange = (daysBack: AnalyticsPresetDays) => {
-    setActivePreset(daysBack);
-    setDateRange(buildPhtPresetRange(daysBack));
+  const setPresetRange = (preset: AnalyticsPresetKey) => {
+    setActivePreset(preset);
+    setDateRange(buildPhtPresetRange(preset));
   };
 
   const totalFlushes = data?.summary.totalFlushes;
@@ -285,18 +300,20 @@ function AnalyticsPageContent() {
         </div>
 
         {/* Timeframe Segmented Pill Control */}
-        <div className="inline-flex items-center rounded-xl border border-slate-200/80 bg-slate-100 p-1 shadow-inner dark:border-slate-800/80 dark:bg-slate-800/80">
+        <div className="inline-flex flex-wrap items-center rounded-xl border border-slate-200/80 bg-slate-100 p-1 shadow-inner dark:border-slate-800/80 dark:bg-slate-800/80">
           {[
-            { label: 'Today', days: 0 as const },
-            { label: '7 Days', days: 6 as const },
-            { label: '30 Days', days: 29 as const },
+            { label: 'Today', key: 'today' as const },
+            { label: '7 Days', key: '7d' as const },
+            { label: '30 Days', key: '30d' as const },
+            { label: '90 Days', key: '90d' as const },
+            { label: 'This Year', key: 'ytd' as const },
           ].map((preset) => {
-            const isActive = activePreset === preset.days;
+            const isActive = activePreset === preset.key;
             return (
               <button
-                key={preset.days}
+                key={preset.key}
                 type="button"
-                onClick={() => setPresetRange(preset.days)}
+                onClick={() => setPresetRange(preset.key)}
                 className={`tactile-btn relative min-h-[44px] rounded-lg px-4 py-2 text-xs font-semibold select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 ${
                   isActive
                     ? 'border border-slate-200/80 bg-white font-bold text-slate-900 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-white'
@@ -421,6 +438,15 @@ function AnalyticsPageContent() {
           loading={loading}
         />
       </div>
+
+      {/* System Uptime & Availability (Log-Backed Line Graph + Summary + Collapsible Log Table) */}
+      <SystemReliabilityCard
+        logs={data?.charts.uptimeLogs ?? []}
+        summary={uptimeSummary}
+        liveSnapshotUptime={data?.summary.liveSnapshotUptime}
+        loading={loading}
+        className="mb-8"
+      />
 
       {/* Predictive Maintenance & Statistical Forecasting Section */}
       <PredictiveMaintenanceSection
@@ -630,15 +656,6 @@ function AnalyticsPageContent() {
 
         {/* 4. UV Sanitization Cycle Activity (Log-Backed Line Graph + Day/Week/Month/Year + Raw Log Table) */}
         <UvCycleAnalyticsCard className="lg:col-span-2" />
-
-        {/* 5. System Uptime & Availability (Log-Backed Line Graph + Summary + Collapsible Log Table) */}
-        <SystemReliabilityCard
-          logs={data?.charts.uptimeLogs ?? []}
-          summary={uptimeSummary}
-          liveSnapshotUptime={data?.summary.liveSnapshotUptime}
-          loading={loading}
-          className="lg:col-span-2"
-        />
       </div>
     </div>
   );
